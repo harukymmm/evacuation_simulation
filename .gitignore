@@ -47,6 +47,19 @@ ExportedObj/
 *.opendb
 *.VC.db
 
+# Rider
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Build results
+bin/
+TestResults/
+
 # Unity3D generated meta files
 *.pidb.meta
 *.pdb.meta
