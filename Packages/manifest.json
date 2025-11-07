@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.synesthesias.plateau-unity-sdk": "https://github.com/Project-PLATEAU/PLATEAU-SDK-for-Unity.git#v2.3.2",
+    "com.synesthesias.plateau-unity-sdk": "file:com.synesthesias.plateau-unity-sdk",
     "com.unity.ai.navigation": "2.0.6",
     "com.unity.collab-proxy": "2.10.0",
     "com.unity.feature.development": "1.0.2",

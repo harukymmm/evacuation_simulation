@@ -8,16 +8,15 @@
       "url": "https://packages.unity.com"
     },
     "com.synesthesias.plateau-unity-sdk": {
-      "version": "https://github.com/Project-PLATEAU/PLATEAU-SDK-for-Unity.git#v2.3.2",
+      "version": "file:com.synesthesias.plateau-unity-sdk",
       "depth": 0,
-      "source": "git",
+      "source": "embedded",
       "dependencies": {
         "com.unity.nuget.newtonsoft-json": "3.0.2",
         "com.unity.shadergraph": "12.1.8",
         "com.unity.formats.fbx": "4.1.2",
         "com.unity.test-framework": "1.1.31"
-      },
-      "hash": "0f0914676e866dbcdc5bccaee8aec35fa8d4c338"
+      }
     },
     "com.unity.ai.navigation": {
       "version": "2.0.6",
