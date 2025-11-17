@@ -32456,7 +32456,7 @@ PrefabInstance:
     - target: {fileID: 6496149497392044832, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_NavMeshData
       value: 
-      objectReference: {fileID: 23800000, guid: a7ef262e8a4a44899a3e176561883d3d, type: 2}
+      objectReference: {fileID: 23800000, guid: 31c43bb3197c3480ea9a1bd83ed4fb79, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -54915,16 +54915,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 356758242}
-  m_LocalRotation: {x: 0.7007974, y: 0.0032418491, z: -0.0017771489, w: 0.71335083}
-  m_LocalPosition: {x: 0, y: 0, z: -52}
+  m_LocalRotation: {x: 0.0024647037, y: 0.0035604858, z: 0.0009953834, w: 0.99999017}
+  m_LocalPosition: {x: 0, y: 0, z: -57}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1360371668}
-  m_LocalEulerAnglesHint: {x: 88.976, y: 6.858, z: 6.452}
+  m_LocalEulerAnglesHint: {x: 0.282, y: 0.408, z: 0.115}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -672, y: -337}
+  m_AnchoredPosition: {x: 359, y: 85}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356758244
@@ -96928,7 +96928,7 @@ PrefabInstance:
     - target: {fileID: 6496149497392044832, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_NavMeshData
       value: 
-      objectReference: {fileID: 23800000, guid: d58096c3066c64975b2af62c33524c26, type: 2}
+      objectReference: {fileID: 23800000, guid: b9209378ac6cc4324a4f900f5bcec711, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -155586,7 +155586,7 @@ MonoBehaviour:
   m_OverrideVoxelSize: 0
   m_VoxelSize: 0.16666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: 9da04c832d2804eaea3acffaffcc9437, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: b4564a1f6438f4b93a8ae76756721fdc, type: 2}
   m_BuildHeightMesh: 0
 --- !u!1 &1145285064
 GameObject:
@@ -170969,10 +170969,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1254431317}
+  - component: {fileID: 1254431318}
   - component: {fileID: 1254431321}
   - component: {fileID: 1254431320}
   - component: {fileID: 1254431319}
-  - component: {fileID: 1254431318}
   - component: {fileID: 1254431322}
   m_Layer: 0
   m_Name: bldg_00b60348-7cdd-4b3a-bbdc-45d2639213a5
@@ -204955,7 +204955,7 @@ MonoBehaviour:
   m_OverrideVoxelSize: 0
   m_VoxelSize: 0.16666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: ad617ce6b43de462294aeae2ec788d17, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 658ebe248704547b5abd934ef72dab01, type: 2}
   m_BuildHeightMesh: 0
 --- !u!43 &1482726238
 Mesh:
@@ -219026,16 +219026,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1581442636}
-  m_LocalRotation: {x: 0.70772356, y: 0, z: 0, w: 0.7064895}
-  m_LocalPosition: {x: 0, y: 0, z: -234}
+  m_LocalRotation: {x: 0.0028922514, y: -0, z: -0, w: 0.9999958}
+  m_LocalPosition: {x: 0, y: 0, z: -232}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1360371668}
-  m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0.331, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -671, y: -339}
+  m_AnchoredPosition: {x: 355, y: -42}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1581442638
@@ -242158,7 +242158,7 @@ PrefabInstance:
     - target: {fileID: 6496149497392044832, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_NavMeshData
       value: 
-      objectReference: {fileID: 23800000, guid: 702acd1bd53f3446f81ebb192f00ce3d, type: 2}
+      objectReference: {fileID: 23800000, guid: 5f1aab7ae2c1d4e6a9a70fd1b897858a, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -254061,7 +254061,7 @@ PrefabInstance:
     - target: {fileID: 6496149497392044832, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_NavMeshData
       value: 
-      objectReference: {fileID: 23800000, guid: 1fd8545f311f942ada88ff58839ad9fb, type: 2}
+      objectReference: {fileID: 23800000, guid: fe1510dbc7aa046419c9c6384227bf9b, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -266934,7 +266934,7 @@ MonoBehaviour:
   m_OverrideVoxelSize: 0
   m_VoxelSize: 0.16666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: f2aa5276611c0483badfef191f166a59, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 15a2092a3d6b6497c91c4f4df3205dc3, type: 2}
   m_BuildHeightMesh: 0
 --- !u!1 &1928360083
 GameObject:
@@ -291080,7 +291080,7 @@ MonoBehaviour:
   m_OverrideVoxelSize: 0
   m_VoxelSize: 0.16666667
   m_MinRegionArea: 2
-  m_NavMeshData: {fileID: 23800000, guid: e3ec8818b718543e3b718880e7dbfef1, type: 2}
+  m_NavMeshData: {fileID: 23800000, guid: 10b0ec416a64149cdbc8b5c8bb63e007, type: 2}
   m_BuildHeightMesh: 0
 --- !u!43 &2115087177
 Mesh:
@@ -295106,7 +295106,7 @@ PrefabInstance:
     - target: {fileID: 6496149497392044832, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_NavMeshData
       value: 
-      objectReference: {fileID: 23800000, guid: 446599e6291634c6dbe3447f2c5d17af, type: 2}
+      objectReference: {fileID: 23800000, guid: d4545028226414f9fbd4ca968fe0d560, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

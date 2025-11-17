@@ -2,7 +2,7 @@
     "name": "root",
     "metadata": {
         "timer_format_version": "0.1.0",
-        "start_time_seconds": "1763350524",
+        "start_time_seconds": "1763356703",
         "python_version": "3.10.12 | packaged by conda-forge | (main, Jun 23 2023, 22:41:52) [Clang 15.0.7 ]",
         "command_line_arguments": "/opt/homebrew/Caskroom/miniforge/base/envs/mlagents-1.0/bin/mlagents-learn Assets/Config/Tutorial-1.yaml --run-id=shelter_training --force",
         "mlagents_version": "1.0.0",
@@ -10,46 +10,46 @@
         "communication_protocol_version": "1.5.0",
         "pytorch_version": "1.13.1",
         "numpy_version": "1.21.2",
-        "end_time_seconds": "1763350664"
+        "end_time_seconds": "1763356876"
     },
-    "total": 140.27715012500994,
+    "total": 173.19498450000538,
     "count": 1,
-    "self": 0.002042834006715566,
+    "self": 0.0021329589653760195,
     "children": {
         "run_training.setup": {
-            "total": 0.01559766600257717,
+            "total": 0.014651416015112773,
             "count": 1,
-            "self": 0.01559766600257717
+            "self": 0.014651416015112773
         },
         "TrainerController.start_learning": {
-            "total": 140.25950962500065,
+            "total": 173.1782001250249,
             "count": 1,
-            "self": 0.0002889170136768371,
+            "self": 0.00022562502999790013,
             "children": {
                 "TrainerController._reset_env": {
-                    "total": 6.719363291980699,
+                    "total": 6.145863791985903,
                     "count": 1,
-                    "self": 6.719363291980699
+                    "self": 6.145863791985903
                 },
                 "TrainerController.advance": {
-                    "total": 133.47109891599393,
+                    "total": 166.96232316599344,
                     "count": 1,
-                    "self": 0.0001717080012895167,
+                    "self": 0.00010183200356550515,
                     "children": {
                         "env_step": {
-                            "total": 133.47092720799264,
+                            "total": 166.96222133398987,
                             "count": 1,
-                            "self": 133.46776408297592,
+                            "self": 166.95911500096554,
                             "children": {
                                 "SubprocessEnvManager._take_step": {
-                                    "total": 0.0031631250167265534,
+                                    "total": 0.0031063330243341625,
                                     "count": 2,
-                                    "self": 0.00016799900913611054,
+                                    "self": 0.00014408401330001652,
                                     "children": {
                                         "TorchPolicy.evaluate": {
-                                            "total": 0.002995126007590443,
+                                            "total": 0.002962249011034146,
                                             "count": 2,
-                                            "self": 0.002995126007590443
+                                            "self": 0.002962249011034146
                                         }
                                     }
                                 }
@@ -58,14 +58,14 @@
                     }
                 },
                 "TrainerController._save_models": {
-                    "total": 0.0687585000123363,
+                    "total": 0.06978754201554693,
                     "count": 1,
-                    "self": 0.0011485000140964985,
+                    "self": 0.0007629170140717179,
                     "children": {
                         "RLTrainer._checkpoint": {
-                            "total": 0.0676099999982398,
+                            "total": 0.06902462500147521,
                             "count": 1,
-                            "self": 0.0676099999982398
+                            "self": 0.06902462500147521
                         }
                     }
                 }
