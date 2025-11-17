@@ -1,0 +1,29 @@
+{
+    "ShelterSelect": {
+        "checkpoints": [
+            {
+                "steps": 1,
+                "file_path": "results/shelter_training/ShelterSelect/ShelterSelect-1.onnx",
+                "reward": -7.595486295031151e-06,
+                "creation_time": 1763344635.766432,
+                "auxillary_file_paths": [
+                    "results/shelter_training/ShelterSelect/ShelterSelect-1.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 1,
+            "file_path": "results/shelter_training/ShelterSelect.onnx",
+            "reward": -7.595486295031151e-06,
+            "creation_time": 1763344635.766432,
+            "auxillary_file_paths": [
+                "results/shelter_training/ShelterSelect/ShelterSelect-1.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.0.0",
+        "torch_version": "1.13.1"
+    }
+}
