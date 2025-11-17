@@ -361,6 +361,9 @@ public class EnvManager : MonoBehaviour {
 
 
     private bool IsEvacuatedAll() {
+        if (Evacuees.Count == 0)
+        return false; // まだスポーンしていない場合は、避難完了とみなさない
+        
         foreach (var evacuee in Evacuees) {
             if (evacuee.activeSelf) {
                 return false;
