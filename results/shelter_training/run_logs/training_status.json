@@ -2,22 +2,22 @@
     "ShelterSelect": {
         "checkpoints": [
             {
-                "steps": 1,
-                "file_path": "results/shelter_training/ShelterSelect/ShelterSelect-1.onnx",
-                "reward": -7.595486295031151e-06,
-                "creation_time": 1763344635.766432,
+                "steps": 0,
+                "file_path": "results/shelter_training/ShelterSelect/ShelterSelect-0.onnx",
+                "reward": null,
+                "creation_time": 1763350664.9657018,
                 "auxillary_file_paths": [
-                    "results/shelter_training/ShelterSelect/ShelterSelect-1.pt"
+                    "results/shelter_training/ShelterSelect/ShelterSelect-0.pt"
                 ]
             }
         ],
         "final_checkpoint": {
-            "steps": 1,
+            "steps": 0,
             "file_path": "results/shelter_training/ShelterSelect.onnx",
-            "reward": -7.595486295031151e-06,
-            "creation_time": 1763344635.766432,
+            "reward": null,
+            "creation_time": 1763350664.9657018,
             "auxillary_file_paths": [
-                "results/shelter_training/ShelterSelect/ShelterSelect-1.pt"
+                "results/shelter_training/ShelterSelect/ShelterSelect-0.pt"
             ]
         }
     },

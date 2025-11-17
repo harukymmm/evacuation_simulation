@@ -54916,7 +54916,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 356758242}
   m_LocalRotation: {x: 0.7007974, y: 0.0032418491, z: -0.0017771489, w: 0.71335083}
-  m_LocalPosition: {x: 0, y: 0, z: -75.9}
+  m_LocalPosition: {x: 0, y: 0, z: -52}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -54924,7 +54924,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 88.976, y: 6.858, z: 6.452}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -672.5, y: -337.5}
+  m_AnchoredPosition: {x: -672, y: -337}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356758244
@@ -157937,10 +157937,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1165423637}
+  - component: {fileID: 1165423639}
   - component: {fileID: 1165423642}
   - component: {fileID: 1165423641}
   - component: {fileID: 1165423640}
-  - component: {fileID: 1165423639}
   m_Layer: 0
   m_Name: tran_dc6e4f36-499d-4d98-b15c-a53ddbee7f2d
   m_TagString: Untagged
@@ -219027,7 +219027,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1581442636}
   m_LocalRotation: {x: 0.70772356, y: 0, z: 0, w: 0.7064895}
-  m_LocalPosition: {x: 0, y: 0, z: -99.1}
+  m_LocalPosition: {x: 0, y: 0, z: -234}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -219035,7 +219035,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -685, y: -339.5}
+  m_AnchoredPosition: {x: -671, y: -339}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1581442638
@@ -255787,10 +255787,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1842999766}
+  - component: {fileID: 1842999768}
   - component: {fileID: 1842999771}
   - component: {fileID: 1842999770}
   - component: {fileID: 1842999769}
-  - component: {fileID: 1842999768}
   m_Layer: 0
   m_Name: tran_6498e066-56e8-41ee-b903-3c91f4934485
   m_TagString: Untagged
@@ -294995,7 +294995,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2674956150519133295, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 20.3
+      value: 19.7
       objectReference: {fileID: 0}
     - target: {fileID: 2674956150519133295, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: m_LocalRotation.w
@@ -295027,7 +295027,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3899698181744913585, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: SpawnRadius
-      value: 10
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 3899698181744913585, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: EvacueePrefab
