@@ -23,7 +23,11 @@ public class Shelter : MonoBehaviour{
         _env.OnEndEpisode += (float _) => {
             // 環境側のエピソード終了時に収容人数をリセット
             NowAccCount = 0;
+            Debug.Log($"[Shelter] {gameObject.name}: エピソード終了 - 収容人数をリセットしました。MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}");
         };
+        
+        // 初期値をログ出力
+        Debug.Log($"[Shelter] {gameObject.name}: 初期化完了 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {MaxCapacity - NowAccCount}");
     }
 
 
@@ -42,12 +46,21 @@ public class Shelter : MonoBehaviour{
     /// </summary>
     /// <param name="other"></param>
     void OnTriggerEnter(Collider other) {
+        Debug.Log($"[Shelter] OnTriggerEnter called on {gameObject.name} - Colliding with: {other.name}, Tag: {other.tag}");
+        Debug.Log($"[Shelter] {gameObject.name}: 現在の収容状況 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {MaxCapacity - NowAccCount}");
+        
         bool isEvacuee = other.CompareTag("Evacuee");
         if (isEvacuee) {
+            Debug.Log($"[Shelter] Evacuee detected! Shelter: {gameObject.name}, Evacuee: {other.name}");
             Evacuee evacuee = other.GetComponent<Evacuee>();
-            evacuee.Evacuation(this);
+            if (evacuee != null) {
+                evacuee.Evacuation(this);
+                Debug.Log($"[Shelter] {gameObject.name}: Evacuation処理後 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {MaxCapacity - NowAccCount}");
+            } else {
+                Debug.LogError($"[Shelter] Evacuee component not found on {other.name}");
+            }
+        } else {
+            Debug.LogWarning($"[Shelter] Collision with non-Evacuee object: {other.name}, Tag: {other.tag}");
         }
-        
-        
     }
 }

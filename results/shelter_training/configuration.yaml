@@ -6,7 +6,14 @@ behaviors:
       batch_size: 512
       buffer_size: 409600
       learning_rate: 0.001
+      beta: 0.01
+      epsilon: 0.3
+      lambd: 0.99
+      num_epoch: 5
+      shared_critic: false
       learning_rate_schedule: linear
+      beta_schedule: linear
+      epsilon_schedule: linear
     checkpoint_interval: 500000
     network_settings:
       normalize: false
@@ -56,6 +63,7 @@ engine_settings:
   target_frame_rate: -1
   capture_frame_rate: 60
   no_graphics: false
+  no_graphics_monitor: false
 environment_parameters: null
 checkpoint_settings:
   run_id: shelter_training

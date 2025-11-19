@@ -25,7 +25,9 @@ public class Evacuee : MonoBehaviour {
                 List<GameObject> towers = SearchShelters();
                 if(towers.Count > 0) {
                     Target = towers[0]; //最短距離のタワーを目標に設定
-                    NavAgent.SetDestination(Target.transform.position);
+                    Vector3 destination = Target.transform.position;
+                    NavAgent.SetDestination(destination);
+                    Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent.name}");
                 }
             }
         };
