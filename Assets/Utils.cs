@@ -33,7 +33,8 @@ public class Utils : MonoBehaviour {
             filePath = "result.csv";
         }
         // パスの先頭に指定パスを付与
-        filePath = Path.Combine(Application.dataPath, filePath);
+        var logRoot = Path.Combine(Application.dataPath, "..", "Logs");
+        filePath = Path.Combine(logRoot, filePath);
         // フォルダが存在しない場合は作成
         string dir = Path.GetDirectoryName(filePath);
         if (!Directory.Exists(dir)) {

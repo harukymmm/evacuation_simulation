@@ -348,7 +348,6 @@ public class EnvManager : MonoBehaviour {
                             // -9999の場合は特別に処理
                             if(parsedValue == -9999) {
                                 isErrorValue = true;
-                                Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea is -9999 (error code). Using default capacity.");
                             } else if(parsedValue > 0) {
                                 totalFloorSize = parsedValue;
                                 Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea found: {parsedValue}");
@@ -364,8 +363,7 @@ public class EnvManager : MonoBehaviour {
         // -9999が検出された場合の処理
         if(isErrorValue) {
             // デフォルト値: 100㎡相当の建物を想定
-            int defaultCapacity = Mathf.Max(1, (int)((1000 * 0.8 / 1.65) * AccSimulateScale));
-            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - Using default capacity: {defaultCapacity} (totalFloorArea was -9999)");
+            int defaultCapacity = Mathf.Max(1, (int)((100 * 0.8 / 1.65) * AccSimulateScale));
             return defaultCapacity;
         }
         
