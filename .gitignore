@@ -92,6 +92,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.env
+llm_server/.env
 .Python
 build/
 develop-eggs/
@@ -119,6 +121,7 @@ ENV/
 env.bak/
 venv.bak/
 .venv/
+llm_server/.venv/
 
 # Conda
 .conda/
