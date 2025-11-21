@@ -2,9 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using LLM;
 using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 
 /// <summary>
@@ -20,20 +24,38 @@ public class ShelterManagementAgent : Agent {
     public Material NonSelectMaterial; // 避難所としてその建物を選択していない時のマテリアル
     public Action OnDidActioned; // 行動選択後に呼ばれるイベント関数(避難者の初期化にて使用します)
 
+    [Header("LLM Policy")]
+    public bool UseLLMPolicy = false;
+    public LLMDecisionClient DecisionClient;
+    public bool FallbackToCapacityHeuristic = true;
+    public bool AlwaysActivateAllShelters = true;
+
     // episode, step, 各避難所候補の選択状況のリスト(true or false)
     public List<Tuple<int, int, List<bool>>> ActionLogs = new List<Tuple<int, int, List<bool>>>(); 
     public bool Disabled = false;
     public List<GameObject> ConstBldgs;
     private EnvManager _env; // 環境管理クラスの参照
+    private CancellationTokenSource _llmCts;
+    private bool _llmRequestInFlight;
+    private readonly List<int> _workingActionBuffer = new List<int>();
     
     void Start() {
         _env = GetComponentInParent<EnvManager>();
-        //Academy.Instance.AutomaticSteppingEnabled = true;
-
+        if (UseLLMPolicy)
+        {
+            var requester = GetComponent<DecisionRequester>();
+            if (requester != null)
+            {
+                requester.enabled = false;
+            }
+        }
     }
 
     public override void Initialize() {
-        Time.timeScale = 100f;
+        if (!UseLLMPolicy)
+        {
+            Time.timeScale = 100f;
+        }
         if(ShelterCandidates.Length == 0) {
             //Debug.LogError("No shelter candidates");
             // NOTE: 予め候補地は事前に設定させておくこと
@@ -47,7 +69,19 @@ public class ShelterManagementAgent : Agent {
     /// </summary>
     public override void OnEpisodeBegin() {
         _env.OnEpisodeBegin();
-        RequestDecision(); // 行動選択をリクエスト
+        if (UseLLMPolicy)
+        {
+            RequestLLMActions();
+        }
+        else if (AlwaysActivateAllShelters)
+        {
+            ActivateAllShelters();
+            OnDidActioned?.Invoke();
+        }
+        else
+        {
+            RequestDecision(); // 行動選択をリクエスト
+        }
     }
 
     public void OnEndEpisode() {
@@ -117,32 +151,17 @@ public class ShelterManagementAgent : Agent {
     /// </summary>
     /// <param name="actions">モデルの行動出力を受け取るための仮引数で、この値を元に環境に行動を反映させます</param>
     public override void OnActionReceived(ActionBuffers actions) {
+        if (UseLLMPolicy || AlwaysActivateAllShelters)
+        {
+            return;
+        }
         var Selects = actions.DiscreteActions; //エージェントの選択。環境の候補地配列と同じ順序。[<建物１の避難所選択結果 0 or 1>, <建物２の避難所選択結果 0 or 1>, ...]
 
-        List<bool> selectList = new List<bool>();
         if(Selects.Length != ShelterCandidates.Length) {
             Debug.LogError("Invalid action size : 避難所候補地のサイズとエージェントの選択サイズが不一致です");
             return;
         }
-
-        // モデルの行動出力リストを巡回し、0の場合は避難所として選択しない、1の場合は選択する
-        for(int i = 0; i < Selects.Length; i++) {
-            int select = Selects[i]; // 0:非選択、1:選択
-            GameObject Shelter = ShelterCandidates[i];
-            if(select == 1) {
-                _env.CurrentShelters.Add(Shelter);
-                Shelter.tag = "Shelter";
-                Shelter.GetComponent<MeshRenderer>().material = SelectedMaterial;
-                selectList.Add(true);
-            } else if(select == 0) {
-                _env.CurrentShelters.Remove(Shelter);
-                Shelter.tag = "Untagged";
-                Shelter.GetComponent<MeshRenderer>().material = NonSelectMaterial;
-                selectList.Add(false);
-            } else {
-                Debug.LogError("Invalid action");
-            }
-        }
+        var selectList = ApplyActionVector(Selects.ToList());
 
         // 行動ログを記録（episode, step, 各避難所候補の選択状況のリスト(true or false)）
         ActionLogs.Add(new Tuple<int, int, List<bool>>(_env.currentEpisodeId, _env.currentStep, selectList));
@@ -165,6 +184,181 @@ public class ShelterManagementAgent : Agent {
                 Selects[i] = ConstBldgs.Contains(ShelterCandidates[i]) ? 1 : 0;
             } else {
                 Selects[i] = UnityEngine.Random.Range(0, 2);
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        _llmCts?.Cancel();
+        _llmCts?.Dispose();
+        _llmCts = null;
+    }
+
+    private async void RequestLLMActions()
+    {
+        if (_llmRequestInFlight)
+        {
+            return;
+        }
+
+        _llmRequestInFlight = true;
+        _llmCts?.Cancel();
+        _llmCts = new CancellationTokenSource();
+
+        try
+        {
+            if (DecisionClient == null)
+            {
+                Debug.LogWarning("[ShelterManagementAgent] DecisionClient が設定されていません。ヒューリスティックを使用します。");
+                ApplyHeuristicActions();
+                return;
+            }
+
+            var request = BuildLLMRequest();
+            var response = await DecisionClient.RequestDecisionAsync(request, _llmCts.Token);
+            if (response?.actions == null || response.actions.Length == 0)
+            {
+                Debug.LogWarning("[ShelterManagementAgent] LLMから有効な応答が得られませんでした。ヒューリスティックを使用します。");
+                ApplyHeuristicActions();
+            }
+            else
+            {
+                ApplyLLMResponse(response);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Debug.Log("[ShelterManagementAgent] LLMリクエストがキャンセルされました。");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[ShelterManagementAgent] LLMリクエスト中に例外: {ex.Message}");
+            if (FallbackToCapacityHeuristic)
+            {
+                ApplyHeuristicActions();
+            }
+        }
+        finally
+        {
+            _llmRequestInFlight = false;
+        }
+    }
+
+    private void ApplyLLMResponse(LLMActionResponse response)
+    {
+        _workingActionBuffer.Clear();
+        _workingActionBuffer.AddRange(response.actions);
+        var selectList = ApplyActionVector(_workingActionBuffer);
+        ActionLogs.Add(new Tuple<int, int, List<bool>>(_env.currentEpisodeId, _env.currentStep, selectList));
+        OnDidActioned?.Invoke();
+        Debug.Log($"[ShelterManagementAgent] LLM actions applied. Reasoning: {response.reasoning}");
+    }
+
+    private void ApplyHeuristicActions()
+    {
+        _workingActionBuffer.Clear();
+        foreach (var candidate in ShelterCandidates)
+        {
+            var shelter = candidate.GetComponent<Shelter>();
+            var select = (shelter != null && shelter.currentCapacity > 0) ? 1 : 0;
+            _workingActionBuffer.Add(select);
+        }
+        var selectList = ApplyActionVector(_workingActionBuffer);
+        ActionLogs.Add(new Tuple<int, int, List<bool>>(_env.currentEpisodeId, _env.currentStep, selectList));
+        OnDidActioned?.Invoke();
+    }
+
+    private List<bool> ApplyActionVector(IList<int> selects)
+    {
+        List<bool> selectList = new List<bool>();
+        for(int i = 0; i < ShelterCandidates.Length; i++) {
+            int select = i < selects.Count ? selects[i] : 0; // 0:非選択、1:選択
+            GameObject Shelter = ShelterCandidates[i];
+            if(select == 1) {
+                if(!_env.CurrentShelters.Contains(Shelter)) {
+                    _env.CurrentShelters.Add(Shelter);
+                }
+                Shelter.tag = "Shelter";
+                var renderer = Shelter.GetComponent<MeshRenderer>();
+                if(renderer != null) {
+                    renderer.material = SelectedMaterial;
+                }
+                selectList.Add(true);
+            } else if(select == 0) {
+                _env.CurrentShelters.Remove(Shelter);
+                Shelter.tag = "Untagged";
+                var renderer = Shelter.GetComponent<MeshRenderer>();
+                if(renderer != null) {
+                    renderer.material = NonSelectMaterial;
+                }
+                selectList.Add(false);
+            } else {
+                Debug.LogError("Invalid action");
+            }
+        }
+
+        return selectList;
+    }
+
+    private LLMActionRequest BuildLLMRequest()
+    {
+        var shelterPayloads = new List<ShelterCandidatePayload>();
+        foreach (var shelterObj in ShelterCandidates)
+        {
+            if (shelterObj == null)
+            {
+                continue;
+            }
+            var shelter = shelterObj.GetComponent<Shelter>();
+            shelterPayloads.Add(new ShelterCandidatePayload
+            {
+                id = shelterObj.name,
+                position = new Vector3Payload(shelterObj.transform.position),
+                current_capacity = shelter != null ? shelter.currentCapacity : 0,
+                max_capacity = shelter != null ? shelter.MaxCapacity : 0
+            });
+        }
+
+        var evacPayloads = new List<EvacueePayload>();
+        foreach (var evacuee in _env.Evacuees)
+        {
+            if (evacuee == null)
+            {
+                continue;
+            }
+
+            evacPayloads.Add(new EvacueePayload
+            {
+                id = evacuee.name,
+                position = new Vector3Payload(evacuee.transform.position)
+            });
+        }
+
+        return new LLMActionRequest
+        {
+            request_id = $"{_env.currentEpisodeId}-{Guid.NewGuid()}",
+            timestamp = Time.time,
+            shelter_candidates = shelterPayloads.ToArray(),
+            evacuees = evacPayloads.ToArray()
+        };
+    }
+
+    private void ActivateAllShelters()
+    {
+        _env.CurrentShelters.Clear();
+        foreach (var shelterObj in ShelterCandidates)
+        {
+            if (shelterObj == null) continue;
+            if (!_env.CurrentShelters.Contains(shelterObj))
+            {
+                _env.CurrentShelters.Add(shelterObj);
+            }
+            shelterObj.tag = "Shelter";
+            var renderer = shelterObj.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.material = SelectedMaterial;
             }
         }
     }

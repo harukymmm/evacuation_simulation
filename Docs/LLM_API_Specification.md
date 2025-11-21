@@ -25,7 +25,36 @@ Unity (C#)                          Python Server
 
 ## 1. LLMへの入力（Unity → Python）
 
-### 1.1 JSON形式
+### 1.0 互換サブセット（必須）
+
+ML-Agents の既存観測をそのまま利用するため、まずは以下の最小構造のみを必須とします。  
+この情報で各避難所候補に対する 0/1 の選択を返すことで、従来のポリシーと置き換えられます。
+
+```json
+{
+  "request_id": "run-0001-evacuee-001",
+  "timestamp": 12.3,
+
+  "shelter_candidates": [
+    {
+      "id": "bldg_a",
+      "position": { "x": 180.2, "y": 0.7, "z": 244.2 },
+      "current_capacity": 45,
+      "max_capacity": 100
+    },
+    {
+      "id": "bldg_b",
+      "position": { "x": 210.8, "y": 0.7, "z": 198.4 },
+      "current_capacity": 12,
+      "max_capacity": 80
+    }
+  ]
+}
+```
+
+> **拡張フィールド**（ペルソナやハザードなど）は任意。後述の 1.1 以降に定義しています。
+
+### 1.1 JSON形式（拡張版）
 
 ```json
 {
@@ -105,6 +134,40 @@ Unity (C#)                          Python Server
 
 ### 1.2 Pythonでのデータクラス定義
 
+最小構成を扱う場合は以下だけで十分です。
+
+```python
+from dataclasses import dataclass
+from typing import List
+
+@dataclass
+class Vec3:
+    x: float
+    y: float
+    z: float
+
+@dataclass
+class ShelterCandidate:
+    id: str
+    position: Vec3
+    current_capacity: int
+    max_capacity: int
+
+@dataclass
+class EvacueePosition:
+    id: str
+    position: Vec3
+
+@dataclass
+class MinimalRequest:
+    request_id: str
+    timestamp: float
+    evacuee: EvacueePosition
+    shelter_candidates: List[ShelterCandidate]
+```
+
+以下は将来的な拡張で利用できるリッチな構造です。
+
 ```python
 from dataclasses import dataclass
 from typing import List, Dict, Optional
@@ -177,7 +240,23 @@ class LLMRequest:
 
 ## 2. LLMからの出力（Python → Unity）
 
-### 2.1 JSON形式（シンプル版）
+### 2.0 互換サブセット（必須）
+
+避難者ごとに 1 つの避難先を返すのが必須フォーマットです。
+
+```json
+{
+  "request_id": "run-0001-evacuee-001",
+  "evacuee_id": "evacuee_001",
+  "selected_shelter_id": "bldg_b",
+  "reasoning": "bldg_b は最寄りかつ空き容量が十分",
+  "confidence": 0.82
+}
+```
+
+Unity 側では `selected_shelter_id` を検索して NavMeshAgent の目的地に設定し、`reasoning` や `confidence` はログ・デバッグ用途に利用します。
+
+### 2.1 JSON形式（シンプル版・拡張）
 
 ```json
 {
@@ -359,6 +438,19 @@ def create_prompt(request: LLMRequest) -> str:
 ---
 
 ## 4. Python実装例
+
+### 4.0 サーバー起動と環境変数
+
+`llm_server/` フォルダにサンプル実装を追加しました。`.env` に `OPENAI_API_KEY` と `OPENAI_MODEL` を記述すると自動で読み込まれます。
+
+```bash
+cd llm_server
+cp .env.example .env  # APIキーを設定
+pip install -r requirements.txt
+python server.py
+```
+
+APIキーが未設定の場合は安全にヒューリスティックで応答します。
 
 ### 4.1 LLM決定サーバー（OpenAI使用）
 
@@ -766,17 +858,14 @@ except Exception as e:
 
 ### 入力（Unity → LLM）の要点
 
-✅ 避難者のペルソナ（年齢、身体能力、性格）
-✅ 利用可能な避難所（距離、収容率、安全度）
-✅ 環境情報（危険要因、混雑状況）
-✅ 記憶（地域知識、過去の行動）
+✅ 必須: 避難所候補の位置・収容数  
+✅ 必須: 現在の避難者位置リスト  
+✅ 任意: ペルソナ、ハザード、環境・記憶情報（将来拡張）
 
 ### 出力（LLM → Unity）の要点
 
-✅ 選択された避難所ID
-✅ 移動速度倍率
-✅ 判断の理由（推論プロセス）
-✅ 確信度
+✅ 必須: 各候補に対応する 0/1 配列  
+✅ 任意: 理由付け、確信度、移動速度などのメタ情報
 
 ### 実装の現実性
 
