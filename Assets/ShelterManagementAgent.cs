@@ -28,6 +28,8 @@ public class ShelterManagementAgent : Agent {
     public bool UseLLMPolicy = false;
     public LLMDecisionClient DecisionClient;
     public bool FallbackToCapacityHeuristic = true;
+    [Tooltip("LLM応答が空だった場合にヒューリスティックへ切り替えるまでの猶予秒数")]
+    public float HeuristicFallbackDelaySeconds = 10f;
     public bool AlwaysActivateAllShelters = true;
 
     // episode, step, 各避難所候補の選択状況のリスト(true or false)
@@ -219,8 +221,19 @@ public class ShelterManagementAgent : Agent {
             var response = await DecisionClient.RequestDecisionAsync(request, _llmCts.Token);
             if (response?.actions == null || response.actions.Length == 0)
             {
-                Debug.LogWarning("[ShelterManagementAgent] LLMから有効な応答が得られませんでした。ヒューリスティックを使用します。");
-                ApplyHeuristicActions();
+                if (FallbackToCapacityHeuristic)
+                {
+                    if (HeuristicFallbackDelaySeconds > 0f)
+                    {
+                        Debug.LogWarning($"[ShelterManagementAgent] LLM応答が空でした。{HeuristicFallbackDelaySeconds:F1}秒待機してからヒューリスティックに切り替えます。");
+                        await Task.Delay(TimeSpan.FromSeconds(HeuristicFallbackDelaySeconds), _llmCts.Token);
+                    }
+                    ApplyHeuristicActions();
+                }
+                else
+                {
+                    Debug.LogWarning("[ShelterManagementAgent] LLM応答が空でしたが、ヒューリスティックは無効化されています。");
+                }
             }
             else
             {

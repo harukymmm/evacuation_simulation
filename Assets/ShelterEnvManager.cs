@@ -49,6 +49,10 @@ public class EnvManager : MonoBehaviour {
     public float SpawnRadius = 10f; // スポーンエリアの半径
     public Vector3 spawnCenter = Vector3.zero; // スポーンエリアの中心位置
 
+    [Header("Temporal Overrides")]
+    public bool EnableTemporalOverrides;
+    public float ManualTimeLimitSeconds = 0f;
+
     public GameObject AgentObj;
     public ShelterManagementAgent Agent;
     public bool IsDataCollectionMode;
@@ -77,6 +81,8 @@ public class EnvManager : MonoBehaviour {
     private List<Tuple<float, float>> evaRatePerSec = new List<Tuple<float, float>>(); // 避難率の時間変化を記録するリスト
     public int currentEpisodeId = 0; // エピソード番号
     public string recordID; // データ記録用に実行時間を元にしたIDを生成
+
+    public float CurrentTimeSec => currentTimeSec;
     
     void Start() {
         if(Mode == SimulateMode.Inference) {

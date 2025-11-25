@@ -12,12 +12,44 @@ using UnityEngine.AI;
 /// </summary>
 public class Evacuee : MonoBehaviour {
     
+    public enum EnergyLabel
+    {
+        High,
+        Medium,
+        Low
+    }
+
+    public enum StressLabel
+    {
+        Calm,
+        Alert,
+        Panicked
+    }
+
     [Header("Movement Target")]
     public GameObject Target; // 現在の移動目標
     private NavMeshAgent NavAgent; // NavMeshAgentコンポーネント
     private EnvManager _env; // ShelterEnvManagerの参照
     private bool isEvacuating = false; // 避難処理中のフラグ。当たり判定により発火するため、複数回避難処理が行われるのを防ぐためのフラグ
     private List<string> excludeShelters; //1度避難したタワーのUUIDを格納するリスト
+
+    [Header("Status")]
+    [Range(0f, 1f)]
+    public float EnergyLevel = 1.0f;
+    public EnergyLabel EnergyState = EnergyLabel.High;
+    [Range(0f, 1f)]
+    public float StressLevel = 0.0f;
+    public StressLabel StressState = StressLabel.Calm;
+    [TextArea]
+    public string StressReason;
+    [Range(0f, 1f)]
+    public float StaminaLevel = 1.0f;
+    public List<string> InjuryTags = new List<string>();
+    [TextArea]
+    public string InjuryNotes;
+
+    [Header("Goal Labeling")]
+    [SerializeField] private string GoalLabelOverride;
 
     [Header("LLM Decision")]
     public bool UseLLMDecision = false;
@@ -232,7 +264,9 @@ public class Evacuee : MonoBehaviour {
                 id = gameObject.name,
                 position = new Vector3Payload(transform.position)
             },
-            shelter_candidates = shelterPayloads.ToArray()
+            shelter_candidates = shelterPayloads.ToArray(),
+            self_state = BuildSelfStatePayload(),
+            temporal_context = BuildTemporalContextPayload()
         };
     }
 
@@ -245,6 +279,62 @@ public class Evacuee : MonoBehaviour {
             NavAgent.SetDestination(destination);
             Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent.name}");
         }
+    }
+
+    private SelfStatePayload BuildSelfStatePayload()
+    {
+        var velocity = NavAgent != null ? NavAgent.velocity : Vector3.zero;
+        return new SelfStatePayload
+        {
+            position = new Vector3Payload(transform.position),
+            velocity = new Vector3Payload(velocity),
+            energy_level = Mathf.Clamp01(EnergyLevel),
+            energy_label = EnergyState.ToString().ToLowerInvariant(),
+            stress_level = Mathf.Clamp01(StressLevel),
+            stress_label = StressState.ToString().ToLowerInvariant(),
+            stress_reason = string.IsNullOrWhiteSpace(StressReason) ? null : StressReason,
+            current_goal = ResolveCurrentGoalLabel(),
+            stamina = Mathf.Clamp01(StaminaLevel),
+            injuries = InjuryTags?.ToArray() ?? Array.Empty<string>(),
+            injury_notes = string.IsNullOrWhiteSpace(InjuryNotes) ? null : InjuryNotes
+        };
+    }
+
+    private TemporalContextPayload BuildTemporalContextPayload()
+    {
+        if (_env == null)
+        {
+            return new TemporalContextPayload
+            {
+                elapsed_time = Time.time,
+                has_time_limit = false,
+                time_limit = 0f
+            };
+        }
+
+        var hasManualLimit = _env.EnableTemporalOverrides && _env.ManualTimeLimitSeconds > 0f;
+        return new TemporalContextPayload
+        {
+            elapsed_time = _env.CurrentTimeSec,
+            has_time_limit = hasManualLimit,
+            time_limit = hasManualLimit ? _env.ManualTimeLimitSeconds : 0f
+        };
+    }
+
+    private string ResolveCurrentGoalLabel()
+    {
+        if (!string.IsNullOrWhiteSpace(GoalLabelOverride))
+        {
+            return GoalLabelOverride;
+        }
+
+        if (Target == null)
+        {
+            return null;
+        }
+
+        var parentName = Target.transform.parent != null ? Target.transform.parent.name : null;
+        return parentName ?? Target.name;
     }
 
 }

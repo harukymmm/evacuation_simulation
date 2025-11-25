@@ -14540,6 +14540,52 @@ NavMeshObstacle:
   m_CarveOnlyStationary: 1
   m_Center: {x: -300.338, y: 0, z: -353.673}
   m_TimeToStationary: 0.5
+--- !u!1 &99641093
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 99641095}
+  - component: {fileID: 99641094}
+  m_Layer: 0
+  m_Name: LLMDecisionClient
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &99641094
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 99641093}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1d995b08c7df41f1b1f7f4bfb3a8790f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  serverUrl: ws://localhost:8765
+  requestTimeoutSeconds: 10
+--- !u!4 &99641095
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 99641093}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &101293920
 GameObject:
   m_ObjectHideFlags: 0
@@ -36993,15 +37039,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Mode: 0
-  EvacSpawnMode: 1
+  EvacSpawnMode: 0
   TimeScale: 1
   IsRecordData: 0
   AccSimulateScale: 1
   MaxSeconds: 1800
-  SpawnEvacueeSize: 100
+  SpawnEvacueeSize: 1
   SpawnEvacueePref: {fileID: 2744035215387846840, guid: d2a6cffd27c3e44449a585a61fc0359d, type: 3}
-  SpawnRadius: 200
+  SpawnRadius: 1000
   spawnCenter: {x: 0, y: 0, z: 0}
+  EnableTemporalOverrides: 0
+  ManualTimeLimitSeconds: 0
   AgentObj: {fileID: 484428559}
   Agent: {fileID: 484428561}
   IsDataCollectionMode: 1
@@ -68175,6 +68223,11 @@ MonoBehaviour:
   - {fileID: 1390964595}
   SelectedMaterial: {fileID: 2100000, guid: e86f09c56c7004235b991da4782b2229, type: 2}
   NonSelectMaterial: {fileID: 2100000, guid: e6f7038150c894faaa34fc312e98b8c2, type: 2}
+  UseLLMPolicy: 1
+  DecisionClient: {fileID: 99641094}
+  FallbackToCapacityHeuristic: 1
+  HeuristicFallbackDelaySeconds: 3
+  AlwaysActivateAllShelters: 1
   Disabled: 1
   ConstBldgs: []
 --- !u!114 &484428562
@@ -181522,7 +181575,7 @@ Transform:
   m_GameObject: {fileID: 1315476245}
   serializedVersion: 2
   m_LocalRotation: {x: 0.7034929, y: -0, z: -0, w: 0.7107023}
-  m_LocalPosition: {x: -135, y: 873, z: 63}
+  m_LocalPosition: {x: 138, y: 869, z: 16}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -295286,3 +295339,4 @@ SceneRoots:
   - {fileID: 1360371668}
   - {fileID: 1732002990}
   - {fileID: 1652259705}
+  - {fileID: 99641095}

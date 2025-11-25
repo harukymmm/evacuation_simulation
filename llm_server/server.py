@@ -2,15 +2,19 @@ import asyncio
 import json
 import os
 import random
+import re
 from typing import Any, Dict, List, Optional
 
 import websockets
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 try:
     from openai import AsyncOpenAI
 except ImportError:  # pragma: no cover
     AsyncOpenAI = None  # type: ignore
+
+from models import AgentInput
 
 
 load_dotenv()
@@ -30,7 +34,7 @@ def _create_client() -> Optional[AsyncOpenAI]:
 OPENAI_CLIENT = _create_client()
 
 
-def build_prompt(payload: Dict[str, Any]) -> str:
+def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> str:
     shelters = payload.get("shelter_candidates", [])
     evacuee = payload.get("evacuee", {})
 
@@ -43,6 +47,24 @@ def build_prompt(payload: Dict[str, Any]) -> str:
         f"- id={evacuee.get('id')} pos=({evacuee.get('position', {}).get('x', 0):.2f}, "
         f"{evacuee.get('position', {}).get('z', 0):.2f})"
     )
+
+    if agent_input is not None:
+        self_state = agent_input.self_state
+        temporal = agent_input.temporal_context
+        lines.append("自身の状態:")
+        lines.append(
+            f"- 体力={self_state.energy_label}({self_state.energy_level:.2f}) "
+            f"ストレス={self_state.stress_label}({self_state.stress_level:.2f})"
+        )
+        if self_state.stress_reason:
+            lines.append(f"- ストレス要因: {self_state.stress_reason}")
+        if self_state.current_goal:
+            lines.append(f"- 現在の目標: {self_state.current_goal}")
+        if temporal.time_limit is not None:
+            remaining = max(temporal.time_limit - temporal.elapsed_time, 0.0)
+            lines.append(
+                f"- 時間制約: 残り{remaining:.1f}秒 / 総量 {temporal.time_limit:.1f}秒"
+            )
 
     lines.append("候補避難所:")
     for idx, shelter in enumerate(shelters):
@@ -98,18 +120,45 @@ def heuristic_selection(payload: Dict[str, Any]) -> Optional[str]:
     return best_id
 
 
-async def call_openai(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _normalize_temporal(raw: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(raw)
+    has_limit = normalized.pop("has_time_limit", None)
+    if has_limit is not None and not has_limit:
+        normalized["time_limit"] = None
+    return normalized
+
+
+def _build_agent_input(payload: Dict[str, Any]) -> Optional[AgentInput]:
+    self_state = payload.get("self_state")
+    temporal = payload.get("temporal_context") or payload.get("temporal")
+    if self_state is None or temporal is None:
+        return None
+    try:
+        return AgentInput.model_validate(
+            {
+                "self_state": self_state,
+                "temporal_context": _normalize_temporal(temporal),
+            }
+        )
+    except ValidationError as exc:  # pragma: no cover - logging only
+        print(f"[LLM SERVER] AgentInput validation failed: {exc}")
+        return None
+
+
+async def call_openai(
+    payload: Dict[str, Any], agent_input: Optional[AgentInput]
+) -> Optional[Dict[str, Any]]:
     if OPENAI_CLIENT is None:
         return None
 
-    prompt = build_prompt(payload)
+    prompt = build_prompt(payload, agent_input)
     try:
         response = await OPENAI_CLIENT.responses.create(
             model=OPENAI_MODEL,
             input=prompt,
         )
         content = response.output[0].content[0].text  # type: ignore[attr-defined]
-        decision = json.loads(content)
+        decision = _safe_load_json(content)
         if "selected_shelter_id" in decision:
             return decision
     except Exception as exc:  # pragma: no cover
@@ -117,9 +166,20 @@ async def call_openai(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _safe_load_json(text: str) -> Dict[str, Any]:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        raise
+
+
 async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     request_id = payload.get("request_id", f"req-{random.randint(0, 1_000_000)}")
-    decision = await call_openai(payload)
+    agent_input = _build_agent_input(payload)
+    decision = await call_openai(payload, agent_input)
     evacuee = payload.get("evacuee", {})
 
     if decision is None:

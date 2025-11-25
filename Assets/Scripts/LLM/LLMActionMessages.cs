@@ -37,6 +37,30 @@ namespace LLM
     }
 
     [Serializable]
+    public class SelfStatePayload
+    {
+        public Vector3Payload position;
+        public Vector3Payload velocity;
+        public float energy_level;
+        public string energy_label;
+        public float stress_level;
+        public string stress_label;
+        public string stress_reason;
+        public string current_goal;
+        public float stamina;
+        public string[] injuries;
+        public string injury_notes;
+    }
+
+    [Serializable]
+    public class TemporalContextPayload
+    {
+        public float elapsed_time;
+        public bool has_time_limit;
+        public float time_limit;
+    }
+
+    [Serializable]
     public class LLMActionRequest
     {
         public string request_id;
@@ -61,6 +85,8 @@ namespace LLM
         public float timestamp;
         public EvacueePayload evacuee;
         public ShelterCandidatePayload[] shelter_candidates;
+        public SelfStatePayload self_state;
+        public TemporalContextPayload temporal_context;
     }
 
     [Serializable]
