@@ -87,6 +87,9 @@ crashlytics-build.properties
 [Aa]ssets/[Ss]treamingAssets/aa.meta
 [Aa]ssets/[Ss]treamingAssets/aa/*
 
+# ML-Agents timer logs
+Assets/ML-Agents/Timers/namie_timers.json
+
 # Python
 __pycache__/
 *.py[cod]
