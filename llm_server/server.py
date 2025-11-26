@@ -3,6 +3,8 @@ import json
 import os
 import random
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import websockets
@@ -23,6 +25,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 SERVER_HOST = os.getenv("LLM_SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("LLM_SERVER_PORT", "8765"))
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+LOG_DIR = PROJECT_ROOT / "Logs" / "llm_decisions"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _create_client() -> Optional[AsyncOpenAI]:
@@ -73,7 +79,7 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
         position = shelter.get("position", {})
         lines.append(
             f"- index {idx}: id={shelter.get('id')} "
-            f"capacity={capacity}/{max_capacity} "
+            f"残り受け入れ可能人数={capacity} "
             f"pos=({position.get('x', 0):.2f}, {position.get('z', 0):.2f})"
         )
 
@@ -176,33 +182,88 @@ def _safe_load_json(text: str) -> Dict[str, Any]:
         raise
 
 
+def _sanitize_filename(name: Optional[str]) -> str:
+    if not name:
+        return "unknown"
+    safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
+    return safe or "unknown"
+
+
+def _log_decision(
+    evacuee_id: Optional[str],
+    request_id: str,
+    source: str,
+    input_snapshot: Dict[str, Any],
+    output_snapshot: Dict[str, Any],
+) -> None:
+    try:
+        filename = LOG_DIR / f"{_sanitize_filename(evacuee_id)}.log"
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "request_id": request_id,
+            "source": source,
+            "input": input_snapshot,
+            "output": output_snapshot,
+        }
+        with filename.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(log_entry, ensure_ascii=False))
+            fp.write("\n")
+    except Exception as exc:  # pragma: no cover
+        print(f"[LLM SERVER] failed to write log: {exc}")
+
+
 async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     request_id = payload.get("request_id", f"req-{random.randint(0, 1_000_000)}")
     agent_input = _build_agent_input(payload)
     decision = await call_openai(payload, agent_input)
     evacuee = payload.get("evacuee", {})
+    input_snapshot = {
+        "agent_input": agent_input.model_dump() if agent_input else None,
+        "shelter_candidates": payload.get("shelter_candidates"),
+    }
 
     if decision is None:
         selected_id = heuristic_selection(payload)
         reasoning = "Fallback heuristic: closest shelter with spare capacity."
         confidence = 0.5
+        source = "heuristic"
     else:
         selected_id = decision.get("selected_shelter_id") or heuristic_selection(
             payload
         )
         reasoning = decision.get("reasoning", "LLM decision")
         confidence = float(decision.get("confidence", 0.5))
+        source = "llm"
 
     if selected_id is None and payload.get("shelter_candidates"):
         selected_id = payload["shelter_candidates"][0].get("id")
 
-    return {
+    response_payload = {
         "request_id": request_id,
         "evacuee_id": evacuee.get("id"),
         "selected_shelter_id": selected_id,
         "reasoning": reasoning,
         "confidence": confidence,
     }
+
+    output_snapshot = {
+        "selected_shelter_id": selected_id,
+        "reasoning": reasoning,
+        "confidence": confidence,
+    }
+    # llm_raw_responseの記録は現在不要なため無効化
+    # if decision is not None:
+    #     output_snapshot["llm_raw_response"] = decision
+
+    _log_decision(
+        evacuee_id=evacuee.get("id"),
+        request_id=request_id,
+        source=source,
+        input_snapshot=input_snapshot,
+        output_snapshot=output_snapshot,
+    )
+
+    return response_payload
 
 
 async def handler(websocket: websockets.WebSocketServerProtocol) -> None:

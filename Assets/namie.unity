@@ -14570,7 +14570,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   serverUrl: ws://localhost:8765
-  requestTimeoutSeconds: 10
+  requestTimeoutSeconds: 50
 --- !u!4 &99641095
 Transform:
   m_ObjectHideFlags: 0
@@ -37044,7 +37044,7 @@ MonoBehaviour:
   IsRecordData: 0
   AccSimulateScale: 1
   MaxSeconds: 1800
-  SpawnEvacueeSize: 1
+  SpawnEvacueeSize: 5
   SpawnEvacueePref: {fileID: 2744035215387846840, guid: d2a6cffd27c3e44449a585a61fc0359d, type: 3}
   SpawnRadius: 1000
   spawnCenter: {x: 0, y: 0, z: 0}
@@ -68223,10 +68223,6 @@ MonoBehaviour:
   - {fileID: 1390964595}
   SelectedMaterial: {fileID: 2100000, guid: e86f09c56c7004235b991da4782b2229, type: 2}
   NonSelectMaterial: {fileID: 2100000, guid: e6f7038150c894faaa34fc312e98b8c2, type: 2}
-  UseLLMPolicy: 1
-  DecisionClient: {fileID: 99641094}
-  FallbackToCapacityHeuristic: 1
-  HeuristicFallbackDelaySeconds: 3
   AlwaysActivateAllShelters: 1
   Disabled: 1
   ConstBldgs: []

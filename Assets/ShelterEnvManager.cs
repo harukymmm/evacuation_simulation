@@ -203,6 +203,17 @@ public class EnvManager : MonoBehaviour {
         CurrentShelters = new List<GameObject>(); // 新しいリストを作成
         currentTimeSec = 0;
         evaRatePerSec.Clear();
+        
+        // 避難所の収容人数をリセット
+        foreach (var shelterObj in Shelters) {
+            if (shelterObj != null) {
+                var shelter = shelterObj.GetComponent<Shelter>();
+                if (shelter != null) {
+                    shelter.NowAccCount = 0;
+                    Debug.Log($"[EnvManager] {shelterObj.name}: エピソード開始時に収容人数をリセットしました。MaxCapacity: {shelter.MaxCapacity}, NowAccCount: {shelter.NowAccCount}, CurrentCapacity: {shelter.currentCapacity}");
+                }
+            }
+        }
     }
 
     /// <summary>

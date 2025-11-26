@@ -2,9 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using LLM;
 using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
@@ -24,12 +21,6 @@ public class ShelterManagementAgent : Agent {
     public Material NonSelectMaterial; // 避難所としてその建物を選択していない時のマテリアル
     public Action OnDidActioned; // 行動選択後に呼ばれるイベント関数(避難者の初期化にて使用します)
 
-    [Header("LLM Policy")]
-    public bool UseLLMPolicy = false;
-    public LLMDecisionClient DecisionClient;
-    public bool FallbackToCapacityHeuristic = true;
-    [Tooltip("LLM応答が空だった場合にヒューリスティックへ切り替えるまでの猶予秒数")]
-    public float HeuristicFallbackDelaySeconds = 10f;
     public bool AlwaysActivateAllShelters = true;
 
     // episode, step, 各避難所候補の選択状況のリスト(true or false)
@@ -37,27 +28,13 @@ public class ShelterManagementAgent : Agent {
     public bool Disabled = false;
     public List<GameObject> ConstBldgs;
     private EnvManager _env; // 環境管理クラスの参照
-    private CancellationTokenSource _llmCts;
-    private bool _llmRequestInFlight;
     private readonly List<int> _workingActionBuffer = new List<int>();
     
     void Start() {
         _env = GetComponentInParent<EnvManager>();
-        if (UseLLMPolicy)
-        {
-            var requester = GetComponent<DecisionRequester>();
-            if (requester != null)
-            {
-                requester.enabled = false;
-            }
-        }
     }
 
     public override void Initialize() {
-        if (!UseLLMPolicy)
-        {
-            Time.timeScale = 100f;
-        }
         if(ShelterCandidates.Length == 0) {
             //Debug.LogError("No shelter candidates");
             // NOTE: 予め候補地は事前に設定させておくこと
@@ -71,11 +48,7 @@ public class ShelterManagementAgent : Agent {
     /// </summary>
     public override void OnEpisodeBegin() {
         _env.OnEpisodeBegin();
-        if (UseLLMPolicy)
-        {
-            RequestLLMActions();
-        }
-        else if (AlwaysActivateAllShelters)
+        if (AlwaysActivateAllShelters)
         {
             ActivateAllShelters();
             OnDidActioned?.Invoke();
@@ -153,7 +126,7 @@ public class ShelterManagementAgent : Agent {
     /// </summary>
     /// <param name="actions">モデルの行動出力を受け取るための仮引数で、この値を元に環境に行動を反映させます</param>
     public override void OnActionReceived(ActionBuffers actions) {
-        if (UseLLMPolicy || AlwaysActivateAllShelters)
+        if (AlwaysActivateAllShelters)
         {
             return;
         }
@@ -188,84 +161,6 @@ public class ShelterManagementAgent : Agent {
                 Selects[i] = UnityEngine.Random.Range(0, 2);
             }
         }
-    }
-
-    private void OnDestroy()
-    {
-        _llmCts?.Cancel();
-        _llmCts?.Dispose();
-        _llmCts = null;
-    }
-
-    private async void RequestLLMActions()
-    {
-        if (_llmRequestInFlight)
-        {
-            return;
-        }
-
-        _llmRequestInFlight = true;
-        _llmCts?.Cancel();
-        _llmCts = new CancellationTokenSource();
-
-        try
-        {
-            if (DecisionClient == null)
-            {
-                Debug.LogWarning("[ShelterManagementAgent] DecisionClient が設定されていません。ヒューリスティックを使用します。");
-                ApplyHeuristicActions();
-                return;
-            }
-
-            var request = BuildLLMRequest();
-            var response = await DecisionClient.RequestDecisionAsync(request, _llmCts.Token);
-            if (response?.actions == null || response.actions.Length == 0)
-            {
-                if (FallbackToCapacityHeuristic)
-                {
-                    if (HeuristicFallbackDelaySeconds > 0f)
-                    {
-                        Debug.LogWarning($"[ShelterManagementAgent] LLM応答が空でした。{HeuristicFallbackDelaySeconds:F1}秒待機してからヒューリスティックに切り替えます。");
-                        await Task.Delay(TimeSpan.FromSeconds(HeuristicFallbackDelaySeconds), _llmCts.Token);
-                    }
-                    ApplyHeuristicActions();
-                }
-                else
-                {
-                    Debug.LogWarning("[ShelterManagementAgent] LLM応答が空でしたが、ヒューリスティックは無効化されています。");
-                }
-            }
-            else
-            {
-                ApplyLLMResponse(response);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Debug.Log("[ShelterManagementAgent] LLMリクエストがキャンセルされました。");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"[ShelterManagementAgent] LLMリクエスト中に例外: {ex.Message}");
-            if (FallbackToCapacityHeuristic)
-            {
-                ApplyHeuristicActions();
-            }
-        }
-        finally
-        {
-            _llmRequestInFlight = false;
-        }
-    }
-
-    private void ApplyLLMResponse(LLMActionResponse response)
-    {
-        _workingActionBuffer.Clear();
-        _workingActionBuffer.AddRange(response.actions);
-        var selectList = ApplyActionVector(_workingActionBuffer);
-        ActionLogs.Add(new Tuple<int, int, List<bool>>(_env.currentEpisodeId, _env.currentStep, selectList));
-        OnDidActioned?.Invoke();
-        Debug.Log($"[ShelterManagementAgent] LLM actions applied. Reasoning: {response.reasoning}");
     }
 
     private void ApplyHeuristicActions()
@@ -312,49 +207,6 @@ public class ShelterManagementAgent : Agent {
         }
 
         return selectList;
-    }
-
-    private LLMActionRequest BuildLLMRequest()
-    {
-        var shelterPayloads = new List<ShelterCandidatePayload>();
-        foreach (var shelterObj in ShelterCandidates)
-        {
-            if (shelterObj == null)
-            {
-                continue;
-            }
-            var shelter = shelterObj.GetComponent<Shelter>();
-            shelterPayloads.Add(new ShelterCandidatePayload
-            {
-                id = shelterObj.name,
-                position = new Vector3Payload(shelterObj.transform.position),
-                current_capacity = shelter != null ? shelter.currentCapacity : 0,
-                max_capacity = shelter != null ? shelter.MaxCapacity : 0
-            });
-        }
-
-        var evacPayloads = new List<EvacueePayload>();
-        foreach (var evacuee in _env.Evacuees)
-        {
-            if (evacuee == null)
-            {
-                continue;
-            }
-
-            evacPayloads.Add(new EvacueePayload
-            {
-                id = evacuee.name,
-                position = new Vector3Payload(evacuee.transform.position)
-            });
-        }
-
-        return new LLMActionRequest
-        {
-            request_id = $"{_env.currentEpisodeId}-{Guid.NewGuid()}",
-            timestamp = Time.time,
-            shelter_candidates = shelterPayloads.ToArray(),
-            evacuees = evacPayloads.ToArray()
-        };
     }
 
     private void ActivateAllShelters()

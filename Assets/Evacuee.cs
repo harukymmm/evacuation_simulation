@@ -246,12 +246,28 @@ public class Evacuee : MonoBehaviour {
                 continue;
             }
             var shelter = shelterObj.GetComponent<Shelter>();
+            var pointTransform = shelterObj.transform.childCount > 0
+                ? shelterObj.transform.GetChild(0)
+                : shelterObj.transform;
+            var pointPosition = pointTransform.position;
+
+            // 最新のcurrentCapacityを取得（プロパティなので常に最新値が返される）
+            int currentCapacity = shelter != null ? shelter.currentCapacity : 0;
+            int maxCapacity = shelter != null ? shelter.MaxCapacity : 0;
+            
+            // デバッグログ：エピソード開始直後（elapsed_timeが0に近い）の場合にログ出力
+            if (_env != null && _env.CurrentTimeSec < 0.1f && shelter != null)
+            {
+                Debug.Log($"[Evacuee] {gameObject.name}: BuildEvacDecisionRequest - Shelter: {shelterObj.name}, " +
+                         $"MaxCapacity: {maxCapacity}, NowAccCount: {shelter.NowAccCount}, CurrentCapacity: {currentCapacity}");
+            }
+            
             shelterPayloads.Add(new ShelterCandidatePayload
             {
                 id = shelterObj.name,
-                position = new Vector3Payload(shelterObj.transform.position),
-                current_capacity = shelter != null ? shelter.currentCapacity : 0,
-                max_capacity = shelter != null ? shelter.MaxCapacity : 0
+                position = new Vector3Payload(pointPosition),
+                current_capacity = currentCapacity,
+                max_capacity = maxCapacity
             });
         }
 
