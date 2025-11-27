@@ -97,6 +97,7 @@ namespace LLM
         public string selected_shelter_id;
         public string reasoning;
         public float confidence;
+        public float desired_speed;
     }
 
     [Serializable]

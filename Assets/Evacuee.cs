@@ -32,6 +32,11 @@ public class Evacuee : MonoBehaviour {
     private EnvManager _env; // ShelterEnvManagerの参照
     private bool isEvacuating = false; // 避難処理中のフラグ。当たり判定により発火するため、複数回避難処理が行われるのを防ぐためのフラグ
     private List<string> excludeShelters; //1度避難したタワーのUUIDを格納するリスト
+    
+    [Header("Movement Settings")]
+    public float DefaultSpeed = 5f;
+    public float MinSpeed = 1f;
+    public float MaxSpeed = 10f;
 
     [Header("Status")]
     [Range(0f, 1f)]
@@ -60,6 +65,10 @@ public class Evacuee : MonoBehaviour {
 
     void Awake() {
         NavAgent = GetComponent<NavMeshAgent>();    
+        if (NavAgent != null)
+        {
+            NavAgent.speed = DefaultSpeed;
+        }
         excludeShelters = new List<string>(); 
 
         _env = GetComponentInParent<EnvManager>();
@@ -148,6 +157,7 @@ public class Evacuee : MonoBehaviour {
                 if(shelters.Count > 0) {
                     Target = shelters[0]; //最短距離のタワーを目標に設定
                     NavAgent.SetDestination(Target.transform.position);
+                    ResetMovementSpeed();
                 }
             }
         }
@@ -230,9 +240,11 @@ public class Evacuee : MonoBehaviour {
         var point = selectedShelter.transform.childCount > 0 ? selectedShelter.transform.GetChild(0).gameObject : selectedShelter;
         Target = point;
         NavAgent.SetDestination(Target.transform.position);
+        ApplySpeedFromLLM(response.desired_speed);
         Debug.Log($"[Evacuee] {gameObject.name}: LLM selected {selectedShelter.name} "
               + $"(pos: {Target.transform.position}), "
-              + $"reason='{response.reasoning}', confidence={response.confidence:F2}");
+              + $"reason='{response.reasoning}', confidence={response.confidence:F2}, "
+              + $"speed={NavAgent.speed:F2}");
         return true;
     }
 
@@ -293,7 +305,8 @@ public class Evacuee : MonoBehaviour {
             Target = towers[0]; //最短距離のタワーを目標に設定
             Vector3 destination = Target.transform.position;
             NavAgent.SetDestination(destination);
-            Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent.name}");
+            ResetMovementSpeed();
+            Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent.name}, speed={NavAgent.speed:F2}");
         }
     }
 
@@ -351,6 +364,32 @@ public class Evacuee : MonoBehaviour {
 
         var parentName = Target.transform.parent != null ? Target.transform.parent.name : null;
         return parentName ?? Target.name;
+    }
+
+    private void ResetMovementSpeed()
+    {
+        if (NavAgent != null)
+        {
+            NavAgent.speed = DefaultSpeed;
+        }
+    }
+
+    private void ApplySpeedFromLLM(float desiredSpeed)
+    {
+        if (NavAgent == null)
+        {
+            return;
+        }
+
+        if (desiredSpeed > 0f)
+        {
+            var clamped = Mathf.Clamp(desiredSpeed, MinSpeed, MaxSpeed);
+            NavAgent.speed = clamped;
+        }
+        else
+        {
+            ResetMovementSpeed();
+        }
     }
 
 }

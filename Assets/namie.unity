@@ -37038,9 +37038,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 459b260a8ae8a4ea7b1ff889430e231c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  Mode: 0
+  Mode: 1
   EvacSpawnMode: 0
-  TimeScale: 1
+  TimeScale: 5
   IsRecordData: 0
   AccSimulateScale: 1
   MaxSeconds: 1800
@@ -186691,7 +186691,7 @@ RectTransform:
   - {fileID: 1581442637}
   - {fileID: 356758243}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 35.151, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}

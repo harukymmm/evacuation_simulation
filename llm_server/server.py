@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -85,8 +86,10 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
 
     lines.append("以下のJSON形式で回答してください。")
     lines.append(
-        '{"selected_shelter_id": "id", "reasoning": "短い説明", "confidence": 0.0-1.0}'
+        '{"selected_shelter_id": "id", "reasoning": "短い説明", '
+        '"confidence": 0.0-1.0, "desired_speed": (opt) m/s}'
     )
+    lines.append("desired_speedは体力や距離などの状況に応じて設定してください。急いで避難している状況を考慮してください")
 
     return "\n".join(lines)
 
@@ -98,6 +101,18 @@ def _position_tuple(info: Dict[str, Any]) -> tuple[float, float, float]:
         float(pos.get("y", 0.0)),
         float(pos.get("z", 0.0)),
     )
+
+
+def _extract_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+        if math.isnan(number) or math.isinf(number):
+            return None
+        return number
+    except (TypeError, ValueError):
+        return None
 
 
 def heuristic_selection(payload: Dict[str, Any]) -> Optional[str]:
@@ -227,6 +242,7 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         reasoning = "Fallback heuristic: closest shelter with spare capacity."
         confidence = 0.5
         source = "heuristic"
+        desired_speed = None
     else:
         selected_id = decision.get("selected_shelter_id") or heuristic_selection(
             payload
@@ -234,6 +250,7 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         reasoning = decision.get("reasoning", "LLM decision")
         confidence = float(decision.get("confidence", 0.5))
         source = "llm"
+        desired_speed = _extract_float(decision.get("desired_speed"))
 
     if selected_id is None and payload.get("shelter_candidates"):
         selected_id = payload["shelter_candidates"][0].get("id")
@@ -244,6 +261,7 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "selected_shelter_id": selected_id,
         "reasoning": reasoning,
         "confidence": confidence,
+        "desired_speed": desired_speed,
     }
 
     output_snapshot = {
@@ -251,6 +269,8 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "reasoning": reasoning,
         "confidence": confidence,
     }
+    if desired_speed is not None:
+        output_snapshot["desired_speed"] = desired_speed
     # llm_raw_responseの記録は現在不要なため無効化
     # if decision is not None:
     #     output_snapshot["llm_raw_response"] = decision

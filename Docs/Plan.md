@@ -12,7 +12,7 @@
 
 ---
 
-## 1. SelfState (+ TemporalContext) 定義
+## 1. SelfState (+ TemporalContext) 定義(実装済み)
 
 ### ゴール（SelfState/Temporal）
 
