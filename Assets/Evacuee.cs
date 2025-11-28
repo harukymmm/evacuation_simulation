@@ -60,10 +60,24 @@ public class Evacuee : MonoBehaviour {
     public bool UseLLMDecision = false;
     public LLMDecisionClient DecisionClient;
     public bool FallbackToNearest = true;
+    [Tooltip("LLMの再呼び出し間隔（秒）")]
+    public float LLMDecisionInterval = 20f;
     private CancellationTokenSource _llmCts;
     private bool _isRequestingLLMDecision;
+    private float _lastLLMDecisionTime = 0f;
+    private string _uniqueId; // 各避難者を区別するための一意のID（生成順序の数字）
+
+    /// <summary>
+    /// 避難者のIDを設定する（EnvManagerから呼び出される）
+    /// </summary>
+    /// <param name="id">避難者の生成順序（1から始まる）</param>
+    public void SetEvacueeId(int id)
+    {
+        _uniqueId = id.ToString();
+    }
 
     void Awake() {
+        // IDはEnvManagerから設定されるため、ここでは初期化しない
         NavAgent = GetComponent<NavMeshAgent>();    
         if (NavAgent != null)
         {
@@ -96,6 +110,32 @@ public class Evacuee : MonoBehaviour {
         _llmCts?.Cancel();
         _llmCts?.Dispose();
         _llmCts = null;
+    }
+
+    void Update()
+    {
+        // LLMを使用している場合、定期的に再呼び出しをチェック
+        if (!UseLLMDecision || DecisionClient == null || !gameObject.activeSelf)
+        {
+            return;
+        }
+
+        // 最後にLLMを呼び出した時刻が記録されている場合（初期呼び出し後）
+        if (_lastLLMDecisionTime <= 0f)
+        {
+            return;
+        }
+
+        float elapsedSinceLastDecision = Time.time - _lastLLMDecisionTime;
+        if (elapsedSinceLastDecision >= LLMDecisionInterval)
+        {
+            // 既にリクエスト中でない場合のみ再呼び出し
+            if (!_isRequestingLLMDecision)
+            {
+                Debug.Log($"[Evacuee] {gameObject.name}: 定期LLM再呼び出し（経過時間: {elapsedSinceLastDecision:F2}秒）");
+                RequestLLMDecision();
+            }
+        }
     }
 
     
@@ -191,6 +231,8 @@ public class Evacuee : MonoBehaviour {
                     MoveToNearestShelter();
                 }
             }
+            // LLMの応答を受けた時刻を記録（成功・失敗に関わらず）
+            _lastLLMDecisionTime = Time.time;
         }
         catch (OperationCanceledException)
         {
@@ -203,6 +245,8 @@ public class Evacuee : MonoBehaviour {
             {
                 MoveToNearestShelter();
             }
+            // エラーが発生した場合も時刻を記録（次回の再呼び出しタイミングをリセット）
+            _lastLLMDecisionTime = Time.time;
         }
         finally
         {
@@ -289,7 +333,7 @@ public class Evacuee : MonoBehaviour {
             timestamp = Time.time,
             evacuee = new EvacueePayload
             {
-                id = gameObject.name,
+                id = !string.IsNullOrEmpty(_uniqueId) ? _uniqueId : gameObject.name, // 生成順序のIDを使用
                 position = new Vector3Payload(transform.position)
             },
             shelter_candidates = shelterPayloads.ToArray(),

@@ -277,6 +277,13 @@ public class EnvManager : MonoBehaviour {
         GameObject evacuee = Instantiate(SpawnEvacueePref, spawnPos, Quaternion.identity, transform);
         evacuee.tag = "Evacuee";
         Evacuees.Add(evacuee);
+        
+        // 避難者に生成順序のIDを設定（1から始まる）
+        var evacueeComponent = evacuee.GetComponent<Evacuee>();
+        if (evacueeComponent != null)
+        {
+            evacueeComponent.SetEvacueeId(Evacuees.Count);
+        }
     }
 
     /// <summary>

@@ -89,7 +89,9 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
         '{"selected_shelter_id": "id", "reasoning": "短い説明", '
         '"confidence": 0.0-1.0, "desired_speed": (opt) m/s}'
     )
-    lines.append("desired_speedは体力や距離などの状況に応じて設定してください。急いで避難している状況を考慮してください")
+    lines.append(
+        "desired_speedは体力や距離などの状況に応じて設定してください。急いで避難している状況を考慮してください"
+    )
 
     return "\n".join(lines)
 
@@ -212,15 +214,19 @@ def _log_decision(
     output_snapshot: Dict[str, Any],
 ) -> None:
     try:
-        filename = LOG_DIR / f"{_sanitize_filename(evacuee_id)}.log"
+        sanitized_id = _sanitize_filename(evacuee_id)
+        timestamp = datetime.utcnow().isoformat() + "Z"
+
+        # JSON Lines形式のログ
+        json_filename = LOG_DIR / f"{sanitized_id}.log"
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": timestamp,
             "request_id": request_id,
             "source": source,
             "input": input_snapshot,
             "output": output_snapshot,
         }
-        with filename.open("a", encoding="utf-8") as fp:
+        with json_filename.open("a", encoding="utf-8") as fp:
             fp.write(json.dumps(log_entry, ensure_ascii=False))
             fp.write("\n")
     except Exception as exc:  # pragma: no cover
