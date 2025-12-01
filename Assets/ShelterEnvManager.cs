@@ -94,6 +94,9 @@ public class EnvManager : MonoBehaviour {
         }
         // 日付-時間-分-秒を組み合わせた記録用IDを生成
         recordID = System.DateTime.Now.ToString("yyyy_MM_dd-HH_mm_ss");
+        
+        // ペルソナデータを読み込む
+        PersonaManager.LoadPersonas();
 
         NavMesh.pathfindingIterationsPerFrame = 1000000; // パス検索の上限値を設定
 

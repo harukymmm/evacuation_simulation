@@ -61,11 +61,12 @@ public class Evacuee : MonoBehaviour {
     public LLMDecisionClient DecisionClient;
     public bool FallbackToNearest = true;
     [Tooltip("LLMの再呼び出し間隔（秒）")]
-    public float LLMDecisionInterval = 20f;
+    public float LLMDecisionInterval = 120f;
     private CancellationTokenSource _llmCts;
     private bool _isRequestingLLMDecision;
     private float _lastLLMDecisionTime = 0f;
     private string _uniqueId; // 各避難者を区別するための一意のID（生成順序の数字）
+    private PersonaData _persona; // この避難者のペルソナデータ
 
     /// <summary>
     /// 避難者のIDを設定する（EnvManagerから呼び出される）
@@ -74,6 +75,22 @@ public class Evacuee : MonoBehaviour {
     public void SetEvacueeId(int id)
     {
         _uniqueId = id.ToString();
+        
+        // ペルソナデータを読み込んで設定
+        _persona = PersonaManager.GetPersona(id);
+        if (_persona != null)
+        {
+            // 速度倍率を適用（NavAgentが初期化されていない場合は後で適用）
+            if (NavAgent != null)
+            {
+                NavAgent.speed = DefaultSpeed * _persona.speed_multiplier;
+            }
+            Debug.Log($"[Evacuee] {gameObject.name}: ペルソナ設定 - {_persona.name} ({_persona.role}), 速度倍率: {_persona.speed_multiplier}, agent_id: {id}");
+        }
+        else
+        {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: ペルソナデータが見つかりません (agent_id: {id})");
+        }
     }
 
     void Awake() {
@@ -105,6 +122,15 @@ public class Evacuee : MonoBehaviour {
         };
     }
 
+    void Start()
+    {
+        // NavAgentが初期化された後にペルソナの速度倍率を適用
+        if (_persona != null && NavAgent != null)
+        {
+            NavAgent.speed = DefaultSpeed * _persona.speed_multiplier;
+        }
+    }
+
     private void OnDestroy()
     {
         _llmCts?.Cancel();
@@ -115,7 +141,7 @@ public class Evacuee : MonoBehaviour {
     void Update()
     {
         // LLMを使用している場合、定期的に再呼び出しをチェック
-        if (!UseLLMDecision || DecisionClient == null || !gameObject.activeSelf)
+        if (!UseLLMDecision || DecisionClient == null || !gameObject.activeSelf || _env == null)
         {
             return;
         }
@@ -126,13 +152,15 @@ public class Evacuee : MonoBehaviour {
             return;
         }
 
-        float elapsedSinceLastDecision = Time.time - _lastLLMDecisionTime;
+        // シミュレーション内の経過時間を使用
+        float currentSimTime = _env.CurrentTimeSec;
+        float elapsedSinceLastDecision = currentSimTime - _lastLLMDecisionTime;
         if (elapsedSinceLastDecision >= LLMDecisionInterval)
         {
             // 既にリクエスト中でない場合のみ再呼び出し
             if (!_isRequestingLLMDecision)
             {
-                Debug.Log($"[Evacuee] {gameObject.name}: 定期LLM再呼び出し（経過時間: {elapsedSinceLastDecision:F2}秒）");
+                Debug.Log($"[Evacuee] {gameObject.name}: 定期LLM再呼び出し（シミュレーション経過時間: {elapsedSinceLastDecision:F2}秒）");
                 RequestLLMDecision();
             }
         }
@@ -231,8 +259,8 @@ public class Evacuee : MonoBehaviour {
                     MoveToNearestShelter();
                 }
             }
-            // LLMの応答を受けた時刻を記録（成功・失敗に関わらず）
-            _lastLLMDecisionTime = Time.time;
+            // LLMの応答を受けた時刻を記録（成功・失敗に関わらず、シミュレーション内の経過時間を使用）
+            _lastLLMDecisionTime = _env != null ? _env.CurrentTimeSec : Time.time;
         }
         catch (OperationCanceledException)
         {
@@ -245,8 +273,8 @@ public class Evacuee : MonoBehaviour {
             {
                 MoveToNearestShelter();
             }
-            // エラーが発生した場合も時刻を記録（次回の再呼び出しタイミングをリセット）
-            _lastLLMDecisionTime = Time.time;
+            // エラーが発生した場合も時刻を記録（次回の再呼び出しタイミングをリセット、シミュレーション内の経過時間を使用）
+            _lastLLMDecisionTime = _env != null ? _env.CurrentTimeSec : Time.time;
         }
         finally
         {
@@ -327,6 +355,44 @@ public class Evacuee : MonoBehaviour {
             });
         }
 
+        // ペルソナ情報をペイロードに変換
+        PersonaPayload personaPayload = null;
+        
+        // _personaがnullの場合は、_uniqueIdからエージェントIDを取得して再取得を試みる
+        PersonaData persona = _persona;
+        if (persona == null && !string.IsNullOrEmpty(_uniqueId))
+        {
+            if (int.TryParse(_uniqueId, out int agentId))
+            {
+                persona = PersonaManager.GetPersona(agentId);
+                if (persona != null)
+                {
+                    _persona = persona; // キャッシュしておく
+                    Debug.Log($"[Evacuee] {gameObject.name}: ペルソナを再取得しました - {persona.name} (agent_id: {agentId})");
+                }
+            }
+        }
+        
+        if (persona != null)
+        {
+            personaPayload = new PersonaPayload
+            {
+                agent_id = persona.agent_id,
+                name = persona.name,
+                role = persona.role,
+                age_group = persona.age_group,
+                speed_multiplier = persona.speed_multiplier,
+                stairs_usage = persona.stairs_usage,
+                mental_state = persona.mental_state,
+                priority = persona.priority,
+                system_prompt_context = persona.system_prompt_context
+            };
+        }
+        else
+        {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: ペルソナ情報が見つかりません (_uniqueId: {_uniqueId})");
+        }
+
         return new LLMEvacDecisionRequest
         {
             request_id = $"{_env.currentEpisodeId}-{gameObject.name}-{Guid.NewGuid()}",
@@ -338,7 +404,8 @@ public class Evacuee : MonoBehaviour {
             },
             shelter_candidates = shelterPayloads.ToArray(),
             self_state = BuildSelfStatePayload(),
-            temporal_context = BuildTemporalContextPayload()
+            temporal_context = BuildTemporalContextPayload(),
+            persona = personaPayload
         };
     }
 

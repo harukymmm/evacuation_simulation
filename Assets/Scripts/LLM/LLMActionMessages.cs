@@ -79,6 +79,20 @@ namespace LLM
     }
 
     [Serializable]
+    public class PersonaPayload
+    {
+        public int agent_id;
+        public string name;
+        public string role;
+        public string age_group;
+        public float speed_multiplier;
+        public string stairs_usage;
+        public string mental_state;
+        public string priority;
+        public string system_prompt_context;
+    }
+
+    [Serializable]
     public class LLMEvacDecisionRequest
     {
         public string request_id;
@@ -87,6 +101,7 @@ namespace LLM
         public ShelterCandidatePayload[] shelter_candidates;
         public SelfStatePayload self_state;
         public TemporalContextPayload temporal_context;
+        public PersonaPayload persona; // ペルソナ情報
     }
 
     [Serializable]

@@ -1789,9 +1789,22 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Target: {fileID: 0}
+  DefaultSpeed: 5
+  MinSpeed: 1
+  MaxSpeed: 10
+  EnergyLevel: 1
+  EnergyState: 0
+  StressLevel: 0
+  StressState: 0
+  StressReason: 
+  StaminaLevel: 1
+  InjuryTags: []
+  InjuryNotes: 
+  GoalLabelOverride: 
   UseLLMDecision: 1
   DecisionClient: {fileID: 0}
   FallbackToNearest: 1
+  LLMDecisionInterval: 120
 --- !u!1 &2920019525642700832
 GameObject:
   m_ObjectHideFlags: 0

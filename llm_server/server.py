@@ -44,8 +44,25 @@ OPENAI_CLIENT = _create_client()
 def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> str:
     shelters = payload.get("shelter_candidates", [])
     evacuee = payload.get("evacuee", {})
+    persona = payload.get("persona")
 
-    lines = ["あなたは災害に遭遇してしまい、今すぐに避難しなければならない状態です。"]
+    lines = []
+
+    # ペルソナ情報がある場合は、それを最初に追加
+    if persona:
+        lines.append("【あなたのペルソナ】")
+        lines.append(f"名前: {persona.get('name', '不明')}")
+        lines.append(f"役割: {persona.get('role', '不明')}")
+        lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+        lines.append(f"心理状態: {persona.get('mental_state', '不明')}")
+        lines.append(f"優先事項: {persona.get('priority', '不明')}")
+        lines.append("")
+        lines.append(persona.get("system_prompt_context", ""))
+        lines.append("")
+
+    lines.append(
+        "あなたは災害に遭遇してしまい、今すぐに避難しなければならない状態です。"
+    )
     lines.append(
         "現在、避難所の候補があなたの近くにあります。あなたはどの避難所に向かうべきですか？"
     )
@@ -84,13 +101,30 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
             f"pos=({position.get('x', 0):.2f}, {position.get('z', 0):.2f})"
         )
 
+    # ペルソナ情報に基づく追加指示
+    if persona:
+        speed_multiplier = persona.get("speed_multiplier", 1.0)
+        stairs_usage = persona.get("stairs_usage", "allowed")
+        if stairs_usage == "forbidden":
+            lines.append(
+                "重要: あなたは階段を使用できません。階段を含む経路は選択しないでください。"
+            )
+        if speed_multiplier < 1.0:
+            lines.append(
+                f"注意: あなたの移動速度は通常の{speed_multiplier:.1f}倍です。無理をしない範囲で避難してください。"
+            )
+        elif speed_multiplier > 1.0:
+            lines.append(
+                f"あなたは通常より{speed_multiplier:.1f}倍速く移動できます。状況に応じて速度を調整してください。"
+            )
+
     lines.append("以下のJSON形式で回答してください。")
     lines.append(
         '{"selected_shelter_id": "id", "reasoning": "短い説明", '
         '"confidence": 0.0-1.0, "desired_speed": (opt) m/s}'
     )
     lines.append(
-        "desired_speedは体力や距離などの状況に応じて設定してください。急いで避難している状況を考慮してください"
+        "desired_speedは体力や距離、あなたのペルソナの特性などの状況に応じて設定してください。急いで避難している状況を考慮してください"
     )
 
     return "\n".join(lines)
@@ -238,9 +272,11 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     agent_input = _build_agent_input(payload)
     decision = await call_openai(payload, agent_input)
     evacuee = payload.get("evacuee", {})
+    persona = payload.get("persona")
     input_snapshot = {
         "agent_input": agent_input.model_dump() if agent_input else None,
         "shelter_candidates": payload.get("shelter_candidates"),
+        "persona": persona,  # ペルソナ情報をログに含める
     }
 
     if decision is None:
