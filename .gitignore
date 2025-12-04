@@ -163,3 +163,9 @@ Miniconda3-*.sh
 # PLATEAU SDK
 Assets/StreamingAssets/.PLATEAU/
 
+# Large Unity scene files (exceed GitHub 100MB limit)
+Assets/Scenes/OsakaLOD3.unity
+Assets/Scenes/OsakaLOD3.unity.meta
+Assets/Scenes/MInamiSoumaLOD2.unity
+Assets/Scenes/MInamiSoumaLOD2.unity.meta
+
