@@ -328,16 +328,28 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return response_payload
 
 
+async def _handle_single_message(
+    websocket: websockets.WebSocketServerProtocol, message: str
+) -> None:
+    """
+    1つのメッセージ処理を独立したタスクとして実行するヘルパー。
+    これにより、同一WebSocket上でも複数のリクエストを並列に処理できる。
+    """
+    try:
+        payload = json.loads(message)
+        response = await process_payload(payload)
+        await websocket.send(json.dumps(response))
+    except json.JSONDecodeError:
+        await websocket.send(json.dumps({"error": "invalid_json"}))
+    except Exception as exc:  # pragma: no cover
+        await websocket.send(json.dumps({"error": str(exc)}))
+
+
 async def handler(websocket: websockets.WebSocketServerProtocol) -> None:
+    # 各受信メッセージごとに独立したタスクを起動し、並列に処理する
     async for message in websocket:
-        try:
-            payload = json.loads(message)
-            response = await process_payload(payload)
-            await websocket.send(json.dumps(response))
-        except json.JSONDecodeError:
-            await websocket.send(json.dumps({"error": "invalid_json"}))
-        except Exception as exc:  # pragma: no cover
-            await websocket.send(json.dumps({"error": str(exc)}))
+        # fire-and-forget タスクとして起動（エラーは各タスク内でハンドリング）
+        asyncio.create_task(_handle_single_message(websocket, message))
 
 
 async def main() -> None:

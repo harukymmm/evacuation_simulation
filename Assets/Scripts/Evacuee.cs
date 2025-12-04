@@ -256,6 +256,7 @@ public class Evacuee : MonoBehaviour {
             {
                 if (FallbackToNearest)
                 {
+                    Debug.Log($"[Evacuee] {gameObject.name}: LLM応答なし／無効な応答のため最寄り避難所へフォールバックします。");
                     MoveToNearestShelter();
                 }
             }
@@ -264,7 +265,13 @@ public class Evacuee : MonoBehaviour {
         }
         catch (OperationCanceledException)
         {
-            // ignore
+            // タイムアウトなどでキャンセルされた場合も最寄り避難所へフォールバック
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: LLM decision canceled (timeout?). Fallback to nearest shelter.");
+            if (FallbackToNearest)
+            {
+                MoveToNearestShelter();
+            }
+            _lastLLMDecisionTime = _env != null ? _env.CurrentTimeSec : Time.time;
         }
         catch (Exception ex)
         {

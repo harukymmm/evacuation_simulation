@@ -7461,10 +7461,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 39676012}
+  - component: {fileID: 39676014}
   - component: {fileID: 39676017}
   - component: {fileID: 39676016}
   - component: {fileID: 39676015}
-  - component: {fileID: 39676014}
   m_Layer: 0
   m_Name: tran_5eb712bf-b8f2-4d9c-b53c-c902e659284a
   m_TagString: Untagged
@@ -37044,8 +37044,8 @@ MonoBehaviour:
   IsRecordData: 0
   AccSimulateScale: 1
   MaxSeconds: 1800
-  SpawnEvacueeSize: 5
-  SpawnEvacueePref: {fileID: 2744035215387846840, guid: d2a6cffd27c3e44449a585a61fc0359d, type: 3}
+  SpawnEvacueeSize: 500
+  SpawnEvacueePref: {fileID: 7881807149238628900, guid: 362bb106c8af9467da1895ada0e8a4d8, type: 3}
   SpawnRadius: 1000
   spawnCenter: {x: 0, y: 0, z: 0}
   EnableTemporalOverrides: 0
@@ -54963,16 +54963,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 356758242}
-  m_LocalRotation: {x: 0.0024647037, y: 0.0035604858, z: 0.0009953834, w: 0.99999017}
-  m_LocalPosition: {x: 0, y: 0, z: 6}
+  m_LocalRotation: {x: 0.70772356, y: 0, z: 0, w: 0.7064895}
+  m_LocalPosition: {x: 0, y: 0, z: -134}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1360371668}
-  m_LocalEulerAnglesHint: {x: 0.282, y: 0.408, z: 0.115}
+  m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 360, y: 85}
+  m_AnchoredPosition: {x: -562, y: -278}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356758244
@@ -55060,7 +55060,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: -28.052734, w: 0}
+  m_margin: {x: 0, y: 0, z: -14.302277, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -219075,16 +219075,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1581442636}
-  m_LocalRotation: {x: 0.0028922514, y: -0, z: -0, w: 0.9999958}
-  m_LocalPosition: {x: 0, y: 0, z: 5}
+  m_LocalRotation: {x: 0.70772356, y: 0, z: 0, w: 0.7064895}
+  m_LocalPosition: {x: 0, y: 0, z: -255.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1360371668}
-  m_LocalEulerAnglesHint: {x: 0.331, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 355, y: -43}
+  m_AnchoredPosition: {x: -561, y: -282}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1581442638
@@ -242211,7 +242211,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1320944121314539903, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.44444552
+      value: 0.8126242
       objectReference: {fileID: 0}
     - target: {fileID: 1320944121314539903, guid: 8c741621a6c104ba784399eb004f915c, type: 3}
       propertyPath: m_LocalScale.z
@@ -295138,7 +295138,7 @@ PrefabInstance:
     - target: {fileID: 3899698181744913585, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: EvacueePrefab
       value: 
-      objectReference: {fileID: 2744035215387846840, guid: d2a6cffd27c3e44449a585a61fc0359d, type: 3}
+      objectReference: {fileID: 7881807149238628900, guid: 362bb106c8af9467da1895ada0e8a4d8, type: 3}
     - target: {fileID: 6366722833234855139, guid: 98234f68d6c0e4b1b98f488720ed3d58, type: 3}
       propertyPath: m_Name
       value: EvacueeSpawnPoint

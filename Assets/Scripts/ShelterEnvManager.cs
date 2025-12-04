@@ -390,7 +390,7 @@ public class EnvManager : MonoBehaviour {
         // -9999が検出された場合の処理
         if(isErrorValue) {
             // デフォルト値: 100㎡相当の建物を想定
-            int defaultCapacity = Mathf.Max(1, (int)((100 * 0.8 / 1.65) * AccSimulateScale));
+            int defaultCapacity = Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
             return defaultCapacity;
         }
         
