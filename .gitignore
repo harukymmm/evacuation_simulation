@@ -160,3 +160,6 @@ results/*/checkpoint.pth
 # Miniconda installer
 Miniconda3-*.sh
 
+# PLATEAU SDK
+Assets/StreamingAssets/.PLATEAU/
+

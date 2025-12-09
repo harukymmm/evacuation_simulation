@@ -37044,7 +37044,7 @@ MonoBehaviour:
   IsRecordData: 0
   AccSimulateScale: 1
   MaxSeconds: 1800
-  SpawnEvacueeSize: 500
+  SpawnEvacueeSize: 5
   SpawnEvacueePref: {fileID: 7881807149238628900, guid: 362bb106c8af9467da1895ada0e8a4d8, type: 3}
   SpawnRadius: 1000
   spawnCenter: {x: 0, y: 0, z: 0}
@@ -54964,7 +54964,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 356758242}
   m_LocalRotation: {x: 0.70772356, y: 0, z: 0, w: 0.7064895}
-  m_LocalPosition: {x: 0, y: 0, z: -134}
+  m_LocalPosition: {x: 0, y: 0, z: -136}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -54972,7 +54972,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -703, y: -278}
+  m_AnchoredPosition: {x: -703, y: -330}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356758244
@@ -155853,10 +155853,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1147484802}
+  - component: {fileID: 1147484804}
   - component: {fileID: 1147484807}
   - component: {fileID: 1147484806}
   - component: {fileID: 1147484805}
-  - component: {fileID: 1147484804}
   m_Layer: 0
   m_Name: tran_73056fda-0a1d-4822-b5d3-335df16f80c1
   m_TagString: Untagged
@@ -219084,7 +219084,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 90.1, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -704, y: -282}
+  m_AnchoredPosition: {x: -704, y: -330}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1581442638
@@ -235140,10 +235140,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1695546730}
+  - component: {fileID: 1695546732}
   - component: {fileID: 1695546735}
   - component: {fileID: 1695546734}
   - component: {fileID: 1695546733}
-  - component: {fileID: 1695546732}
   m_Layer: 0
   m_Name: tran_1364a9df-bba1-48ff-ba7b-fa37a1b99c61
   m_TagString: Untagged
