@@ -169,3 +169,16 @@ Assets/Scenes/OsakaLOD3.unity.meta
 Assets/Scenes/MInamiSoumaLOD2.unity
 Assets/Scenes/MInamiSoumaLOD2.unity.meta
 
+# Unity crash reports
+mono_crash.*
+*.crash
+
+# Unity auto-generated project user files
+*.csproj.user
+*.sln.DotSettings
+
+# ML-Agents additional files
+results/*/run_logs/
+results/*/events.out.tfevents.*
+results/*.onnx
+results/*.pt
