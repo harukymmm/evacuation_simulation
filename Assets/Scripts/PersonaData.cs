@@ -29,7 +29,7 @@ public class PersonaData
 public static class PersonaManager
 {
     private static Dictionary<int, PersonaData> _personas = null;
-    private static readonly string PersonaCsvPath = Path.Combine(Application.dataPath, "Config", "fukushima_evacuation_personas_500.csv");
+    private static readonly string PersonaCsvPath = Path.Combine(Application.dataPath, "Config", "personas.csv");
 
     /// <summary>
     /// CSVファイルからペルソナデータを読み込む
