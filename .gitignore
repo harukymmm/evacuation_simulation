@@ -164,8 +164,8 @@ Miniconda3-*.sh
 Assets/StreamingAssets/.PLATEAU/
 
 # Large Unity scene files (exceed GitHub 100MB limit)
-Assets/Scenes/OsakaLOD3.unity
-Assets/Scenes/OsakaLOD3.unity.meta
+Assets/Scenes/Iwaki.unity
+Assets/Scenes/Iwaki.unity.meta
 Assets/Scenes/MInamiSoumaLOD2.unity
 Assets/Scenes/MInamiSoumaLOD2.unity.meta
 
