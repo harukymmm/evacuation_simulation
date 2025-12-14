@@ -101,6 +101,7 @@ public class EnvManager : MonoBehaviour {
         NavMesh.pathfindingIterationsPerFrame = 1000000; // パス検索の上限値を設定
 
         Agent = AgentObj.GetComponent<ShelterManagementAgent>();
+        // 念のため null であっても初期化しておく（実行順で FixedUpdate が先行した場合のガード）
         Evacuees = new List<GameObject>(); // 避難者のリストを初期化
         CurrentShelters = new List<GameObject>(); // 避難所のリストを初期化
         Shelters = new List<GameObject>(); // 避難所のリストを初期化
@@ -360,21 +361,65 @@ public class EnvManager : MonoBehaviour {
         
         // PLATEAU City Objectから、建物の高さを取得し、避難所の収容人数を動的に設定する
         var cityObjectGroup = shelterBldg.GetComponent<PLATEAUCityObjectGroup>();
+        
+        // PLATEAUCityObjectGroupの存在確認
+        if(cityObjectGroup == null) {
+            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - PLATEAUCityObjectGroup component not found. Using default value.");
+            return Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
+        }
+        
+        // CityObjectsの存在確認
+        if(cityObjectGroup.CityObjects == null || 
+           cityObjectGroup.CityObjects.rootCityObjects == null || 
+           cityObjectGroup.CityObjects.rootCityObjects.Count == 0) {
+            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - CityObjects data not found. Using default value.");
+            return Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
+        }
+        
         var rootCityObject = cityObjectGroup.CityObjects.rootCityObjects[0];
 
         // Newtonsoft.Jsonを使用して、CityObjectの属性情報クラスにデシリアライズして取得
         var cityObjectJsonStr = JsonConvert.SerializeObject(rootCityObject);
         var attributes = JsonConvert.DeserializeObject<RootObject>(cityObjectJsonStr).Attributes;
         
+        // 属性情報の存在確認
+        if(attributes == null) {
+            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - Attributes not found. Using default value.");
+            return Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
+        }
+        
         // 属性値リストを巡回し、床総面積から収容人数を算出
         foreach(var attribute in attributes) {
             if(attribute.Key == "uro:buildingDetailAttribute") {
-                foreach(var uroAttr in attribute.AttributeSetValue) { 
-                    if(uroAttr.Key == "uro:totalFloorArea") {
-                        if(double.TryParse(uroAttr.Value.ToString(), out double parsedValue)) {
+                foreach(var detailAttr in attribute.AttributeSetValue) {
+                    // パターン1: 3層構造（uro:buildingDetailAttribute → uro:BuildingDetailAttribute → uro:totalFloorArea）
+                    if(detailAttr.Key == "uro:BuildingDetailAttribute") {
+                        if(detailAttr.AttributeSetValue != null) {
+                            foreach(var uroAttr in detailAttr.AttributeSetValue) {
+                                if(uroAttr.Key == "uro:totalFloorArea") {
+                                    if(double.TryParse(uroAttr.Value.ToString(), out double parsedValue)) {
+                                        // -9999の場合は特別に処理
+                                        if(parsedValue == -9999) {
+                                            isErrorValue = true;
+                                            Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea is -9999 (unknown), using default value");
+                                        } else if(parsedValue > 0) {
+                                            totalFloorSize = parsedValue;
+                                            Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea found: {parsedValue}");
+                                        } else {
+                                            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - Invalid totalFloorArea value: {parsedValue} (negative or zero)");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // パターン2: 2層構造（uro:buildingDetailAttribute → uro:totalFloorArea）
+                    else if(detailAttr.Key == "uro:totalFloorArea") {
+                        if(double.TryParse(detailAttr.Value.ToString(), out double parsedValue)) {
                             // -9999の場合は特別に処理
                             if(parsedValue == -9999) {
                                 isErrorValue = true;
+                                Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea is -9999 (unknown), using default value");
                             } else if(parsedValue > 0) {
                                 totalFloorSize = parsedValue;
                                 Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea found: {parsedValue}");
@@ -389,18 +434,23 @@ public class EnvManager : MonoBehaviour {
 
         // -9999が検出された場合の処理
         if(isErrorValue) {
-            // デフォルト値: 100㎡相当の建物を想定
+            // デフォルト値: 250㎡相当の建物を想定
             int defaultCapacity = Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
+            Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - Using default capacity: {defaultCapacity} people (totalFloorArea was -9999)");
             return defaultCapacity;
         }
         
         // nullの場合（データが取得できなかった場合）の処理
         if(totalFloorSize == null) {
-            Debug.LogError("Failed to get the total floor size of the shelter building.");
-            return 0;
+            Debug.LogWarning($"[EnvManager] GetAccSize: {shelterBldg.name} - totalFloorArea not found in attributes. Using default value (250㎡相当).");
+            // デフォルト値を返す（エラーで止めずに動作を継続）
+            int defaultCapacity = Mathf.Max(1, (int)((250 * 0.8 / 1.65) * AccSimulateScale));
+            return defaultCapacity;
         } else {
             // 収容可能人数＝総面積×0.8÷1.65㎡とする
-            return (int)((totalFloorSize * 0.8 / 1.65) * AccSimulateScale);
+            int capacity = (int)((totalFloorSize * 0.8 / 1.65) * AccSimulateScale);
+            Debug.Log($"[EnvManager] GetAccSize: {shelterBldg.name} - Calculated capacity: {capacity} people (totalFloorArea: {totalFloorSize}㎡)");
+            return capacity;
         }
     }
 
