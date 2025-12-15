@@ -113,18 +113,47 @@ public class EnvManager : MonoBehaviour {
 
         // 避難所登録
         Shelters = new List<GameObject>(GameObject.FindGameObjectsWithTag("Shelter"));
+        
         // 固定値の避難所を追加
         GameObject[] constSheleters = GameObject.FindGameObjectsWithTag("ConstShelter");
         foreach (var shelter in constSheleters) {
             Shelters.Add(shelter);
         }
+        
         // コンポーネントの初期化
         foreach (var shelter in Shelters) {
-            if(shelter.GetComponent<Shelter>() == null) {
-                Shelter tower = shelter.AddComponent<Shelter>();
+            Shelter tower = shelter.GetComponent<Shelter>();
+            
+            if(tower == null) {
+                // 新規にShelterコンポーネントを追加
+                tower = shelter.AddComponent<Shelter>();
                 tower.uuid = System.Guid.NewGuid().ToString();
-                tower.MaxCapacity = GetAccSize(shelter);
                 tower.NowAccCount = 0;
+                
+                // 自動計算を有効化してスケール係数を設定
+                tower.autoCalculateCapacity = true;
+                tower.capacityScale = AccSimulateScale;
+                
+                // displayNameが空の場合はGameObject名をデフォルトとして設定
+                if (string.IsNullOrEmpty(tower.displayName))
+                {
+                    tower.displayName = shelter.name;
+                }
+            }
+            else
+            {
+                // 既存のShelterコンポーネントがある場合
+                // 自動計算が有効な場合のみスケール係数を更新
+                if (tower.autoCalculateCapacity)
+                {
+                    tower.capacityScale = AccSimulateScale;
+                }
+                
+                // displayNameが空の場合はGameObject名をデフォルトとして設定
+                if (string.IsNullOrEmpty(tower.displayName))
+                {
+                    tower.displayName = shelter.name;
+                }
             }
         }
 

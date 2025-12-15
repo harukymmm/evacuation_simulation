@@ -22,7 +22,7 @@ public class SnapToGround : MonoBehaviour
         // 調整パラメータ
         const float rayStartHeight = 50.0f;   // 頂点からどれだけ上空から撃つか
         const float rayDistance    = 200.0f;  // レイの最大距離（高低差が大きい場合に備える）
-        const float roadClearance  = 3.0f;   // 道路を浮かせる量
+        const float roadClearance  = 1.0f;   // 道路を浮かせる量
         const float normalOffset   = 0.02f;   // 法線方向に押し出す量（傾斜面でのめり込み防止）
 
         foreach (var obj in selectedObjects)

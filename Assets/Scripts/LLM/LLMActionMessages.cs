@@ -24,9 +24,13 @@ namespace LLM
     public class ShelterCandidatePayload
     {
         public string id;
+        public string display_name;      // 表示名（例: 豊間小学校）
+        public string description;       // 説明（例: 海抜20m、耐震構造）
         public Vector3Payload position;
         public int current_capacity;
         public int max_capacity;
+        public float distance_meters;    // NavMeshでの経路距離（メートル）
+        public float walking_time_minutes; // 徒歩所要時間（分）
     }
 
     [Serializable]
@@ -93,6 +97,28 @@ namespace LLM
     }
 
     [Serializable]
+    public class BuildingContextPayload
+    {
+        public string name;
+        public Vector3Payload position;
+        public float distance;
+        public string usage;
+        public string major_usage;
+        public float height;
+        public int floors;
+        public string structure_type;
+        public string land_use_type;
+    }
+
+    [Serializable]
+    public class EnvironmentalContextPayload
+    {
+        public BuildingContextPayload[] nearby_buildings;
+        public float search_radius;
+        public int total_buildings_in_area;
+    }
+
+    [Serializable]
     public class LLMEvacDecisionRequest
     {
         public string request_id;
@@ -102,6 +128,7 @@ namespace LLM
         public SelfStatePayload self_state;
         public TemporalContextPayload temporal_context;
         public PersonaPayload persona; // ペルソナ情報
+        public EnvironmentalContextPayload environmental_context; // 環境コンテキスト
     }
 
     [Serializable]

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LLM;
@@ -105,7 +106,7 @@ public class Evacuee : MonoBehaviour {
         _env = GetComponentInParent<EnvManager>();
         if (UseLLMDecision && DecisionClient == null)
         {
-            DecisionClient = FindObjectOfType<LLMDecisionClient>();
+            DecisionClient = FindFirstObjectByType<LLMDecisionClient>();
         }
         _env.Agent.OnDidActioned += () => {
             // エージェントが建物を選択したことを検知して最短距離の避難所を探す
@@ -293,19 +294,42 @@ public class Evacuee : MonoBehaviour {
     {
         if (response == null || string.IsNullOrEmpty(response.selected_shelter_id))
         {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: LLMレスポンスが無効です（null または selected_shelter_id が空）");
             return false;
         }
 
         GameObject selectedShelter = null;
-        foreach (var shelter in _env.Shelters)
+        
+        // まずdisplayNameでマッチング
+        foreach (var shelterObj in _env.Shelters)
         {
-            if (shelter != null && shelter.name == response.selected_shelter_id)
+            if (shelterObj == null) continue;
+            
+            var shelterComp = shelterObj.GetComponent<Shelter>();
+            if (shelterComp != null && !string.IsNullOrEmpty(shelterComp.displayName))
             {
-                selectedShelter = shelter;
-                break;
+                if (shelterComp.displayName == response.selected_shelter_id)
+                {
+                    selectedShelter = shelterObj;
+                    break;
+                }
             }
         }
-
+        
+        // displayNameで見つからなければGameObject.nameでフォールバック
+        if (selectedShelter == null)
+        {
+            foreach (var shelterObj in _env.Shelters)
+            {
+                if (shelterObj != null && shelterObj.name == response.selected_shelter_id)
+                {
+                    selectedShelter = shelterObj;
+                    break;
+                }
+            }
+        }
+        
+        // それでも見つからなければGameObject.Findで検索
         if (selectedShelter == null)
         {
             selectedShelter = GameObject.Find(response.selected_shelter_id);
@@ -313,6 +337,19 @@ public class Evacuee : MonoBehaviour {
 
         if (selectedShelter == null)
         {
+            // 利用可能な避難所の名前リストを作成
+            var availableShelters = _env.Shelters
+                .Where(s => s != null)
+                .Select(s => {
+                    var sc = s.GetComponent<Shelter>();
+                    return sc != null && !string.IsNullOrEmpty(sc.displayName) 
+                        ? sc.displayName 
+                        : s.name;
+                })
+                .ToList();
+            
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: LLMが選択した避難所が見つかりません: '{response.selected_shelter_id}' " +
+                           $"(利用可能な避難所: {string.Join(", ", availableShelters)})");
             return false;
         }
 
@@ -320,7 +357,28 @@ public class Evacuee : MonoBehaviour {
         Target = point;
         NavAgent.SetDestination(Target.transform.position);
         ApplySpeedFromLLM(response.desired_speed);
-        Debug.Log($"[Evacuee] {gameObject.name}: LLM selected {selectedShelter.name} "
+        
+        // 表示名を取得（bldg_で始まる場合は簡略表示）
+        var selectedShelterComp = selectedShelter.GetComponent<Shelter>();
+        string displayName = selectedShelter.name;
+        
+        if (selectedShelterComp != null && !string.IsNullOrEmpty(selectedShelterComp.displayName))
+        {
+            // displayNameが「bldg_」で始まる場合は簡略表示、それ以外はそのまま
+            if (selectedShelterComp.displayName.StartsWith("bldg_"))
+            {
+                // bldg_の後の最初の8文字を表示（例: bldg_37ad7316）
+                displayName = selectedShelterComp.displayName.Length > 13 
+                    ? selectedShelterComp.displayName.Substring(0, 13) + "..." 
+                    : selectedShelterComp.displayName;
+            }
+            else
+            {
+                displayName = selectedShelterComp.displayName;
+            }
+        }
+        
+        Debug.Log($"[Evacuee] {gameObject.name}: LLM selected {displayName} "
               + $"(pos: {Target.transform.position}), "
               + $"reason='{response.reasoning}', confidence={response.confidence:F2}, "
               + $"speed={NavAgent.speed:F2}");
@@ -346,19 +404,43 @@ public class Evacuee : MonoBehaviour {
             int currentCapacity = shelter != null ? shelter.currentCapacity : 0;
             int maxCapacity = shelter != null ? shelter.MaxCapacity : 0;
             
-            // デバッグログ：エピソード開始直後（elapsed_timeが0に近い）の場合にログ出力
-            if (_env != null && _env.CurrentTimeSec < 0.1f && shelter != null)
+            // 避難所の表示名と説明を取得
+            string displayName = shelter != null && !string.IsNullOrEmpty(shelter.displayName) 
+                ? shelter.displayName 
+                : shelterObj.name;
+            string description = shelter != null ? shelter.description : "";
+            
+            // NavMeshでの経路距離と徒歩時間を計算
+            float distanceMeters = 0f;
+            float walkingTimeMinutes = 0f;
+            
+            // パフォーマンス最適化: ShelterのNavMesh位置キャッシュを使用
+            Vector3 targetPos = pointPosition;
+            try
             {
-                Debug.Log($"[Evacuee] {gameObject.name}: BuildEvacDecisionRequest - Shelter: {shelterObj.name}, " +
-                         $"MaxCapacity: {maxCapacity}, NowAccCount: {shelter.NowAccCount}, CurrentCapacity: {currentCapacity}");
+                Vector3? cachedNavMeshPos = shelter != null ? shelter.GetNavMeshPosition() : null;
+                if (cachedNavMeshPos.HasValue)
+                {
+                    targetPos = cachedNavMeshPos.Value;
+                }
             }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[Evacuee] {gameObject.name}: GetNavMeshPosition failed for {shelterObj.name}, using default position - {ex.Message}");
+            }
+            
+            CalculateNavMeshDistance(transform.position, targetPos, out distanceMeters, out walkingTimeMinutes);
             
             shelterPayloads.Add(new ShelterCandidatePayload
             {
                 id = shelterObj.name,
+                display_name = displayName,
+                description = description,
                 position = new Vector3Payload(pointPosition),
                 current_capacity = currentCapacity,
-                max_capacity = maxCapacity
+                max_capacity = maxCapacity,
+                distance_meters = distanceMeters,
+                walking_time_minutes = walkingTimeMinutes
             });
         }
 
@@ -400,6 +482,18 @@ public class Evacuee : MonoBehaviour {
             Debug.LogWarning($"[Evacuee] {gameObject.name}: ペルソナ情報が見つかりません (_uniqueId: {_uniqueId})");
         }
 
+        // 環境コンテキストを取得
+        EnvironmentalContextPayload envPayload = BuildEnvironmentalContextPayload();
+        
+        if (envPayload != null)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 環境コンテキストをLLMリクエストに含めます（建物{envPayload.nearby_buildings.Length}件）");
+        }
+        else
+        {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 環境コンテキストはnullです（LLMリクエストに含まれません）");
+        }
+        
         return new LLMEvacDecisionRequest
         {
             request_id = $"{_env.currentEpisodeId}-{gameObject.name}-{Guid.NewGuid()}",
@@ -412,7 +506,51 @@ public class Evacuee : MonoBehaviour {
             shelter_candidates = shelterPayloads.ToArray(),
             self_state = BuildSelfStatePayload(),
             temporal_context = BuildTemporalContextPayload(),
-            persona = personaPayload
+            persona = personaPayload,
+            environmental_context = envPayload
+        };
+    }
+    
+    private EnvironmentalContextPayload BuildEnvironmentalContextPayload()
+    {
+        // EnvironmentalContextProviderを検索
+        var envContext = FindFirstObjectByType<EnvironmentalContextProvider>();
+        if (envContext == null)
+        {
+            // プロバイダーが見つからない場合はnullを返す
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: EnvironmentalContextProviderが見つかりません。環境情報は含まれません。");
+            return null;
+        }
+        
+        
+        // 周辺建物を検索
+        float searchRadius = 30f;
+        var nearbyBuildings = envContext.GetNearbyBuildings(transform.position, searchRadius);
+        
+        // LLMのコンテキスト長を考慮して、最大10件に制限
+        var limitedBuildings = nearbyBuildings.Take(10).ToList();
+        
+        // ペイロードに変換
+        var buildingPayloads = limitedBuildings.Select(b => new BuildingContextPayload
+        {
+            name = b.name,
+            position = new Vector3Payload(b.position),
+            distance = b.distance,
+            usage = b.usage,
+            major_usage = b.majorUsage ?? "",
+            height = b.height,
+            floors = b.floors,
+            structure_type = b.structureType ?? "",
+            land_use_type = b.landUseType ?? ""
+        }).ToArray();
+        
+        Debug.Log($"[Evacuee] {gameObject.name}: 環境情報ペイロードを作成しました（建物{buildingPayloads.Length}件、範囲内合計{nearbyBuildings.Count}件）");
+        
+        return new EnvironmentalContextPayload
+        {
+            nearby_buildings = buildingPayloads,
+            search_radius = searchRadius,
+            total_buildings_in_area = nearbyBuildings.Count
         };
     }
 
@@ -507,6 +645,62 @@ public class Evacuee : MonoBehaviour {
         else
         {
             ResetMovementSpeed();
+        }
+    }
+
+    private static bool _navMeshWarningShown = false; // 警告を一度だけ表示するためのフラグ
+    
+    /// <summary>
+    /// NavMeshを使用して2点間の経路距離と徒歩所要時間を計算
+    /// 注: endは既にNavMesh上の点に補正されていることを想定（Shelter.GetNavMeshPosition()で取得）
+    /// </summary>
+    /// <param name="start">開始位置</param>
+    /// <param name="end">終了位置（NavMesh上の点）</param>
+    /// <param name="distanceMeters">経路距離（メートル）</param>
+    /// <param name="walkingTimeMinutes">徒歩所要時間（分）</param>
+    private void CalculateNavMeshDistance(Vector3 start, Vector3 end, out float distanceMeters, out float walkingTimeMinutes)
+    {
+        // Googleマップのデフォルト徒歩速度: 4.8km/h = 80m/分
+        const float WALKING_SPEED_M_PER_MIN = 80f;
+        
+        // 開始位置がNavMesh上にあることを確認（避難者は基本的にNavMesh上にいる）
+        Vector3 navMeshStart = start;
+        NavMeshHit startHit;
+        if (NavMesh.SamplePosition(start, out startHit, 5f, NavMesh.AllAreas))
+        {
+            navMeshStart = startHit.position;
+        }
+        
+        NavMeshPath path = new NavMeshPath();
+        
+        // 経路を計算（endは既にNavMesh上の点）
+        if (NavMesh.CalculatePath(navMeshStart, end, NavMesh.AllAreas, path))
+        {
+            // 経路が完全か部分的に成功した場合
+            if (path.status == NavMeshPathStatus.PathComplete || path.status == NavMeshPathStatus.PathPartial)
+            {
+                // 経路の総距離を計算
+                distanceMeters = 0f;
+                for (int i = 0; i < path.corners.Length - 1; i++)
+                {
+                    distanceMeters += Vector3.Distance(path.corners[i], path.corners[i + 1]);
+                }
+                
+                // 徒歩所要時間を計算（分）
+                walkingTimeMinutes = distanceMeters / WALKING_SPEED_M_PER_MIN;
+                return; // 成功したので終了
+            }
+        }
+        
+        // フォールバック: 経路計算が失敗した場合は直線距離を使用
+        distanceMeters = Vector3.Distance(start, end);
+        walkingTimeMinutes = distanceMeters / WALKING_SPEED_M_PER_MIN;
+        
+        // 警告は初回のみ表示
+        if (!_navMeshWarningShown)
+        {
+            Debug.LogWarning($"[Evacuee] NavMesh経路計算が失敗しました。直線距離を使用します（以降この警告は表示されません）");
+            _navMeshWarningShown = true;
         }
     }
 
