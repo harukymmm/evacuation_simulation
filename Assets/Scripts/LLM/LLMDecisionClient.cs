@@ -101,6 +101,15 @@ namespace LLM
             return SendRequestAsync<LLMEvacDecisionResponse>(payload, request.request_id, cancellationToken);
         }
 
+        /// <summary>
+        /// 車両用のLLM意思決定を要求
+        /// </summary>
+        public Task<LLMVehicleDecisionResponse> RequestVehicleDecisionAsync(LLMVehicleDecisionRequest request, CancellationToken cancellationToken = default)
+        {
+            var payload = JsonUtility.ToJson(request);
+            return SendRequestAsync<LLMVehicleDecisionResponse>(payload, request.request_id, cancellationToken);
+        }
+
         private async Task<T> SendRequestAsync<T>(string payloadJson, string requestId, CancellationToken cancellationToken)
         {
             await EnsureConnectionAsync();
