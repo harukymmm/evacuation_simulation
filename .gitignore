@@ -186,6 +186,8 @@ mono_crash.*
 *.csproj.user
 *.sln.DotSettings
 
+Paper.md
+
 # ML-Agents additional files
 results/*/run_logs/
 results/*/events.out.tfevents.*

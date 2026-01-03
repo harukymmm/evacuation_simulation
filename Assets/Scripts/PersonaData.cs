@@ -19,6 +19,7 @@ public class PersonaData
     public string mental_state;
     public string priority;
     public string system_prompt_context;
+    public bool has_smartphone = true; // デフォルトはtrue（スマホを持っている）
 
     public bool CanUseStairs => stairs_usage == "allowed";
 }
@@ -80,6 +81,16 @@ public static class PersonaManager
                     priority = fields[7],
                     system_prompt_context = fields[8]
                 };
+                
+                // has_smartphoneカラムが存在する場合は読み込む（オプショナル）
+                if (fields.Length >= 10)
+                {
+                    if (bool.TryParse(fields[9], out bool hasPhone))
+                    {
+                        persona.has_smartphone = hasPhone;
+                    }
+                }
+                // カラムがなければデフォルト値（true）を使用
 
                 _personas[persona.agent_id] = persona;
             }

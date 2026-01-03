@@ -3,6 +3,19 @@ using UnityEngine;
 
 namespace LLM
 {
+    /// <summary>
+    /// 避難者の行動タイプ（LLMレスポンス上のaction_type）
+    /// </summary>
+    public enum ActionType
+    {
+        EVACUATE,       // 避難所に向かう
+        STAY,           // その場で待機
+        SEARCH_FAMILY,  // 家族を探す
+        CONTACT,        // 家族に連絡を取る
+        FOLLOW,         // 周囲の人について行く
+        TALK            // 周辺の避難者と会話する
+    }
+
     [Serializable]
     public class Vector3Payload
     {
@@ -118,6 +131,244 @@ namespace LLM
         public int total_buildings_in_area;
     }
 
+    /// <summary>
+    /// 家族1人分の情報（LLMに渡すための簡略版）
+    /// </summary>
+    [Serializable]
+    public class FamilyMemberPayload
+    {
+        public string name;              // 名前
+        public string relation;          // 続柄（妻、夫、息子、娘など）
+        public string likely_location;   // 想定される場所（"自宅"、"小学校"など）
+        public Vector3Payload search_position; // 探索する座標
+        public float distance_meters;    // 所有者からの距離
+        public bool has_phone;           // 連絡手段の有無
+        public bool exists_in_scene;     // シーン内に実在するか
+    }
+
+    /// <summary>
+    /// 周辺の避難者情報（FOLLOW/TALK行動用）
+    /// </summary>
+    [Serializable]
+    public class NearbyEvacueePayload
+    {
+        public string id;                // 避難者のID（GameObject名またはuniqueId）
+        public Vector3Payload position;  // 現在位置
+        public float distance_meters;    // 距離（メートル）
+        public string current_action;    // 現在の行動（"EVACUATE", "STAY", "SEARCH_FAMILY", "CONTACT", "FOLLOW", "TALK"）
+        public string target_shelter_id; // 目標避難所ID（EVACUATEの場合）
+        public string name;              // 避難者の名前（ペルソナ名）
+        public string role;              // 役割
+        public string age_group;         // 年齢層
+    }
+
+    /// <summary>
+    /// 会話履歴エントリ（TALK行動用）
+    /// </summary>
+    [Serializable]
+    public class ConversationLogEntry
+    {
+        public float timestamp;           // 会話時刻
+        public string partner_id;         // 会話相手のID
+        public string partner_name;       // 会話相手の名前
+        public string topic;              // 話題
+        public string my_message;         // 自分のメッセージ
+        public string partner_response;   // 相手の返答
+        public bool i_initiated;          // 自分から話しかけたか
+    }
+
+    /// <summary>
+    /// 会話履歴ペイロード（LLMリクエスト用）
+    /// </summary>
+    [Serializable]
+    public class ConversationHistoryPayload
+    {
+        public ConversationLogEntry[] recent_conversations;
+        public int total_conversation_count;
+    }
+
+    /// <summary>
+    /// 会話リクエスト（話しかける側 → 話しかけられる側）
+    /// </summary>
+    [Serializable]
+    public class ConversationRequest
+    {
+        public string initiator_id;       // 話しかけた人のID
+        public string initiator_name;     // 話しかけた人の名前
+        public string topic;              // 話題
+        public string message;            // メッセージ内容
+        public string initiator_action;   // 話しかけた人の現在行動
+        public string initiator_target;   // 話しかけた人の目標避難所
+    }
+
+    /// <summary>
+    /// 会話応答（話しかけられる側 → 話しかける側）
+    /// </summary>
+    [Serializable]
+    public class ConversationResponse
+    {
+        public string responder_id;       // 返答者のID
+        public string responder_name;     // 返答者の名前
+        public string response_message;   // 返答内容
+        public bool willing_to_share;     // 情報共有の意思
+    }
+
+    /// <summary>
+    /// LLMへの会話応答生成リクエスト
+    /// </summary>
+    [Serializable]
+    public class LLMConversationResponseRequest
+    {
+        public string request_id;
+        public string request_type;       // "conversation_response"
+        public PersonaPayload persona;
+        public EnvironmentPayload environment;
+        public ConversationRequest incoming_conversation;
+        public string current_action;
+        public string current_target;
+    }
+
+    /// <summary>
+    /// 環境情報ペイロード（会話応答用の簡略版）
+    /// </summary>
+    [Serializable]
+    public class EnvironmentPayload
+    {
+        public string scenario_id;
+        public bool has_heard_broadcast;
+        public string last_broadcast_message;
+        public bool has_received_j_alert;
+        public string last_j_alert_message;
+    }
+
+    /// <summary>
+    /// LLMからの会話応答
+    /// </summary>
+    [Serializable]
+    public class LLMConversationResponseResponse
+    {
+        public string request_id;
+        public string response_message;   // 生成された返答
+        public bool willing_to_share;     // 情報共有の意思
+        public string reasoning;          // 返答理由
+    }
+
+    /// <summary>
+    /// 家族への連絡リクエスト（連絡する側 → 家族）
+    /// </summary>
+    [Serializable]
+    public class FamilyContactRequest
+    {
+        public string sender_id;          // 連絡者のID
+        public string sender_name;        // 連絡者の名前
+        public string sender_relation;    // 連絡者の続柄（夫、妻など）
+        public string message;            // メッセージ内容
+        public string sender_action;      // 連絡者の現在行動
+        public string sender_target;      // 連絡者の目標避難所
+        public string sender_location;    // 連絡者の現在位置の説明
+    }
+
+    /// <summary>
+    /// 家族からの返信（家族 → 連絡する側）
+    /// </summary>
+    [Serializable]
+    public class FamilyContactResponse
+    {
+        public string responder_id;       // 返答者のID
+        public string responder_name;     // 返答者の名前
+        public string response_message;   // 返答内容
+        public string current_status;     // 現在の状況（無事、怪我など）
+        public string current_location;   // 現在位置の説明
+        public string planned_action;     // 今後の行動予定
+    }
+
+    /// <summary>
+    /// LLMへの家族連絡応答生成リクエスト
+    /// </summary>
+    [Serializable]
+    public class LLMFamilyContactResponseRequest
+    {
+        public string request_id;
+        public string request_type;       // "family_contact_response"
+        public PersonaPayload persona;    // 応答する家族のペルソナ
+        public EnvironmentPayload environment;
+        public FamilyContactRequest incoming_contact;
+        public string current_action;
+        public string current_target;
+        public string family_relationship; // 家族関係の説明
+    }
+
+    /// <summary>
+    /// LLMからの家族連絡応答
+    /// </summary>
+    [Serializable]
+    public class LLMFamilyContactResponseResponse
+    {
+        public string request_id;
+        public string response_message;   // 生成された返答
+        public string current_status;     // 現在の状況
+        public string current_location;   // 現在位置
+        public string planned_action;     // 今後の行動
+        public string reasoning;          // 返答理由
+    }
+
+    /// <summary>
+    /// 知覚状態ペイロード（聴覚・放送情報）
+    /// </summary>
+    [Serializable]
+    public class PerceptionStatePayload
+    {
+        // 聴覚情報
+        public bool has_heard_rumble;          // 地鳴りを聞いたか
+        public float rumble_intensity;         // 地鳴りの強度（0-1）
+        public bool has_heard_siren;           // サイレンを聞いたか
+        public bool has_heard_fire_truck;      // 消防団の呼びかけを聞いたか
+        public string last_fire_truck_message; // 最後に聞いた消防団のメッセージ
+
+        // 放送・Jアラート情報
+        public bool has_heard_broadcast;       // 行政無線の放送を聞いたか
+        public string last_broadcast_message;  // 最後に聞いた放送内容
+        public bool has_received_j_alert;      // Jアラートを受信したか
+        public string last_j_alert_message;    // 最後に受信したJアラート内容
+    }
+
+    /// <summary>
+    /// 環境状態ペイロード（災害フェーズ・停電等）
+    /// </summary>
+    [Serializable]
+    public class EnvironmentStatePayload
+    {
+        public string disaster_phase;          // 災害フェーズ（enum名）
+        public string disaster_phase_display;  // 災害フェーズの日本語表示名
+        public int seismic_intensity;          // 現在の震度
+        public float tsunami_height;           // 津波予想高さ（m）
+        public bool is_power_on;               // 停電状態
+        public bool is_radio_working;          // 防災無線動作状態
+        public float rumble_intensity;         // 現在の地鳴り強度（0-1）
+        public bool siren_active;              // サイレン鳴動中
+    }
+
+    /// <summary>
+    /// 長期目標（Long-term Goal）- 避難所到達、家族合流、安全確保などの長期目標
+    /// </summary>
+    [Serializable]
+    public class LongTermGoalPayload
+    {
+        public string primary_goal;        // 主要目標（例: "家族全員で○○避難所に到達する"）
+        public string[] secondary_goals;    // 副次目標（例: ["途中で怪我をしない", "できるだけ早く到達する"]）
+        public string[] constraints;       // 制約条件（例: ["高齢の母を連れているため、階段の多い経路は避ける"]）
+    }
+
+    /// <summary>
+    /// 中期計画（Mid-term Plan）- 長期目標を達成するための具体的な手順
+    /// </summary>
+    [Serializable]
+    public class MidTermPlanPayload
+    {
+        public string[] steps;             // 手順のリスト（例: ["まず自宅から○○小学校に移動し、子供を迎える", "次に○○交差点を経由して△△避難所に向かう"]）
+        public string contingency;         // 緊急時の代替案（例: "もし津波が早く来そうなら、子供を迎えずに最寄りの高台に避難する"）
+    }
+
     [Serializable]
     public class LLMEvacDecisionRequest
     {
@@ -127,8 +378,25 @@ namespace LLM
         public ShelterCandidatePayload[] shelter_candidates;
         public SelfStatePayload self_state;
         public TemporalContextPayload temporal_context;
-        public PersonaPayload persona; // ペルソナ情報
+        public PersonaPayload persona;                 // ペルソナ情報
         public EnvironmentalContextPayload environmental_context; // 環境コンテキスト
+        public FamilyMemberPayload[] family_members;   // 家族情報
+        public NearbyEvacueePayload[] nearby_evacuees; // 周辺の避難者情報（FOLLOW行動用、最大5人）
+        public int nearby_evacuees_count;              // 周辺避難者の総数（検出範囲内の全人数）
+        public float nearby_evacuees_density;          // 周辺避難者の混雑度（人数/100m²）
+        public string last_contact_message;            // 直近の家族からの返信内容
+        public string scenario_id;                     // 災害シナリオID（例: "shindo_2"）
+        public bool has_heard_broadcast;               // 行政無線の放送を聞いたか
+        public string last_broadcast_message;          // 最後に聞いた放送内容
+        public bool has_received_j_alert;              // Jアラートを受信したか
+        public string last_j_alert_message;           // 最後に受信したJアラート内容
+        public LongTermGoalPayload current_long_term_goal;  // 現在の長期目標（更新判断用）
+        public MidTermPlanPayload current_mid_term_plan;   // 現在の中期計画（更新判断用）
+        public ConversationHistoryPayload conversation_history;  // 会話履歴（TALK行動用）
+
+        // 災害シナリオシステム用の拡張フィールド
+        public PerceptionStatePayload perception_state;    // 知覚状態（聴覚情報等）
+        public EnvironmentStatePayload environment_state;  // 環境状態（災害フェーズ等）
     }
 
     [Serializable]
@@ -136,7 +404,31 @@ namespace LLM
     {
         public string request_id;
         public string evacuee_id;
-        public string selected_shelter_id;
+        public string action_type;           // 行動タイプ: "EVACUATE", "STAY", "SEARCH_FAMILY", "CONTACT", "FOLLOW", "TALK"
+        public string selected_shelter_id;   // action_type="EVACUATE" の場合に使用
+
+        // SEARCH_FAMILY 用
+        public string target_family_member;  // 探索対象の家族名または続柄
+        public Vector3Payload target_location; // 目標位置（任意）
+
+        // CONTACT 用
+        public string contact_target;        // 連絡先の家族名または続柄
+        public string contact_message;       // 家族からの返信内容（あるいはその想定）
+
+        // FOLLOW 用
+        public string target_evacuee_id;     // 追従対象の避難者ID
+
+        // TALK 用
+        public string talk_target_id;        // 話しかける相手のID
+        public string talk_topic;            // 会話の話題（ShelterInfo, CurrentSituation, ActionAdvice, SafetyConfirm, General）
+        public string talk_message;          // 話しかける内容
+
+        // 階層的意思決定用
+        public LongTermGoalPayload long_term_goal;       // 長期目標（オプショナル、更新時のみ）
+        public MidTermPlanPayload mid_term_plan;         // 中期計画（オプショナル、更新時のみ）
+        public bool should_update_goal;                  // 長期目標を更新すべきか（LLMが判断）
+        public bool should_update_plan;                  // 中期計画を更新すべきか（LLMが判断）
+
         public string reasoning;
         public float confidence;
         public float desired_speed;
@@ -148,4 +440,3 @@ namespace LLM
         public string request_id;
     }
 }
-

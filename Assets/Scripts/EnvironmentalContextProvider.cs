@@ -270,6 +270,11 @@ public class EnvironmentalContextProvider : MonoBehaviour
                 else if (attr.Key == "bldg:storeysaboveground")
                 {
                     int.TryParse(attr.Value?.ToString(), out context.floors);
+                    // 9999は「不明」を意味するため、1階建てとして扱う
+                    if (context.floors == 9999)
+                    {
+                        context.floors = 1;
+                    }
                 }
                 else if (attr.Key == "uro:buildingDetailAttribute")
                 {
@@ -356,6 +361,23 @@ public class EnvironmentalContextProvider : MonoBehaviour
         {
             Debug.LogError($"[EnvironmentalContext] JSON出力に失敗: {ex.Message}");
         }
+    }
+    
+    /// <summary>
+    /// 全建物リストを取得（スポーン位置管理用）
+    /// </summary>
+    public List<BuildingContext> GetAllBuildings()
+    {
+        if (spatialGrid == null || spatialGrid.Count == 0)
+            return new List<BuildingContext>();
+        
+        var allBuildings = new List<BuildingContext>();
+        foreach (var cell in spatialGrid.Values)
+        {
+            allBuildings.AddRange(cell);
+        }
+        
+        return allBuildings;
     }
     
     /// <summary>

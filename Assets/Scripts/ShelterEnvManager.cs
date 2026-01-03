@@ -23,9 +23,20 @@ public class EnvManager : MonoBehaviour {
         Custom, // 自身でスポーン位置・範囲を設定
     }
 
+    /// <summary>
+    /// 災害・状況シナリオの種類（震度ベース）
+    /// （LLMプロンプト内の「状況」テキストを切り替えるために使用）
+    /// </summary>
+    public enum DisasterScenario {
+        Shindo2,        // 震度2：少し揺れたかなという程度
+        Shindo6,        // 震度6：立っていられないほどの強い揺れ
+        Shindo7Tsunami  // 震度7クラス + 津波警報
+    }
+
     [Header("Environment Settings")]
     public SimulateMode Mode = SimulateMode.Train; 
     public SpawnMode EvacSpawnMode = SpawnMode.Random; 
+    public DisasterScenario Scenario = DisasterScenario.Shindo2; // 災害シナリオ
     public float TimeScale = 1.0f; // 推論時のシミュレーションの時間スケール
     public bool IsRecordData = false;
     /// <summary>
@@ -83,6 +94,24 @@ public class EnvManager : MonoBehaviour {
     public string recordID; // データ記録用に実行時間を元にしたIDを生成
 
     public float CurrentTimeSec => currentTimeSec;
+
+    /// <summary>
+    /// 現在選択されているシナリオをLLM側に渡すためのID文字列に変換
+    /// </summary>
+    public string GetScenarioId()
+    {
+        switch (Scenario)
+        {
+            case DisasterScenario.Shindo2:
+                return "shindo_2";
+            case DisasterScenario.Shindo6:
+                return "shindo_6";
+            case DisasterScenario.Shindo7Tsunami:
+                return "shindo_7_tsunami";
+            default:
+                return "shindo_2";
+        }
+    }
     
     void Start() {
         if(Mode == SimulateMode.Inference) {
@@ -97,6 +126,16 @@ public class EnvManager : MonoBehaviour {
         
         // ペルソナデータを読み込む
         PersonaManager.LoadPersonas();
+        
+        // 家族データを読み込む
+        FamilyManager.LoadFamilies();
+        
+        // EnvironmentalContextProviderとSpawnLocationManagerを自動生成
+        EnsureEnvironmentalContextProvider();
+        EnsureSpawnLocationManager();
+        EnsureAlertManager();
+        EnsureSimulationMetrics();
+        EnsureExperimentConfig();
 
         NavMesh.pathfindingIterationsPerFrame = 1000000; // パス検索の上限値を設定
 
@@ -161,6 +200,79 @@ public class EnvManager : MonoBehaviour {
         OnEndEpisode += OnEndEpisodeHandler;
     }
 
+    /// <summary>
+    /// EnvironmentalContextProviderが存在しない場合は自動的に作成
+    /// </summary>
+    private void EnsureEnvironmentalContextProvider()
+    {
+        var existing = FindFirstObjectByType<EnvironmentalContextProvider>();
+        if (existing == null)
+        {
+            GameObject providerObj = new GameObject("EnvironmentalContextProvider");
+            providerObj.AddComponent<EnvironmentalContextProvider>();
+            Debug.Log("[EnvManager] EnvironmentalContextProviderを自動生成しました");
+        }
+    }
+    
+    /// <summary>
+    /// SpawnLocationManagerが存在しない場合は自動的に作成
+    /// </summary>
+    private void EnsureSpawnLocationManager()
+    {
+        var existing = FindFirstObjectByType<SpawnLocationManager>();
+        if (existing == null)
+        {
+            GameObject managerObj = new GameObject("SpawnLocationManager");
+            managerObj.AddComponent<SpawnLocationManager>();
+            Debug.Log("[EnvManager] SpawnLocationManagerを自動生成しました");
+        }
+    }
+    
+    /// <summary>
+    /// AlertManagerが存在しない場合は自動的に作成
+    /// </summary>
+    private void EnsureAlertManager()
+    {
+        var existing = FindFirstObjectByType<AlertManager>();
+        if (existing == null)
+        {
+            GameObject managerObj = new GameObject("AlertManager");
+            managerObj.transform.SetParent(transform); // EnvManagerの子として配置
+            managerObj.AddComponent<AlertManager>();
+            Debug.Log("[EnvManager] AlertManagerを自動生成しました");
+        }
+    }
+
+    /// <summary>
+    /// SimulationMetricsが存在しない場合は自動的に作成
+    /// </summary>
+    private void EnsureSimulationMetrics()
+    {
+        var existing = FindFirstObjectByType<SimulationMetrics>();
+        if (existing == null)
+        {
+            GameObject metricsObj = new GameObject("SimulationMetrics");
+            metricsObj.transform.SetParent(transform);
+            metricsObj.AddComponent<SimulationMetrics>();
+            Debug.Log("[EnvManager] SimulationMetricsを自動生成しました");
+        }
+    }
+
+    /// <summary>
+    /// ExperimentConfigが存在しない場合は自動的に作成
+    /// </summary>
+    private void EnsureExperimentConfig()
+    {
+        var existing = FindFirstObjectByType<ExperimentConfig>();
+        if (existing == null)
+        {
+            GameObject configObj = new GameObject("ExperimentConfig");
+            configObj.transform.SetParent(transform);
+            configObj.AddComponent<ExperimentConfig>();
+            Debug.Log("[EnvManager] ExperimentConfigを自動生成しました");
+        }
+    }
+
     void OnDrawGizmos() {
         if(EvacSpawnMode == SpawnMode.Random) {
             Gizmos.color = Color.red;
@@ -213,6 +325,27 @@ public class EnvManager : MonoBehaviour {
         EnableEnv = false;
         Dispose();
         Create();
+        
+        // AlertManagerをリセット
+        var alertManager = FindFirstObjectByType<AlertManager>();
+        if (alertManager != null)
+        {
+            alertManager.OnEpisodeStart();
+        }
+        
+        // 全避難者の放送・Jアラート状態をリセット
+        foreach (var evacueeObj in Evacuees)
+        {
+            if (evacueeObj != null)
+            {
+                var evacuee = evacueeObj.GetComponent<Evacuee>();
+                if (evacuee != null)
+                {
+                    evacuee.ResetAlertState();
+                }
+            }
+        }
+        
         OnStartEpisode?.Invoke();
         EnableEnv = true;
     }
@@ -307,7 +440,36 @@ public class EnvManager : MonoBehaviour {
     /// </summary>
     /// <param name="spawnPos"></param>
     private void SpawnEvacuee(Vector3 spawnPos) {
-        GameObject evacuee = Instantiate(SpawnEvacueePref, spawnPos, Quaternion.identity, transform);
+        int agentId = Evacuees.Count + 1;
+        
+        // 家族情報を取得してスポーン位置を決定
+        var familyData = FamilyManager.GetFamily(agentId);
+        Vector3 finalSpawnPos = spawnPos;
+        
+        if (familyData != null && familyData.owner_spawn_category != BuildingCategory.Other)
+        {
+            // 家族情報に基づいてスポーン位置を取得
+            var (position, buildingName) = SpawnLocationManager.GetRandomSpawnPositionWithName(familyData.owner_spawn_category);
+            if (position != Vector3.zero)
+            {
+                finalSpawnPos = position;
+                Debug.Log($"[EnvManager] Agent {agentId}: {BuildingCategorizer.GetCategoryDisplayName(familyData.owner_spawn_category)}にスポーン - {buildingName}");
+            }
+            
+            // 家族メンバーの探索位置を設定
+            foreach (var member in familyData.members)
+            {
+                var (searchPos, searchBuildingName) = SpawnLocationManager.GetRandomSpawnPositionWithName(member.spawn_category);
+                if (searchPos != Vector3.zero)
+                {
+                    member.search_position = searchPos;
+                    member.spawn_building_name = searchBuildingName;
+                    member.likely_location = $"{BuildingCategorizer.GetCategoryDisplayName(member.spawn_category)}（{searchBuildingName}）";
+                }
+            }
+        }
+        
+        GameObject evacuee = Instantiate(SpawnEvacueePref, finalSpawnPos, Quaternion.identity, transform);
         evacuee.tag = "Evacuee";
         Evacuees.Add(evacuee);
         
@@ -315,7 +477,7 @@ public class EnvManager : MonoBehaviour {
         var evacueeComponent = evacuee.GetComponent<Evacuee>();
         if (evacueeComponent != null)
         {
-            evacueeComponent.SetEvacueeId(Evacuees.Count);
+            evacueeComponent.SetEvacueeId(agentId);
         }
     }
 

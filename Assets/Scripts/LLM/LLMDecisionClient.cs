@@ -101,6 +101,18 @@ namespace LLM
             return SendRequestAsync<LLMEvacDecisionResponse>(payload, request.request_id, cancellationToken);
         }
 
+        public Task<LLMConversationResponseResponse> RequestConversationResponseAsync(LLMConversationResponseRequest request, CancellationToken cancellationToken = default)
+        {
+            var payload = JsonUtility.ToJson(request);
+            return SendRequestAsync<LLMConversationResponseResponse>(payload, request.request_id, cancellationToken);
+        }
+
+        public Task<LLMFamilyContactResponseResponse> RequestFamilyContactResponseAsync(LLMFamilyContactResponseRequest request, CancellationToken cancellationToken = default)
+        {
+            var payload = JsonUtility.ToJson(request);
+            return SendRequestAsync<LLMFamilyContactResponseResponse>(payload, request.request_id, cancellationToken);
+        }
+
         private async Task<T> SendRequestAsync<T>(string payloadJson, string requestId, CancellationToken cancellationToken)
         {
             await EnsureConnectionAsync();

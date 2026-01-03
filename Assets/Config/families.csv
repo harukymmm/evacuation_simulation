@@ -1,0 +1,16 @@
+agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in_scene
+1,self,-1,佐藤 健太,Office,true,true
+2,self,-1,田中 裕子,Office,true,true
+2,夫,-1,田中 太郎,Office,true,false
+2,子供,-1,田中 花,School,false,false
+3,self,-1,山本 剛,Office,true,true
+3,妻,-1,山本 美咲,Residential,true,false
+3,息子,-1,山本 健,School,false,false
+4,self,-1,鈴木 誠,Residential,true,true
+5,self,-1,小林 愛,School,true,true
+5,母,-1,小林 由美,Residential,true,false
+
+
+
+
+

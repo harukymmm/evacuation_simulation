@@ -253,12 +253,18 @@ public class Shelter : MonoBehaviour{
     void OnTriggerEnter(Collider other) {
         Debug.Log($"[Shelter] OnTriggerEnter called on {gameObject.name} - Colliding with: {other.name}, Tag: {other.tag}");
         Debug.Log($"[Shelter] {gameObject.name}: 現在の収容状況 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
-        
+
         bool isEvacuee = other.CompareTag("Evacuee");
         if (isEvacuee) {
             Debug.Log($"[Shelter] Evacuee detected! Shelter: {gameObject.name}, Evacuee: {other.name}");
             Evacuee evacuee = other.GetComponent<Evacuee>();
             if (evacuee != null) {
+                // SimulationMetricsに避難完了を記録（Evacuationが成功する前に記録）
+                if (currentCapacity > 0)
+                {
+                    RecordEvacuationToMetrics(evacuee);
+                }
+
                 evacuee.Evacuation(this);
                 Debug.Log($"[Shelter] {gameObject.name}: Evacuation処理後 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
             } else {
@@ -266,6 +272,23 @@ public class Shelter : MonoBehaviour{
             }
         } else {
             Debug.LogWarning($"[Shelter] Collision with non-Evacuee object: {other.name}, Tag: {other.tag}");
+        }
+    }
+
+    /// <summary>
+    /// SimulationMetricsに避難完了を記録
+    /// </summary>
+    private void RecordEvacuationToMetrics(Evacuee evacuee)
+    {
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        if (metrics != null && _env != null)
+        {
+            string agentId = evacuee.gameObject.name;
+            float evacuationTime = _env.CurrentTimeSec;
+            string shelterName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
+            string agentType = evacuee.UseLLMDecision ? "LLM" : "RuleBased";
+
+            metrics.RecordEvacuation(agentId, evacuationTime, shelterName, agentType);
         }
     }
 }
