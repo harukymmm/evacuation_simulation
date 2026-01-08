@@ -35,7 +35,7 @@ public class Evacuee : MonoBehaviour {
     private List<string> excludeShelters; //1度避難したタワーのUUIDを格納するリスト
     
     [Header("Movement Settings")]
-    public float DefaultSpeed = 5f;
+    public float DefaultSpeed = 3f;
     public float MinSpeed = 1f;
     public float MaxSpeed = 10f;
 
@@ -53,6 +53,36 @@ public class Evacuee : MonoBehaviour {
     public List<string> InjuryTags = new List<string>();
     [TextArea]
     public string InjuryNotes;
+
+    [Header("Speed Choice")]
+    public LLM.SpeedChoice CurrentSpeedChoice = LLM.SpeedChoice.NORMAL;
+
+    // 体力管理の定数
+    private const float STAMINA_THRESHOLD_FAST = 0.3f;      // 急ぎ足に必要な最低体力
+    private const float STAMINA_THRESHOLD_RUN = 0.5f;       // 走るに必要な最低体力
+    private const float STAMINA_DRAIN_FAST = 0.02f;         // 急ぎ足: 2%/秒
+    private const float STAMINA_DRAIN_RUN = 0.05f;          // 走る: 5%/秒
+    private const float STAMINA_RECOVERY_SLOW = 0.01f;      // ゆっくり: 1%/秒回復
+    private const float STAMINA_RECOVERY_STOP = 0.03f;      // 停止中: 3%/秒回復
+    private const float STAMINA_DRAIN_ELDERLY_MULT = 1.5f;  // 高齢者消費倍率
+
+    // 速度係数マッピング
+    private static readonly Dictionary<LLM.SpeedChoice, float> SpeedChoiceMultipliers = new Dictionary<LLM.SpeedChoice, float>
+    {
+        { LLM.SpeedChoice.SLOW, 0.6f },
+        { LLM.SpeedChoice.NORMAL, 1.0f },
+        { LLM.SpeedChoice.FAST, 1.5f },
+        { LLM.SpeedChoice.RUN, 2.0f }
+    };
+
+    // 日本語名マッピング
+    private static readonly Dictionary<LLM.SpeedChoice, string> SpeedChoiceNames = new Dictionary<LLM.SpeedChoice, string>
+    {
+        { LLM.SpeedChoice.SLOW, "ゆっくり" },
+        { LLM.SpeedChoice.NORMAL, "普通" },
+        { LLM.SpeedChoice.FAST, "急ぎ足" },
+        { LLM.SpeedChoice.RUN, "走る" }
+    };
 
     [Header("Goal Labeling")]
     [SerializeField] private string GoalLabelOverride;
@@ -109,6 +139,12 @@ public class Evacuee : MonoBehaviour {
     private LLM.MidTermPlanPayload _currentMidTermPlan;      // 現在の中期計画
     private float _lastGoalUpdateTime = 0f;                  // 最後に長期目標を更新した時刻
     private float _lastPlanUpdateTime = 0f;                  // 最後に中期計画を更新した時刻
+
+    [Header("Short-term Memory (Action History)")]
+    private List<LLM.ActionHistoryEntry> _actionHistory = new List<LLM.ActionHistoryEntry>();
+    private string _summarizedActionHistory = null;          // 要約済み行動履歴
+    private int _totalActionCount = 0;                       // 総行動回数
+    private const int MAX_ACTION_HISTORY = 5;                // 保持する行動履歴の最大件数
 
     [Header("Alert / Broadcast State")]
     private bool _hasHeardBroadcast = false;     // 行政無線の放送を聞いたか
@@ -394,6 +430,9 @@ public class Evacuee : MonoBehaviour {
 
     void Update()
     {
+        // 体力の更新（毎フレーム）
+        UpdateStamina();
+
         // FOLLOW行動の更新処理（位置追跡のみ、行動変更の検知は通知で行う）
         if (CurrentAction == LLM.ActionType.FOLLOW && _followTarget != null)
         {
@@ -719,6 +758,27 @@ public class Evacuee : MonoBehaviour {
             }
         }
 
+        // 行動履歴に記録（短期記憶）
+        if (result)
+        {
+            string target = actionType switch
+            {
+                LLM.ActionType.EVACUATE => response.selected_shelter_id,
+                LLM.ActionType.SEARCH_FAMILY => response.target_family_member,
+                LLM.ActionType.CONTACT => response.contact_target,
+                LLM.ActionType.FOLLOW => response.target_evacuee_id,
+                LLM.ActionType.TALK => response.talk_target_id,
+                _ => null
+            };
+            AddActionToHistory(actionType, target, response.reasoning);
+        }
+
+        // サーバーから返された行動履歴の要約を適用
+        if (!string.IsNullOrEmpty(response.summarized_action_history))
+        {
+            ApplySummarizedActionHistory(response.summarized_action_history);
+        }
+
         // 行動が変更された場合、FOLLOWERに通知
         if (actionChanged && result)
         {
@@ -734,17 +794,21 @@ public class Evacuee : MonoBehaviour {
     private bool ExecuteStayAction(LLMEvacDecisionResponse response)
     {
         _stayPosition = transform.position;
-        
+
         // NavMeshAgentを停止
         if (NavAgent != null)
         {
             NavAgent.isStopped = true;
             NavAgent.ResetPath();
         }
-        
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.STAY, null, response.reasoning, response.confidence);
+
         Debug.Log($"[Evacuee] {gameObject.name}: STAY行動を選択 - その場で待機します " +
                  $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
-        
+
         return true;
     }
 
@@ -800,6 +864,10 @@ public class Evacuee : MonoBehaviour {
             NavAgent.isStopped = false;
             NavAgent.SetDestination(destination);
         }
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.SEARCH_FAMILY, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: SEARCH_FAMILY行動を選択 - {target.relation} {target.name} を探しに {destination} に向かいます "
                   + $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
@@ -860,6 +928,10 @@ public class Evacuee : MonoBehaviour {
             NavAgent.isStopped = true;
             NavAgent.ResetPath();
         }
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.CONTACT, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: CONTACT行動を選択 - {target.relation} {target.name} に連絡します " +
                   $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
@@ -1035,7 +1107,6 @@ public class Evacuee : MonoBehaviour {
             role = target.relation, // 続柄を役割として使用
             age_group = InferAgeGroupFromRelation(target.relation),
             speed_multiplier = 1.0f,
-            stairs_usage = "normal",
             mental_state = "普通",
             priority = "安全確保",
             system_prompt_context = $"{PersonaName}の{target.relation}です。"
@@ -1138,7 +1209,6 @@ public class Evacuee : MonoBehaviour {
                         role = _persona?.role ?? "",
                         age_group = _persona?.age_group ?? "成人",
                         speed_multiplier = _persona?.speed_multiplier ?? 1.0f,
-                        stairs_usage = _persona?.stairs_usage ?? "normal",
                         mental_state = _persona?.mental_state ?? "普通",
                         priority = _persona?.priority ?? "安全確保",
                         system_prompt_context = _persona?.system_prompt_context ?? ""
@@ -1305,6 +1375,10 @@ public class Evacuee : MonoBehaviour {
                       $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
         }
 
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.FOLLOW, null, response.reasoning, response.confidence);
+
         return true;
     }
 
@@ -1342,6 +1416,10 @@ public class Evacuee : MonoBehaviour {
             NavAgent.isStopped = true;
             NavAgent.ResetPath();
         }
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.TALK, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: TALK行動を選択 - {talkTarget.PersonaName}に話しかけます " +
                   $"(topic='{response.talk_topic}', message='{response.talk_message}', reason='{response.reasoning}')");
@@ -1610,6 +1688,62 @@ public class Evacuee : MonoBehaviour {
     }
 
     /// <summary>
+    /// 行動履歴に新しいエントリを追加
+    /// </summary>
+    /// <param name="actionType">行動タイプ</param>
+    /// <param name="target">対象（避難所名、家族名など）</param>
+    /// <param name="reasoning">LLMの判断理由</param>
+    /// <param name="result">結果（completed, failed, interrupted）</param>
+    private void AddActionToHistory(LLM.ActionType actionType, string target, string reasoning, string result = "completed")
+    {
+        var entry = new LLM.ActionHistoryEntry
+        {
+            timestamp = _env != null ? _env.CurrentTimeSec : Time.time,
+            action_type = actionType.ToString(),
+            target = target ?? "",
+            reasoning = reasoning ?? "",
+            result = result
+        };
+
+        _actionHistory.Add(entry);
+        _totalActionCount++;
+
+        // 履歴が上限を超えたら古いものから削除（要約はサーバー側で行う）
+        while (_actionHistory.Count > MAX_ACTION_HISTORY)
+        {
+            _actionHistory.RemoveAt(0);
+        }
+    }
+
+    /// <summary>
+    /// 行動履歴ペイロードを構築
+    /// </summary>
+    private LLM.ActionHistoryPayload BuildActionHistoryPayload()
+    {
+        return new LLM.ActionHistoryPayload
+        {
+            recent_actions = _actionHistory.ToArray(),
+            summarized_history = _summarizedActionHistory,
+            total_action_count = _totalActionCount
+        };
+    }
+
+    /// <summary>
+    /// サーバーから返された要約を適用
+    /// </summary>
+    /// <param name="summarizedHistory">要約済み行動履歴</param>
+    private void ApplySummarizedActionHistory(string summarizedHistory)
+    {
+        if (!string.IsNullOrEmpty(summarizedHistory))
+        {
+            _summarizedActionHistory = summarizedHistory;
+            // 要約が返されたら履歴をクリア（要約に含まれているため）
+            _actionHistory.Clear();
+            Debug.Log($"[Evacuee] {gameObject.name}: 行動履歴を要約しました: {summarizedHistory}");
+        }
+    }
+
+    /// <summary>
     /// ペルソナ情報ペイロードを構築（会話応答用）
     /// </summary>
     private LLM.PersonaPayload BuildPersonaPayload()
@@ -1632,7 +1766,6 @@ public class Evacuee : MonoBehaviour {
                 role = persona.role,
                 age_group = persona.age_group,
                 speed_multiplier = persona.speed_multiplier,
-                stairs_usage = persona.stairs_usage,
                 mental_state = persona.mental_state,
                 priority = persona.priority,
                 system_prompt_context = persona.system_prompt_context
@@ -1647,7 +1780,6 @@ public class Evacuee : MonoBehaviour {
             role = "避難者",
             age_group = "成人",
             speed_multiplier = 1.0f,
-            stairs_usage = "allowed",
             mental_state = "平常",
             priority = "自分の安全",
             system_prompt_context = ""
@@ -2046,20 +2178,20 @@ public class Evacuee : MonoBehaviour {
             NavAgent.SetDestination(Target.transform.position);
         }
         
-        ApplySpeedFromLLM(response.desired_speed);
+        ApplySpeedFromLLMResponse(response.desired_speed);
         
         // 表示名を取得（bldg_で始まる場合は簡略表示）
         var selectedShelterComp = selectedShelter.GetComponent<Shelter>();
         string displayName = selectedShelter.name;
-        
+
         if (selectedShelterComp != null && !string.IsNullOrEmpty(selectedShelterComp.displayName))
         {
             // displayNameが「bldg_」で始まる場合は簡略表示、それ以外はそのまま
             if (selectedShelterComp.displayName.StartsWith("bldg_"))
             {
                 // bldg_の後の最初の8文字を表示（例: bldg_37ad7316）
-                displayName = selectedShelterComp.displayName.Length > 13 
-                    ? selectedShelterComp.displayName.Substring(0, 13) + "..." 
+                displayName = selectedShelterComp.displayName.Length > 13
+                    ? selectedShelterComp.displayName.Substring(0, 13) + "..."
                     : selectedShelterComp.displayName;
             }
             else
@@ -2067,11 +2199,15 @@ public class Evacuee : MonoBehaviour {
                 displayName = selectedShelterComp.displayName;
             }
         }
-        
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.EVACUATE, response.selected_shelter_id, response.reasoning, response.confidence);
+
         Debug.Log($"[Evacuee] {gameObject.name}: EVACUATE - {displayName}に向かいます "
               + $"(pos: {Target.transform.position}), "
               + $"reason='{response.reasoning}', confidence={response.confidence:F2}, "
-              + $"speed={NavAgent.speed:F2}");
+              + $"speed={NavAgent.speed:F2} m/s（{SpeedChoiceNames[CurrentSpeedChoice]}）");
         return true;
     }
 
@@ -2161,10 +2297,18 @@ public class Evacuee : MonoBehaviour {
                 role = persona.role,
                 age_group = persona.age_group,
                 speed_multiplier = persona.speed_multiplier,
-                stairs_usage = persona.stairs_usage,
                 mental_state = persona.mental_state,
                 priority = persona.priority,
-                system_prompt_context = persona.system_prompt_context
+                system_prompt_context = persona.system_prompt_context,
+                // 拡張フィールド: 生活背景情報
+                home_location_category = persona.home_location_category,
+                home_elevation = persona.home_elevation,
+                home_structure = persona.home_structure,
+                residence_years = persona.residence_years,
+                local_knowledge_level = persona.local_knowledge_level,
+                current_location_reason = persona.current_location_reason,
+                past_disaster_experience = persona.past_disaster_experience,
+                physical_condition = persona.physical_condition
             };
         }
         else
@@ -2199,7 +2343,20 @@ public class Evacuee : MonoBehaviour {
         {
             Debug.Log($"[Evacuee] {gameObject.name}: 周辺避難者情報をLLMリクエストに含めます（詳細: {nearbyEvacuees.Length}人、総数: {nearbyEvacueesCount}人、混雑度: {nearbyEvacueesDensity:F2}人/100m²）");
         }
-        
+
+        // 環境状態を取得（DisasterEventManagerから）
+        EnvironmentStatePayload envStatePayload = null;
+        var disasterEventManager = FindFirstObjectByType<DisasterEventManager>();
+        if (disasterEventManager != null)
+        {
+            envStatePayload = disasterEventManager.GetEnvironmentStatePayload();
+            Debug.Log($"[Evacuee] {gameObject.name}: 環境状態をLLMリクエストに含めます（フェーズ: {envStatePayload?.disaster_phase}）");
+        }
+        else
+        {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: DisasterEventManagerが見つかりません（環境状態はnull）");
+        }
+
         return new LLMEvacDecisionRequest
         {
             request_id = $"{_env.currentEpisodeId}-{gameObject.name}-{Guid.NewGuid()}",
@@ -2226,7 +2383,9 @@ public class Evacuee : MonoBehaviour {
             last_j_alert_message = _lastJAlertMessage,
             current_long_term_goal = _currentLongTermGoal,  // 現在の長期目標（更新判断用）
             current_mid_term_plan = _currentMidTermPlan,   // 現在の中期計画（更新判断用）
-            conversation_history = BuildConversationHistoryPayload()  // 会話履歴（TALK行動用）
+            conversation_history = BuildConversationHistoryPayload(),  // 会話履歴（TALK行動用）
+            action_history = BuildActionHistoryPayload(),  // 行動履歴（短期記憶）
+            environment_state = envStatePayload  // 環境状態（災害フェーズ等）
         };
     }
 
@@ -2361,15 +2520,16 @@ public class Evacuee : MonoBehaviour {
             Debug.LogWarning($"[Evacuee] {gameObject.name}: EnvironmentalContextProviderが見つかりません。環境情報は含まれません。");
             return null;
         }
-        
-        
+
+        Vector3 currentPosition = transform.position;
+
         // 周辺建物を検索
         float searchRadius = 30f;
-        var nearbyBuildings = envContext.GetNearbyBuildings(transform.position, searchRadius);
-        
+        var nearbyBuildings = envContext.GetNearbyBuildings(currentPosition, searchRadius);
+
         // LLMのコンテキスト長を考慮して、最大10件に制限
         var limitedBuildings = nearbyBuildings.Take(10).ToList();
-        
+
         // ペイロードに変換
         var buildingPayloads = limitedBuildings.Select(b => new BuildingContextPayload
         {
@@ -2383,14 +2543,57 @@ public class Evacuee : MonoBehaviour {
             structure_type = b.structureType ?? "",
             land_use_type = b.landUseType ?? ""
         }).ToArray();
-        
-        Debug.Log($"[Evacuee] {gameObject.name}: 環境情報ペイロードを作成しました（建物{buildingPayloads.Length}件、範囲内合計{nearbyBuildings.Count}件）");
-        
+
+        // 津波リスク情報を取得
+        var tsunamiRisk = envContext.GetTsunamiRiskAtPosition(currentPosition);
+        bool isInTsunamiZone = tsunamiRisk != null;
+        string tsunamiRiskRank = tsunamiRisk?.rank ?? "";
+        float tsunamiEstimatedDepth = tsunamiRisk?.estimatedDepth ?? 0f;
+
+        // 土砂災害リスク情報を取得
+        var landslideRisk = envContext.GetLandslideRiskAtPosition(currentPosition);
+        bool isInLandslideZone = landslideRisk != null;
+        bool isInSpecialLandslideZone = landslideRisk?.isSpecialZone ?? false;
+        string landslideType = landslideRisk?.descriptionName ?? "";
+
+        // 標高情報を取得
+        float currentElevation = envContext.GetCurrentElevation(currentPosition);
+
+        // 最寄りの主要道路情報を取得
+        var nearestRoad = envContext.GetNearestMajorRoad(currentPosition);
+        string nearestMajorRoad = nearestRoad?.name ?? "";
+        string nearestRoadType = nearestRoad?.functionName ?? "";
+
+        // 土地利用情報を取得
+        var landUse = envContext.GetLandUseAtPosition(currentPosition);
+        string currentLandUse = landUse?.landUseClassName ?? "";
+
+        Debug.Log($"[Evacuee] {gameObject.name}: 環境情報ペイロードを作成しました（建物{buildingPayloads.Length}件、" +
+                  $"津波リスク: {isInTsunamiZone}、土砂災害リスク: {isInLandslideZone}、標高: {currentElevation:F1}m）");
+
         return new EnvironmentalContextPayload
         {
             nearby_buildings = buildingPayloads,
             search_radius = searchRadius,
-            total_buildings_in_area = nearbyBuildings.Count
+            total_buildings_in_area = nearbyBuildings.Count,
+
+            // 災害リスク情報
+            is_in_tsunami_zone = isInTsunamiZone,
+            tsunami_risk_rank = tsunamiRiskRank,
+            tsunami_estimated_depth = tsunamiEstimatedDepth,
+            is_in_landslide_zone = isInLandslideZone,
+            is_in_special_landslide_zone = isInSpecialLandslideZone,
+            landslide_type = landslideType,
+
+            // 地形情報
+            current_elevation = currentElevation,
+
+            // 道路情報
+            nearest_major_road = nearestMajorRoad,
+            nearest_road_type = nearestRoadType,
+
+            // 土地利用情報
+            current_land_use = currentLandUse
         };
     }
 
@@ -2409,6 +2612,7 @@ public class Evacuee : MonoBehaviour {
     private SelfStatePayload BuildSelfStatePayload()
     {
         var velocity = NavAgent != null ? NavAgent.velocity : Vector3.zero;
+        var availableChoices = GetAvailableSpeedChoices();
         return new SelfStatePayload
         {
             position = new Vector3Payload(transform.position),
@@ -2420,6 +2624,9 @@ public class Evacuee : MonoBehaviour {
             stress_reason = string.IsNullOrWhiteSpace(StressReason) ? null : StressReason,
             current_goal = ResolveCurrentGoalLabel(),
             stamina = Mathf.Clamp01(StaminaLevel),
+            stamina_label = GetStaminaLabel(),
+            current_speed_choice = CurrentSpeedChoice.ToString(),
+            available_speed_choices = availableChoices.Select(c => SpeedChoiceNames[c]).ToArray(),
             injuries = InjuryTags?.ToArray() ?? Array.Empty<string>(),
             injury_notes = string.IsNullOrWhiteSpace(InjuryNotes) ? null : InjuryNotes
         };
@@ -2470,21 +2677,172 @@ public class Evacuee : MonoBehaviour {
         }
     }
 
-    private void ApplySpeedFromLLM(float desiredSpeed)
+    /// <summary>
+    /// 高齢者かどうかを判定
+    /// </summary>
+    private bool IsElderly()
     {
-        if (NavAgent == null)
+        if (_persona == null) return false;
+        return _persona.age_group.Contains("70s") ||
+               _persona.age_group.Contains("80s") ||
+               _persona.speed_multiplier < 0.7f;
+    }
+
+    /// <summary>
+    /// 体力ラベルを取得
+    /// </summary>
+    private string GetStaminaLabel()
+    {
+        if (StaminaLevel >= 0.7f) return "十分";
+        if (StaminaLevel >= 0.5f) return "普通";
+        if (StaminaLevel >= 0.3f) return "低下";
+        return "疲労";
+    }
+
+    /// <summary>
+    /// 利用可能な速度選択肢を取得
+    /// </summary>
+    public List<LLM.SpeedChoice> GetAvailableSpeedChoices()
+    {
+        var choices = new List<LLM.SpeedChoice> { LLM.SpeedChoice.SLOW, LLM.SpeedChoice.NORMAL };
+        if (StaminaLevel >= STAMINA_THRESHOLD_FAST)
         {
+            choices.Add(LLM.SpeedChoice.FAST);
+        }
+        if (StaminaLevel >= STAMINA_THRESHOLD_RUN)
+        {
+            choices.Add(LLM.SpeedChoice.RUN);
+        }
+        return choices;
+    }
+
+    /// <summary>
+    /// 体力を更新する（毎フレームUpdateから呼び出し）
+    /// </summary>
+    private void UpdateStamina()
+    {
+        float dt = Time.deltaTime;
+        float drainMult = IsElderly() ? STAMINA_DRAIN_ELDERLY_MULT : 1.0f;
+
+        switch (CurrentSpeedChoice)
+        {
+            case LLM.SpeedChoice.RUN:
+                StaminaLevel -= STAMINA_DRAIN_RUN * drainMult * dt;
+                break;
+            case LLM.SpeedChoice.FAST:
+                StaminaLevel -= STAMINA_DRAIN_FAST * drainMult * dt;
+                break;
+            case LLM.SpeedChoice.SLOW:
+                StaminaLevel += STAMINA_RECOVERY_SLOW * dt;
+                break;
+            case LLM.SpeedChoice.NORMAL:
+                // 変化なし
+                break;
+        }
+
+        // 停止中は追加回復
+        if (NavAgent != null && NavAgent.velocity.magnitude < 0.1f)
+        {
+            StaminaLevel += STAMINA_RECOVERY_STOP * dt;
+        }
+
+        // クランプ
+        StaminaLevel = Mathf.Clamp01(StaminaLevel);
+
+        // 体力不足時の自動ダウングレード
+        if (CurrentSpeedChoice == LLM.SpeedChoice.RUN && StaminaLevel < STAMINA_THRESHOLD_RUN)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.FAST);
+            Debug.Log($"[Evacuee] {gameObject.name}: 体力低下により「急ぎ足」に減速 (stamina={StaminaLevel:P0})");
+        }
+        if (CurrentSpeedChoice == LLM.SpeedChoice.FAST && StaminaLevel < STAMINA_THRESHOLD_FAST)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.NORMAL);
+            Debug.Log($"[Evacuee] {gameObject.name}: 体力低下により「普通」に減速 (stamina={StaminaLevel:P0})");
+        }
+    }
+
+    /// <summary>
+    /// 速度選択肢を適用する
+    /// </summary>
+    public void ApplySpeedChoice(LLM.SpeedChoice choice)
+    {
+        // 体力チェック＆ダウングレード
+        if (choice == LLM.SpeedChoice.RUN && StaminaLevel < STAMINA_THRESHOLD_RUN)
+        {
+            choice = LLM.SpeedChoice.FAST;
+        }
+        if (choice == LLM.SpeedChoice.FAST && StaminaLevel < STAMINA_THRESHOLD_FAST)
+        {
+            choice = LLM.SpeedChoice.NORMAL;
+        }
+
+        CurrentSpeedChoice = choice;
+
+        if (NavAgent != null)
+        {
+            float personaMult = _persona?.speed_multiplier ?? 1.0f;
+            NavAgent.speed = DefaultSpeed * personaMult * SpeedChoiceMultipliers[choice];
+        }
+    }
+
+    /// <summary>
+    /// LLMレスポンスから速度選択肢を適用（string -> SpeedChoice変換）
+    /// </summary>
+    private void ApplySpeedFromLLMResponse(string desiredSpeed)
+    {
+        if (string.IsNullOrEmpty(desiredSpeed))
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.NORMAL);
             return;
         }
 
-        if (desiredSpeed > 0f)
+        var upperSpeed = desiredSpeed.ToUpperInvariant();
+        LLM.SpeedChoice choice;
+
+        if (upperSpeed == "SLOW" || desiredSpeed == "ゆっくり")
         {
-            var clamped = Mathf.Clamp(desiredSpeed, MinSpeed, MaxSpeed);
-            NavAgent.speed = clamped;
+            choice = LLM.SpeedChoice.SLOW;
+        }
+        else if (upperSpeed == "FAST" || desiredSpeed == "急ぎ足")
+        {
+            choice = LLM.SpeedChoice.FAST;
+        }
+        else if (upperSpeed == "RUN" || desiredSpeed == "走る")
+        {
+            choice = LLM.SpeedChoice.RUN;
         }
         else
         {
-            ResetMovementSpeed();
+            choice = LLM.SpeedChoice.NORMAL;
+        }
+
+        ApplySpeedChoice(choice);
+    }
+
+    // 後方互換性のため残す（float版）
+    private void ApplySpeedFromLLM(float desiredSpeed)
+    {
+        // 旧形式（float）が渡された場合は値に応じて選択肢を決定
+        if (desiredSpeed <= 0f)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.NORMAL);
+        }
+        else if (desiredSpeed <= 3f)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.SLOW);
+        }
+        else if (desiredSpeed <= 6f)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.NORMAL);
+        }
+        else if (desiredSpeed <= 8f)
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.FAST);
+        }
+        else
+        {
+            ApplySpeedChoice(LLM.SpeedChoice.RUN);
         }
     }
 

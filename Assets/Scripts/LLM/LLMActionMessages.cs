@@ -16,6 +16,17 @@ namespace LLM
         TALK            // 周辺の避難者と会話する
     }
 
+    /// <summary>
+    /// 移動速度の選択肢（LLMが選択する4段階の速度）
+    /// </summary>
+    public enum SpeedChoice
+    {
+        SLOW,      // ゆっくり
+        NORMAL,    // 普通
+        FAST,      // 急ぎ足
+        RUN        // 走る
+    }
+
     [Serializable]
     public class Vector3Payload
     {
@@ -65,6 +76,9 @@ namespace LLM
         public string stress_reason;
         public string current_goal;
         public float stamina;
+        public string stamina_label;              // 体力ラベル: "十分"/"普通"/"低下"/"疲労"
+        public string current_speed_choice;       // 現在の速度選択: "SLOW"/"NORMAL"/"FAST"/"RUN"
+        public string[] available_speed_choices;  // 利用可能な速度選択肢
         public string[] injuries;
         public string injury_notes;
     }
@@ -103,10 +117,19 @@ namespace LLM
         public string role;
         public string age_group;
         public float speed_multiplier;
-        public string stairs_usage;
         public string mental_state;
         public string priority;
         public string system_prompt_context;
+
+        // 拡張フィールド: 生活背景情報
+        public string home_location_category;    // 自宅位置カテゴリ: "coastal", "hill", "center"
+        public int home_elevation;               // 自宅の海抜(m)
+        public string home_structure;            // 自宅の構造
+        public int residence_years;              // 居住年数
+        public string local_knowledge_level;     // 土地勘レベル: "newcomer", "resident", "native"
+        public string current_location_reason;   // 現在地にいる理由
+        public string past_disaster_experience;  // 過去の災害経験
+        public string physical_condition;        // 身体状態
     }
 
     [Serializable]
@@ -129,6 +152,24 @@ namespace LLM
         public BuildingContextPayload[] nearby_buildings;
         public float search_radius;
         public int total_buildings_in_area;
+
+        // 災害リスク情報（現在地のリスクのみ、簡潔版）
+        public bool is_in_tsunami_zone;           // 津波浸水想定区域内か
+        public string tsunami_risk_rank;          // 浸水深ランク（例: "5m以上10m未満"）
+        public float tsunami_estimated_depth;     // 推定浸水深(m)
+        public bool is_in_landslide_zone;         // 土砂災害警戒区域内か
+        public bool is_in_special_landslide_zone; // 土砂災害特別警戒区域内か
+        public string landslide_type;             // 災害種別（急傾斜地の崩落、土石流、地すべり）
+
+        // 地形情報
+        public float current_elevation;           // 現在地の標高(m)
+
+        // 道路情報
+        public string nearest_major_road;         // 最寄りの主要道路名
+        public string nearest_road_type;          // 道路種別（高速、国道、県道、市道）
+
+        // 土地利用情報
+        public string current_land_use;           // 現在地の土地利用種別
     }
 
     /// <summary>
@@ -397,6 +438,9 @@ namespace LLM
         // 災害シナリオシステム用の拡張フィールド
         public PerceptionStatePayload perception_state;    // 知覚状態（聴覚情報等）
         public EnvironmentStatePayload environment_state;  // 環境状態（災害フェーズ等）
+
+        // 短期記憶（行動履歴）
+        public ActionHistoryPayload action_history;        // 行動履歴（圧縮・要約用）
     }
 
     [Serializable]
@@ -431,12 +475,39 @@ namespace LLM
 
         public string reasoning;
         public float confidence;
-        public float desired_speed;
+        public string desired_speed;  // 速度選択肢: "SLOW"/"NORMAL"/"FAST"/"RUN" または日本語
+
+        // 短期記憶（行動履歴要約）
+        public string summarized_action_history;          // サーバーで生成された行動履歴の要約
     }
 
     [Serializable]
     internal class ResponseEnvelope
     {
         public string request_id;
+    }
+
+    /// <summary>
+    /// 行動履歴エントリ（短期記憶用）
+    /// </summary>
+    [Serializable]
+    public class ActionHistoryEntry
+    {
+        public float timestamp;           // 行動時刻（シミュレーション内秒数）
+        public string action_type;        // 行動タイプ（EVACUATE, STAY, etc.）
+        public string target;             // 対象（避難所名、家族名など）
+        public string reasoning;          // LLMの判断理由
+        public string result;             // 結果（completed, failed, interrupted）
+    }
+
+    /// <summary>
+    /// 行動履歴ペイロード（LLMリクエスト用）
+    /// </summary>
+    [Serializable]
+    public class ActionHistoryPayload
+    {
+        public ActionHistoryEntry[] recent_actions;   // 直近の行動（最大5件）
+        public string summarized_history;             // 要約済み過去履歴
+        public int total_action_count;                // 総行動回数
     }
 }

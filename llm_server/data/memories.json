@@ -1,0 +1,170 @@
+[
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間小学校は海抜約25mに位置し、津波避難ビルとして指定されています。収容人数は約500人で、耐震構造が施されています。医療班も待機予定です。",
+    "metadata": {"location": "豊間小学校", "elevation": 25, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間公民館は海抜約18mに位置し、バリアフリー対応でスロープがあります。高齢者や車椅子利用者の避難に適しています。収容人数は約200人です。",
+    "metadata": {"location": "豊間公民館", "elevation": 18, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間中学校は海抜約30mの高台にあり、小学校より標高が高いです。体育館と広い校庭があり、収容人数は約400人です。",
+    "metadata": {"location": "豊間中学校", "elevation": 30, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "薄磯海岸沿いは津波浸水想定区域です。海抜10m以下の地域は特に危険で、地震発生時は速やかに高台へ避難してください。",
+    "metadata": {"area": "薄磯海岸", "hazard_type": "tsunami", "category": "hazard"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "県道382号線（海岸通り）は海抜5m以下の低地を通っています。津波時は浸水の危険があり、避難経路としては不適切です。",
+    "metadata": {"road": "県道382号線", "hazard_type": "low_elevation", "category": "hazard"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "国道6号線は緊急車両優先道路に指定されており、災害時は一般車両の通行が制限されます。車での避難は渋滞を招くため推奨されません。",
+    "metadata": {"road": "国道6号線", "restriction": "emergency_priority", "category": "traffic"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海岸から500m以内の地域では、津波到達まで約10分と想定されています。この区域にいる場合は、揺れが収まったら直ちに避難を開始してください。",
+    "metadata": {"distance_from_coast": 500, "tsunami_arrival_time": 10, "category": "time_constraint"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海岸沿いから豊間小学校への最短ルートは、消防団詰所の脇の階段を上るコースです。徒歩約8〜10分で到着できます。",
+    "metadata": {"from": "海岸沿い", "to": "豊間小学校", "category": "route"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "高齢者や車椅子利用者は、階段のない豊間公民館ルートが推奨されます。スロープがあり、バリアフリーで移動できます。",
+    "metadata": {"target_group": "elderly", "to": "豊間公民館", "category": "route"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間漁港周辺は最も危険な区域です。海抜が低く、津波の影響を最も早く受けます。発災後は立ち入り禁止となります。",
+    "metadata": {"location": "豊間漁港", "hazard_type": "tsunami", "category": "hazard"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "地区内のスーパーマルトは国道6号線沿いにあり、ここから豊間小学校への避難は約600m、徒歩約8分です。",
+    "metadata": {"location": "スーパーマルト", "category": "landmark"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間診療所は小学校の近くにあり、災害時は応急処置を行います。医療物資の備蓄もあります。",
+    "metadata": {"location": "豊間診療所", "category": "facility"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "豊間地区の消防団は地震発生から5分以内に巡回を開始します。サイレンと拡声器で避難を呼びかけ、住民を誘導します。",
+    "metadata": {"organization": "消防団", "category": "emergency_response"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "地区の自治会では、災害時に高齢者や一人暮らしの方の安否確認を行う体制があります。近所同士で声を掛け合うことが推奨されています。",
+    "metadata": {"organization": "自治会", "category": "community"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "平日の昼間は、働き盛りの世代は市街地に出ており、地区には高齢者と子供、主婦が多くなります。避難時は互いに助け合うことが大切です。",
+    "metadata": {"category": "demographic", "time": "weekday_daytime"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年3月11日の東日本大震災では、豊間地区で最大波高8m超の津波を記録しました。海岸から500m内陸まで浸水し、多くの犠牲者が出ました。",
+    "metadata": {"event": "2011_tsunami", "year": 2011, "category": "historical"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波では、「ここまで来ない」という過信が多くの犠牲者を出しました。過去の経験や固定観念にとらわれず、早期避難が最も重要です。",
+    "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波では、第1波が比較的小さかったため油断した人が多くいました。「もう大丈夫」と思って家に戻り、第2波・第3波で犠牲になった例があります。",
+    "metadata": {"event": "2011_tsunami", "lesson": "multiple_waves", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波では、車で避難しようとして渋滞に巻き込まれ、逃げ遅れた人が多くいました。徒歩での避難が原則です。",
+    "metadata": {"event": "2011_tsunami", "lesson": "walk_over_drive", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波では、家族を探しに戻ったり、貴重品を取りに戻ったりして犠牲になった人がいます。避難開始後は絶対に戻らないでください。",
+    "metadata": {"event": "2011_tsunami", "lesson": "no_return", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "津波警報が出ても避難しない人を何人も見ました。声をかけて一緒に逃げることで、命が救われることがあります。",
+    "metadata": {"lesson": "community_evacuation", "category": "lesson"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "「津波てんでんこ」という言葉があります。各自がまず自分の命を守ることを優先し、家族を信じて高台で再会することを意味します。",
+    "metadata": {"category": "local_wisdom"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "津波は繰り返し来ます。一度引いても安心せず、警報が解除されるまで高台にとどまってください。",
+    "metadata": {"category": "local_wisdom"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "引き波（海面が急激に下がる現象）が始まったら、数分以内に大きな津波が来る前兆です。海が見える場所にいる人は特に注意してください。",
+    "metadata": {"category": "warning_sign"}
+  },
+  {
+    "memory_type": "facility_knowledge",
+    "agent_id": null,
+    "content": "豊間郵便局は海岸から約200mの位置にあり、周辺には小さな商店街があります。この付近は津波浸水想定区域です。",
+    "metadata": {"location": "豊間郵便局", "category": "landmark"}
+  },
+  {
+    "memory_type": "facility_knowledge",
+    "agent_id": null,
+    "content": "地区内のコンビニエンスストアは国道6号線沿いにあります。海抜は約10mで、避難の中継点として利用できますが、最終避難場所としては不十分です。",
+    "metadata": {"category": "facility"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "防災行政無線は地区全域をカバーしていますが、老朽化により一部で不鳴動の可能性があります。無線が聞こえなくても、揺れが収まったら自主的に避難を開始してください。",
+    "metadata": {"category": "infrastructure"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "震度6以上の地震では停電が発生する可能性が高いです。停電時もスマートフォンのエリアメールで津波警報を受信できる場合があります。",
+    "metadata": {"category": "infrastructure"}
+  }
+]

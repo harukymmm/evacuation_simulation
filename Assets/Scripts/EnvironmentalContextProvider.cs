@@ -11,10 +11,20 @@ using Newtonsoft.Json;
 /// </summary>
 public class EnvironmentalContextProvider : MonoBehaviour
 {
+    [Header("キャッシュ設定")]
+    [Tooltip("事前構築したインデックスを使用するか（高速起動）")]
+    public bool useCachedIndex = true;
+
+    [Tooltip("事前構築した建物インデックス（Assets/Config/BuildingSpatialIndex.asset）")]
+    public BuildingSpatialIndex cachedIndex;
+
+    [Tooltip("事前構築した地理空間インデックス（Assets/Config/GeoSpatialIndex.asset）")]
+    public GeoSpatialIndex geoSpatialIndex;
+
     [Header("空間インデックス設定")]
     [Tooltip("グリッドセルのサイズ（メートル）。検索範囲の約半分が推奨")]
     public float cellSize = 50f;
-    
+
     [Header("デバッグ設定")]
     [Tooltip("シーン起動時にインデックス情報をJSON出力するか")]
     public bool exportToJsonOnStart = false;
@@ -26,10 +36,17 @@ public class EnvironmentalContextProvider : MonoBehaviour
     
     // 空間分割グリッド: セルごとに建物リストを保持
     private Dictionary<Vector2Int, List<BuildingContext>> spatialGrid;
-    
+
+    // 地理空間データのグリッド
+    private Dictionary<Vector2Int, List<RoadContext>> roadGrid;
+    private Dictionary<Vector2Int, List<LandUseContext>> landUseGrid;
+    private List<GeoSpatialIndex.TsunamiRiskEntry> tsunamiRiskList;
+    private List<GeoSpatialIndex.LandslideRiskEntry> landslideRiskList;
+    private List<GeoSpatialIndex.TerrainEntry> terrainList;
+
     // 検索結果のキャッシュ
     private Dictionary<int, CachedSearchResult> searchCache;
-    
+
     private class CachedSearchResult
     {
         public float timestamp;
@@ -59,12 +76,145 @@ public class EnvironmentalContextProvider : MonoBehaviour
     void Start()
     {
         searchCache = new Dictionary<int, CachedSearchResult>();
-        BuildSpatialIndex();
-        
+
+        // キャッシュを使用するかどうかで分岐
+        if (useCachedIndex && cachedIndex != null && cachedIndex.HasData)
+        {
+            LoadFromCachedIndex();
+        }
+        else
+        {
+            BuildSpatialIndex();
+
+            if (useCachedIndex && cachedIndex == null)
+            {
+                Debug.LogWarning("[EnvironmentalContext] キャッシュが設定されていないため、動的構築を実行しました。" +
+                                 "「Tools → Environment → Bake Spatial Index」でBakeしてください。");
+            }
+            else if (useCachedIndex && !cachedIndex.HasData)
+            {
+                Debug.LogWarning("[EnvironmentalContext] キャッシュが空のため、動的構築を実行しました。" +
+                                 "「Tools → Environment → Bake Spatial Index」でBakeしてください。");
+            }
+        }
+
         if (exportToJsonOnStart)
         {
             ExportToJson();
         }
+
+        // 地理空間インデックスを読み込み
+        LoadGeoSpatialIndex();
+    }
+
+    /// <summary>
+    /// 地理空間インデックス（道路・土地利用・災害リスク等）を読み込む
+    /// </summary>
+    private void LoadGeoSpatialIndex()
+    {
+        if (geoSpatialIndex == null || !geoSpatialIndex.HasData)
+        {
+            Debug.LogWarning("[EnvironmentalContext] 地理空間インデックスが未設定またはデータがありません。" +
+                             "「Tools → Environment → Bake Geo Spatial Index」でBakeしてください。");
+            return;
+        }
+
+        var startTime = Time.realtimeSinceStartup;
+
+        // 道路グリッドを構築
+        roadGrid = new Dictionary<Vector2Int, List<RoadContext>>();
+        foreach (var entry in geoSpatialIndex.roads)
+        {
+            Vector2Int gridKey = WorldToGridKey(entry.position);
+            if (!roadGrid.ContainsKey(gridKey))
+                roadGrid[gridKey] = new List<RoadContext>();
+
+            roadGrid[gridKey].Add(new RoadContext
+            {
+                name = entry.name,
+                position = entry.position,
+                distance = 0,
+                gmlId = entry.gmlId,
+                functionCode = entry.functionCode,
+                functionName = entry.functionName,
+                sectionType = entry.sectionType,
+                sectionTypeName = entry.sectionTypeName
+            });
+        }
+
+        // 土地利用グリッドを構築
+        landUseGrid = new Dictionary<Vector2Int, List<LandUseContext>>();
+        foreach (var entry in geoSpatialIndex.landUses)
+        {
+            Vector2Int gridKey = WorldToGridKey(entry.position);
+            if (!landUseGrid.ContainsKey(gridKey))
+                landUseGrid[gridKey] = new List<LandUseContext>();
+
+            landUseGrid[gridKey].Add(new LandUseContext
+            {
+                name = entry.name,
+                position = entry.position,
+                distance = 0,
+                gmlId = entry.gmlId,
+                landUseClass = entry.landUseClass,
+                landUseClassName = entry.landUseClassName,
+                usage = entry.usage,
+                area = entry.area
+            });
+        }
+
+        // 災害リスクデータはリストとして保持（Bounds判定用）
+        tsunamiRiskList = geoSpatialIndex.tsunamiRisks;
+        landslideRiskList = geoSpatialIndex.landslideRisks;
+        terrainList = geoSpatialIndex.terrains;
+
+        var elapsed = Time.realtimeSinceStartup - startTime;
+        Debug.Log($"[EnvironmentalContext] 地理空間インデックス読み込み完了: " +
+                  $"道路{geoSpatialIndex.RoadCount}件, " +
+                  $"土地利用{geoSpatialIndex.LandUseCount}件, " +
+                  $"津波リスク{geoSpatialIndex.TsunamiRiskCount}件, " +
+                  $"土砂災害リスク{geoSpatialIndex.LandslideRiskCount}件, " +
+                  $"地形{geoSpatialIndex.TerrainCount}件 " +
+                  $"（処理時間: {elapsed:F3}秒）");
+    }
+
+    /// <summary>
+    /// キャッシュから空間インデックスを読み込む（高速）
+    /// </summary>
+    private void LoadFromCachedIndex()
+    {
+        var startTime = Time.realtimeSinceStartup;
+        spatialGrid = new Dictionary<Vector2Int, List<BuildingContext>>();
+
+        // キャッシュのcellSizeを使用
+        cellSize = cachedIndex.cellSize;
+
+        foreach (var entry in cachedIndex.buildings)
+        {
+            Vector2Int gridKey = WorldToGridKey(entry.position);
+
+            if (!spatialGrid.ContainsKey(gridKey))
+                spatialGrid[gridKey] = new List<BuildingContext>();
+
+            var context = new BuildingContext
+            {
+                name = entry.name,
+                position = entry.position,
+                distance = 0,
+                usage = entry.usage,
+                majorUsage = entry.majorUsage,
+                height = entry.height,
+                floors = entry.floors,
+                structureType = entry.structureType,
+                landUseType = entry.landUseType,
+                gmlId = entry.gmlId
+            };
+
+            spatialGrid[gridKey].Add(context);
+        }
+
+        var elapsed = Time.realtimeSinceStartup - startTime;
+        Debug.Log($"[EnvironmentalContext] キャッシュから読み込み完了: {cachedIndex.buildings.Count}件（処理時間: {elapsed:F3}秒）");
     }
     
     /// <summary>
@@ -387,14 +537,259 @@ public class EnvironmentalContextProvider : MonoBehaviour
     {
         if (spatialGrid == null)
             return "空間インデックス未構築";
-        
+
         int totalBuildings = spatialGrid.Sum(g => g.Value.Count);
         float avgBuildingsPerCell = spatialGrid.Count > 0 ? (float)totalBuildings / spatialGrid.Count : 0;
         int maxBuildingsInCell = spatialGrid.Count > 0 ? spatialGrid.Max(g => g.Value.Count) : 0;
-        
+
         return $"建物総数: {totalBuildings}, " +
                $"セル数: {spatialGrid.Count}, " +
                $"平均: {avgBuildingsPerCell:F1}件/セル, " +
                $"最大: {maxBuildingsInCell}件/セル";
     }
+
+    #region 地理空間データ検索メソッド
+
+    /// <summary>
+    /// 指定位置での津波リスク情報を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <returns>津波リスク情報（該当なしの場合はnull）</returns>
+    public TsunamiRiskContext GetTsunamiRiskAtPosition(Vector3 position)
+    {
+        if (tsunamiRiskList == null || tsunamiRiskList.Count == 0)
+            return null;
+
+        // 位置が含まれる津波リスク区域を検索（Boundsで判定）
+        foreach (var entry in tsunamiRiskList)
+        {
+            if (entry.bounds.Contains(position))
+            {
+                return new TsunamiRiskContext
+                {
+                    name = entry.name,
+                    position = entry.position,
+                    gmlId = entry.gmlId,
+                    description = entry.description,
+                    rank = entry.rank,
+                    estimatedDepth = entry.estimatedDepth
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 指定位置での土砂災害リスク情報を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <returns>土砂災害リスク情報（該当なしの場合はnull）</returns>
+    public LandslideRiskContext GetLandslideRiskAtPosition(Vector3 position)
+    {
+        if (landslideRiskList == null || landslideRiskList.Count == 0)
+            return null;
+
+        // 位置が含まれる土砂災害リスク区域を検索（Boundsで判定）
+        // 特別警戒区域を優先して返す
+        LandslideRiskContext foundContext = null;
+
+        foreach (var entry in landslideRiskList)
+        {
+            if (entry.bounds.Contains(position))
+            {
+                var context = new LandslideRiskContext
+                {
+                    name = entry.name,
+                    position = entry.position,
+                    gmlId = entry.gmlId,
+                    areaType = entry.areaType,
+                    areaTypeName = entry.areaTypeName,
+                    descriptionCode = entry.descriptionCode,
+                    descriptionName = entry.descriptionName,
+                    isSpecialZone = entry.isSpecialZone
+                };
+
+                // 特別警戒区域なら即座に返す
+                if (entry.isSpecialZone)
+                    return context;
+
+                // そうでなければ記録しておく
+                if (foundContext == null)
+                    foundContext = context;
+            }
+        }
+
+        return foundContext;
+    }
+
+    /// <summary>
+    /// 指定位置での標高を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <returns>標高（メートル）。取得できない場合は-1</returns>
+    public float GetCurrentElevation(Vector3 position)
+    {
+        if (terrainList == null || terrainList.Count == 0)
+            return -1f;
+
+        // 位置が含まれる地形データを検索
+        foreach (var entry in terrainList)
+        {
+            if (entry.bounds.Contains(position))
+            {
+                // Boundsの中心Y座標を概算標高として使用
+                // より正確には、DEMメッシュへのレイキャストが必要
+                return entry.minElevation + (entry.maxElevation - entry.minElevation) * 0.5f;
+            }
+        }
+
+        // 見つからない場合はpositionのY座標を返す
+        return position.y;
+    }
+
+    /// <summary>
+    /// 指定位置から一定範囲内の道路を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <param name="radius">検索半径（メートル）</param>
+    /// <returns>道路リスト（距離順）</returns>
+    public List<RoadContext> GetNearbyRoads(Vector3 position, float radius)
+    {
+        if (roadGrid == null || roadGrid.Count == 0)
+            return new List<RoadContext>();
+
+        var nearbyRoads = new List<RoadContext>();
+        Vector2Int centerCell = WorldToGridKey(position);
+        int cellRadius = Mathf.CeilToInt(radius / cellSize);
+
+        for (int x = -cellRadius; x <= cellRadius; x++)
+        {
+            for (int z = -cellRadius; z <= cellRadius; z++)
+            {
+                Vector2Int targetCell = centerCell + new Vector2Int(x, z);
+
+                if (roadGrid.TryGetValue(targetCell, out var roadsInCell))
+                {
+                    foreach (var road in roadsInCell)
+                    {
+                        float distance = Vector3.Distance(
+                            new Vector3(position.x, 0, position.z),
+                            new Vector3(road.position.x, 0, road.position.z)
+                        );
+
+                        if (distance <= radius)
+                        {
+                            nearbyRoads.Add(new RoadContext
+                            {
+                                name = road.name,
+                                position = road.position,
+                                distance = distance,
+                                gmlId = road.gmlId,
+                                functionCode = road.functionCode,
+                                functionName = road.functionName,
+                                sectionType = road.sectionType,
+                                sectionTypeName = road.sectionTypeName
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        nearbyRoads.Sort((a, b) => a.distance.CompareTo(b.distance));
+        return nearbyRoads;
+    }
+
+    /// <summary>
+    /// 最寄りの主要道路を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <param name="radius">検索半径（メートル）</param>
+    /// <returns>最寄りの主要道路（見つからない場合はnull）</returns>
+    public RoadContext GetNearestMajorRoad(Vector3 position, float radius = 200f)
+    {
+        var roads = GetNearbyRoads(position, radius);
+        return roads.FirstOrDefault(r => r.IsMajorRoad);
+    }
+
+    /// <summary>
+    /// 指定位置での土地利用情報を取得
+    /// </summary>
+    /// <param name="position">検索位置</param>
+    /// <returns>土地利用情報（見つからない場合はnull）</returns>
+    public LandUseContext GetLandUseAtPosition(Vector3 position)
+    {
+        if (landUseGrid == null || landUseGrid.Count == 0)
+            return null;
+
+        Vector2Int gridKey = WorldToGridKey(position);
+
+        // 現在のセルと隣接セルを検索
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int z = -1; z <= 1; z++)
+            {
+                Vector2Int targetCell = gridKey + new Vector2Int(x, z);
+
+                if (landUseGrid.TryGetValue(targetCell, out var landUsesInCell))
+                {
+                    // 最も近い土地利用を返す
+                    LandUseContext closest = null;
+                    float closestDistance = float.MaxValue;
+
+                    foreach (var landUse in landUsesInCell)
+                    {
+                        float distance = Vector3.Distance(
+                            new Vector3(position.x, 0, position.z),
+                            new Vector3(landUse.position.x, 0, landUse.position.z)
+                        );
+
+                        if (distance < closestDistance)
+                        {
+                            closestDistance = distance;
+                            closest = new LandUseContext
+                            {
+                                name = landUse.name,
+                                position = landUse.position,
+                                distance = distance,
+                                gmlId = landUse.gmlId,
+                                landUseClass = landUse.landUseClass,
+                                landUseClassName = landUse.landUseClassName,
+                                usage = landUse.usage,
+                                area = landUse.area
+                            };
+                        }
+                    }
+
+                    if (closest != null && closestDistance < 100f) // 100m以内なら返す
+                        return closest;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 地理空間データの統計情報を取得
+    /// </summary>
+    public string GetGeoSpatialStatistics()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("道路: ");
+        sb.Append(roadGrid?.Sum(g => g.Value.Count) ?? 0);
+        sb.Append("件, 土地利用: ");
+        sb.Append(landUseGrid?.Sum(g => g.Value.Count) ?? 0);
+        sb.Append("件, 津波リスク: ");
+        sb.Append(tsunamiRiskList?.Count ?? 0);
+        sb.Append("件, 土砂災害リスク: ");
+        sb.Append(landslideRiskList?.Count ?? 0);
+        sb.Append("件, 地形: ");
+        sb.Append(terrainList?.Count ?? 0);
+        sb.Append("件");
+        return sb.ToString();
+    }
+
+    #endregion
 }

@@ -37,6 +37,12 @@ public class SimulationMetrics : MonoBehaviour
     // 避難所ごとの選択カウント
     private Dictionary<string, int> _shelterSelectionCounts = new Dictionary<string, int>();
 
+    // エージェント別の評価指標
+    private Dictionary<string, AgentMetrics> _agentMetrics = new Dictionary<string, AgentMetrics>();
+
+    // エージェント別のSTAY開始時刻（STAY継続時間計算用）
+    private Dictionary<string, float> _stayStartTimes = new Dictionary<string, float>();
+
     /// <summary>
     /// 行動ログエントリ
     /// </summary>
@@ -49,6 +55,33 @@ public class SimulationMetrics : MonoBehaviour
         public string targetShelter;
         public string reasoning;
         public float confidence;
+        // 階層的意思決定用フィールド
+        public string primaryGoal;      // 長期目標
+        public string planSteps;        // 中期計画のステップ（カンマ区切り）
+        public bool goalUpdated;        // 目標更新フラグ
+        public bool planUpdated;        // 計画更新フラグ
+    }
+
+    /// <summary>
+    /// エージェント別の評価指標
+    /// </summary>
+    [Serializable]
+    public class AgentMetrics
+    {
+        public string agentId;
+        public string personaName;
+        public string mentalState;          // バイアス条件（mental_state）
+        public float firstEvacuateTime;     // 最初のEVACUATE時刻（-1なら未避難）
+        public float totalStayDuration;     // STAY継続時間合計
+        public int followCount;             // FOLLOW選択回数
+        public int talkCount;               // TALK選択回数
+        public int contactCount;            // CONTACT選択回数
+        public int searchFamilyCount;       // SEARCH_FAMILY選択回数
+        public int goalUpdateCount;         // 長期目標更新回数
+        public int planUpdateCount;         // 中期計画更新回数
+        public bool evacuationCompleted;    // 避難完了したか
+        public float evacuationTime;        // 避難完了時間（-1なら未完了）
+        public string finalShelter;         // 到達した避難所
     }
 
     /// <summary>
@@ -129,8 +162,53 @@ public class SimulationMetrics : MonoBehaviour
         _evacuationRecords.Clear();
         InitializeActionCounts();
         _shelterSelectionCounts.Clear();
+        _agentMetrics.Clear();
+        _stayStartTimes.Clear();
+
+        // エージェント別メトリクスを初期化
+        InitializeAgentMetrics();
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 開始 - 指標計測開始");
+    }
+
+    private void InitializeAgentMetrics()
+    {
+        foreach (var evacueeObj in _envManager.Evacuees)
+        {
+            if (evacueeObj == null) continue;
+
+            var evacuee = evacueeObj.GetComponent<Evacuee>();
+            if (evacuee == null) continue;
+
+            string agentId = evacuee.EvacueeId ?? evacueeObj.name;
+
+            // ペルソナ情報を取得（EvacueeIdからintに変換）
+            PersonaData persona = null;
+            if (int.TryParse(agentId, out int personaId))
+            {
+                persona = PersonaManager.GetPersona(personaId);
+            }
+
+            var metrics = new AgentMetrics
+            {
+                agentId = agentId,
+                personaName = persona?.name ?? evacuee.PersonaName ?? "Unknown",
+                mentalState = persona?.mental_state ?? "",
+                firstEvacuateTime = -1f,
+                totalStayDuration = 0f,
+                followCount = 0,
+                talkCount = 0,
+                contactCount = 0,
+                searchFamilyCount = 0,
+                goalUpdateCount = 0,
+                planUpdateCount = 0,
+                evacuationCompleted = false,
+                evacuationTime = -1f,
+                finalShelter = ""
+            };
+
+            _agentMetrics[agentId] = metrics;
+        }
     }
 
     private void OnEpisodeEnd(float evacuationRate)
@@ -140,16 +218,41 @@ public class SimulationMetrics : MonoBehaviour
         // 避難完了記録を収集
         CollectEvacuationRecords();
 
+        // 未完了エージェントのSTAY継続時間を確定
+        FinalizeAgentMetrics();
+
         // サマリを生成
         var summary = GenerateEpisodeSummary();
 
         // ログを出力
         SaveEpisodeLogs();
         SaveEpisodeSummary(summary);
+        SaveAgentMetrics();
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 終了 - " +
                   $"避難完了率: {summary.evacuationRate:P1}, " +
                   $"平均避難時間: {summary.averageEvacuationTime:F1}秒");
+    }
+
+    /// <summary>
+    /// エージェント別メトリクスを確定（エピソード終了時）
+    /// </summary>
+    private void FinalizeAgentMetrics()
+    {
+        float endTime = _envManager.CurrentTimeSec;
+
+        foreach (var kvp in _agentMetrics)
+        {
+            var metrics = kvp.Value;
+
+            // 残っているSTAY継続時間があれば加算
+            if (_stayStartTimes.TryGetValue(kvp.Key, out float stayStart))
+            {
+                metrics.totalStayDuration += endTime - stayStart;
+            }
+        }
+
+        _stayStartTimes.Clear();
     }
 
     /// <summary>
@@ -158,16 +261,33 @@ public class SimulationMetrics : MonoBehaviour
     public void RecordAction(string agentId, ActionType actionType, string targetShelter = null,
                              string reasoning = null, float confidence = 0f)
     {
+        RecordActionWithHierarchy(agentId, actionType, targetShelter, reasoning, confidence, null, null, false, false);
+    }
+
+    /// <summary>
+    /// エージェントの行動を記録（階層的意思決定情報を含む拡張版）
+    /// </summary>
+    public void RecordActionWithHierarchy(string agentId, ActionType actionType, string targetShelter,
+                                          string reasoning, float confidence,
+                                          string primaryGoal, string[] planSteps,
+                                          bool goalUpdated, bool planUpdated)
+    {
         if (!EnableMetrics) return;
+
+        float currentTime = _envManager.CurrentTimeSec;
 
         var entry = new ActionLogEntry
         {
-            timestamp = _envManager.CurrentTimeSec,
+            timestamp = currentTime,
             agentId = agentId,
             actionType = actionType.ToString(),
             targetShelter = targetShelter ?? "",
             reasoning = reasoning ?? "",
-            confidence = confidence
+            confidence = confidence,
+            primaryGoal = primaryGoal ?? "",
+            planSteps = planSteps != null ? string.Join("|", planSteps) : "",
+            goalUpdated = goalUpdated,
+            planUpdated = planUpdated
         };
 
         _actionLogs.Add(entry);
@@ -187,6 +307,78 @@ public class SimulationMetrics : MonoBehaviour
             }
             _shelterSelectionCounts[targetShelter]++;
         }
+
+        // エージェント別メトリクスを更新
+        UpdateAgentMetrics(agentId, actionType, currentTime, goalUpdated, planUpdated);
+    }
+
+    /// <summary>
+    /// エージェント別メトリクスを更新
+    /// </summary>
+    private void UpdateAgentMetrics(string agentId, ActionType actionType, float currentTime, bool goalUpdated, bool planUpdated)
+    {
+        if (!_agentMetrics.TryGetValue(agentId, out var metrics))
+        {
+            // まだ初期化されていないエージェントの場合は新規作成
+            metrics = new AgentMetrics
+            {
+                agentId = agentId,
+                personaName = "Unknown",
+                mentalState = "",
+                firstEvacuateTime = -1f,
+                totalStayDuration = 0f,
+                followCount = 0,
+                talkCount = 0,
+                contactCount = 0,
+                searchFamilyCount = 0,
+                goalUpdateCount = 0,
+                planUpdateCount = 0,
+                evacuationCompleted = false,
+                evacuationTime = -1f,
+                finalShelter = ""
+            };
+            _agentMetrics[agentId] = metrics;
+        }
+
+        // STAYからの遷移時にSTAY継続時間を加算
+        if (_stayStartTimes.TryGetValue(agentId, out float stayStart) && actionType != ActionType.STAY)
+        {
+            metrics.totalStayDuration += currentTime - stayStart;
+            _stayStartTimes.Remove(agentId);
+        }
+
+        // 行動タイプ別の処理
+        switch (actionType)
+        {
+            case ActionType.EVACUATE:
+                if (metrics.firstEvacuateTime < 0)
+                {
+                    metrics.firstEvacuateTime = currentTime;
+                }
+                break;
+            case ActionType.STAY:
+                if (!_stayStartTimes.ContainsKey(agentId))
+                {
+                    _stayStartTimes[agentId] = currentTime;
+                }
+                break;
+            case ActionType.FOLLOW:
+                metrics.followCount++;
+                break;
+            case ActionType.TALK:
+                metrics.talkCount++;
+                break;
+            case ActionType.CONTACT:
+                metrics.contactCount++;
+                break;
+            case ActionType.SEARCH_FAMILY:
+                metrics.searchFamilyCount++;
+                break;
+        }
+
+        // 目標・計画更新カウント
+        if (goalUpdated) metrics.goalUpdateCount++;
+        if (planUpdated) metrics.planUpdateCount++;
     }
 
     /// <summary>
@@ -206,6 +398,21 @@ public class SimulationMetrics : MonoBehaviour
         };
 
         _evacuationRecords.Add(record);
+
+        // エージェント別メトリクスを更新
+        if (_agentMetrics.TryGetValue(agentId, out var metrics))
+        {
+            metrics.evacuationCompleted = true;
+            metrics.evacuationTime = evacuationTime;
+            metrics.finalShelter = shelterName;
+
+            // 残っているSTAY継続時間があれば加算
+            if (_stayStartTimes.TryGetValue(agentId, out float stayStart))
+            {
+                metrics.totalStayDuration += evacuationTime - stayStart;
+                _stayStartTimes.Remove(agentId);
+            }
+        }
     }
 
     private void CollectEvacuationRecords()
@@ -305,15 +512,18 @@ public class SimulationMetrics : MonoBehaviour
 
         using (var writer = new StreamWriter(filepath))
         {
-            // ヘッダー
-            writer.WriteLine("timestamp,agent_id,action_type,target_shelter,reasoning,confidence");
+            // ヘッダー（階層的意思決定フィールドを追加）
+            writer.WriteLine("timestamp,agent_id,action_type,target_shelter,reasoning,confidence,primary_goal,plan_steps,goal_updated,plan_updated");
 
             // データ
             foreach (var log in _actionLogs)
             {
                 string reasoning = log.reasoning.Replace(",", ";").Replace("\n", " ");
+                string primaryGoal = (log.primaryGoal ?? "").Replace(",", ";").Replace("\n", " ");
+                string planSteps = (log.planSteps ?? "").Replace(",", ";").Replace("\n", " ");
                 writer.WriteLine($"{log.timestamp:F2},{log.agentId},{log.actionType}," +
-                               $"{log.targetShelter},{reasoning},{log.confidence:F2}");
+                               $"{log.targetShelter},{reasoning},{log.confidence:F2}," +
+                               $"{primaryGoal},{planSteps},{log.goalUpdated},{log.planUpdated}");
             }
         }
 
@@ -368,6 +578,39 @@ public class SimulationMetrics : MonoBehaviour
         }
 
         return basePath;
+    }
+
+    /// <summary>
+    /// エージェント別メトリクスをCSVに保存
+    /// </summary>
+    private void SaveAgentMetrics()
+    {
+        string directory = GetOutputDirectory();
+        string filename = $"episode_{_envManager.currentEpisodeId}_agents.csv";
+        string filepath = Path.Combine(directory, filename);
+
+        using (var writer = new StreamWriter(filepath))
+        {
+            // ヘッダー
+            writer.WriteLine("agent_id,persona_name,mental_state,first_evacuate_time,total_stay_duration," +
+                           "follow_count,talk_count,contact_count,search_family_count," +
+                           "goal_update_count,plan_update_count,evacuation_completed,evacuation_time,final_shelter");
+
+            // データ
+            foreach (var kvp in _agentMetrics)
+            {
+                var m = kvp.Value;
+                string personaName = (m.personaName ?? "").Replace(",", ";");
+                string mentalState = (m.mentalState ?? "").Replace(",", ";");
+                string finalShelter = (m.finalShelter ?? "").Replace(",", ";");
+
+                writer.WriteLine($"{m.agentId},{personaName},{mentalState},{m.firstEvacuateTime:F2},{m.totalStayDuration:F2}," +
+                               $"{m.followCount},{m.talkCount},{m.contactCount},{m.searchFamilyCount}," +
+                               $"{m.goalUpdateCount},{m.planUpdateCount},{m.evacuationCompleted},{m.evacuationTime:F2},{finalShelter}");
+            }
+        }
+
+        Debug.Log($"[SimulationMetrics] エージェント別メトリクスを保存: {filepath}");
     }
 
     /// <summary>

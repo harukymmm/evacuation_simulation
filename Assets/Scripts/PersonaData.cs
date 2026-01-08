@@ -15,13 +15,20 @@ public class PersonaData
     public string role;
     public string age_group;
     public float speed_multiplier;
-    public string stairs_usage; // "allowed" or "forbidden"
     public string mental_state;
     public string priority;
     public string system_prompt_context;
     public bool has_smartphone = true; // デフォルトはtrue（スマホを持っている）
 
-    public bool CanUseStairs => stairs_usage == "allowed";
+    // 拡張フィールド: 生活背景情報
+    public string home_location_category;    // 自宅位置カテゴリ: "coastal", "hill", "center"
+    public int home_elevation;               // 自宅の海抜(m)
+    public string home_structure;            // 自宅の構造: "wooden_1story", "wooden_2story", "rc_2story", "rc_3story"
+    public int residence_years;              // 居住年数
+    public string local_knowledge_level;     // 土地勘レベル: "newcomer", "resident", "native"
+    public string current_location_reason;   // 現在地にいる理由
+    public string past_disaster_experience;  // 過去の災害経験
+    public string physical_condition;        // 身体状態
 }
 
 /// <summary>
@@ -63,7 +70,7 @@ public static class PersonaManager
 
                 // CSVのパース（カンマ区切り、ただしsystem_prompt_context内のカンマは考慮）
                 var fields = ParseCsvLine(line);
-                if (fields.Length < 9)
+                if (fields.Length < 8)
                 {
                     Debug.LogWarning($"[PersonaManager] Invalid CSV line {i}: {line}");
                     continue;
@@ -76,21 +83,31 @@ public static class PersonaManager
                     role = fields[2],
                     age_group = fields[3],
                     speed_multiplier = float.Parse(fields[4]),
-                    stairs_usage = fields[5],
-                    mental_state = fields[6],
-                    priority = fields[7],
-                    system_prompt_context = fields[8]
+                    mental_state = fields[5],
+                    priority = fields[6],
+                    system_prompt_context = fields[7]
                 };
-                
-                // has_smartphoneカラムが存在する場合は読み込む（オプショナル）
-                if (fields.Length >= 10)
-                {
-                    if (bool.TryParse(fields[9], out bool hasPhone))
-                    {
-                        persona.has_smartphone = hasPhone;
-                    }
-                }
-                // カラムがなければデフォルト値（true）を使用
+
+                // 拡張フィールドの読み込み（オプショナル、後方互換性のため）
+                // カラム順序: 8=home_location_category, 9=home_elevation, 10=home_structure,
+                //            11=residence_years, 12=local_knowledge_level, 13=current_location_reason,
+                //            14=past_disaster_experience, 15=physical_condition
+                if (fields.Length >= 9)
+                    persona.home_location_category = fields[8];
+                if (fields.Length >= 10 && int.TryParse(fields[9], out int elevation))
+                    persona.home_elevation = elevation;
+                if (fields.Length >= 11)
+                    persona.home_structure = fields[10];
+                if (fields.Length >= 12 && int.TryParse(fields[11], out int years))
+                    persona.residence_years = years;
+                if (fields.Length >= 13)
+                    persona.local_knowledge_level = fields[12];
+                if (fields.Length >= 14)
+                    persona.current_location_reason = fields[13];
+                if (fields.Length >= 15)
+                    persona.past_disaster_experience = fields[14];
+                if (fields.Length >= 16)
+                    persona.physical_condition = fields[15];
 
                 _personas[persona.agent_id] = persona;
             }

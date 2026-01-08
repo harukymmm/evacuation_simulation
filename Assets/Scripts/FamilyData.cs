@@ -18,7 +18,7 @@ public class FamilyMember
     public string spawn_building_name; // スポーンした建物名
     public bool has_phone;         // 連絡手段を持っているか
     public bool exists_in_scene;   // シーン内に実在するか
-    
+
     // 探索用
     public string likely_location; // 想定される場所の説明（"自宅", "小学校"など）
     public Vector3 search_position; // 探索する座標
@@ -34,7 +34,7 @@ public class FamilyData
     public int owner_agent_id;                  // この家族情報の所有者
     public BuildingCategory owner_spawn_category; // 所有者のスポーンカテゴリ
     public List<FamilyMember> members;          // 家族メンバーリスト
-    
+
     public FamilyData()
     {
         members = new List<FamilyMember>();
@@ -43,18 +43,117 @@ public class FamilyData
 
 /// <summary>
 /// 家族情報を管理するクラス
+/// FamilyGroupManagerを内部で使用し、双方向の家族関係をサポート
 /// </summary>
 public static class FamilyManager
 {
-    private static Dictionary<int, FamilyData> _families = null;
+    private static Dictionary<int, FamilyData> _familiesCache = null;
+    private static bool _useNewFormat = true;  // 新形式（family_groups.csv）を使用
     private static readonly string FamilyCsvPath = Path.Combine(Application.dataPath, "Config", "families.csv");
+    private static readonly string FamilyGroupsCsvPath = Path.Combine(Application.dataPath, "Config", "family_groups.csv");
 
     /// <summary>
-    /// CSVファイルから家族データを読み込む
+    /// 家族データを読み込む
+    /// 新形式（family_groups.csv）が存在すれば優先使用、なければ旧形式（families.csv）を使用
     /// </summary>
     public static void LoadFamilies()
     {
-        _families = new Dictionary<int, FamilyData>();
+        _familiesCache = new Dictionary<int, FamilyData>();
+
+        // 新形式ファイルの存在確認
+        _useNewFormat = File.Exists(FamilyGroupsCsvPath);
+
+        if (_useNewFormat)
+        {
+            LoadFromFamilyGroups();
+        }
+        else
+        {
+            LoadFromLegacyFormat();
+        }
+    }
+
+    /// <summary>
+    /// 新形式（family_groups.csv）から読み込み
+    /// FamilyGroupManagerを使用して双方向関係を自動生成
+    /// </summary>
+    private static void LoadFromFamilyGroups()
+    {
+        Debug.Log("[FamilyManager] Loading from new format (family_groups.csv)");
+
+        // FamilyGroupManagerを初期化
+        FamilyGroupManager.LoadFamilyGroups();
+
+        // 全家族グループを取得
+        var allGroups = FamilyGroupManager.GetAllFamilyGroups();
+
+        // 各シーン内エージェントに対してFamilyDataを生成
+        foreach (var group in allGroups.Values)
+        {
+            foreach (var member in group.members)
+            {
+                if (member.agent_id > 0)  // シーン内エージェントのみ
+                {
+                    var familyData = BuildFamilyDataForAgent(member.agent_id);
+                    if (familyData != null)
+                    {
+                        _familiesCache[member.agent_id] = familyData;
+                    }
+                }
+            }
+        }
+
+        Debug.Log($"[FamilyManager] Loaded family data for {_familiesCache.Count} agents from family_groups.csv (bidirectional)");
+    }
+
+    /// <summary>
+    /// agent_idに対するFamilyDataを構築（双方向対応）
+    /// </summary>
+    private static FamilyData BuildFamilyDataForAgent(int agentId)
+    {
+        var familyMembers = FamilyGroupManager.GetFamilyMembersForAgent(agentId);
+        var myInfo = FamilyGroupManager.GetMemberByAgentId(agentId);
+
+        if (myInfo == null)
+        {
+            return null;
+        }
+
+        var familyData = new FamilyData
+        {
+            owner_agent_id = agentId,
+            owner_spawn_category = myInfo.spawn_category
+        };
+
+        // 家族メンバーをFamilyMember形式に変換
+        foreach (var groupMember in familyMembers)
+        {
+            var member = new FamilyMember
+            {
+                agent_id = groupMember.agent_id,
+                name = groupMember.name,
+                relation = groupMember.relation_to_me,  // 自分から見た続柄（動的生成済み）
+                spawn_category = groupMember.spawn_category,
+                has_phone = groupMember.has_phone,
+                exists_in_scene = groupMember.exists_in_scene,
+                likely_location = groupMember.likely_location,
+                search_position = groupMember.search_position,
+                spawn_building_name = groupMember.spawn_building_name,
+                distance_meters = groupMember.distance_meters
+            };
+
+            familyData.members.Add(member);
+        }
+
+        return familyData;
+    }
+
+    /// <summary>
+    /// 旧形式（families.csv）から読み込み（後方互換性のため維持）
+    /// </summary>
+    private static void LoadFromLegacyFormat()
+    {
+        Debug.Log("[FamilyManager] Loading from legacy format (families.csv)");
 
         if (!File.Exists(FamilyCsvPath))
         {
@@ -102,9 +201,9 @@ public static class FamilyManager
                 }
 
                 // 所有者のFamilyDataを取得または作成
-                if (!_families.ContainsKey(ownerId))
+                if (!_familiesCache.ContainsKey(ownerId))
                 {
-                    _families[ownerId] = new FamilyData
+                    _familiesCache[ownerId] = new FamilyData
                     {
                         owner_agent_id = ownerId,
                         owner_spawn_category = BuildingCategory.Other // 後で設定
@@ -125,24 +224,16 @@ public static class FamilyManager
                         likely_location = BuildingCategorizer.GetCategoryDisplayName(spawnCategory)
                     };
 
-                    _families[ownerId].members.Add(member);
+                    _familiesCache[ownerId].members.Add(member);
                 }
                 else
                 {
                     // 本人のスポーンカテゴリを設定
-                    _families[ownerId].owner_spawn_category = spawnCategory;
+                    _familiesCache[ownerId].owner_spawn_category = spawnCategory;
                 }
             }
 
-            Debug.Log($"[FamilyManager] Loaded family data for {_families.Count} agents from {FamilyCsvPath}");
-            
-            // デバッグ: 各エージェントの家族構成を表示
-            foreach (var kvp in _families)
-            {
-                int agentId = kvp.Key;
-                var familyData = kvp.Value;
-                Debug.Log($"[FamilyManager] Agent {agentId}: {familyData.members.Count}人の家族, スポーンカテゴリ: {familyData.owner_spawn_category}");
-            }
+            Debug.Log($"[FamilyManager] Loaded family data for {_familiesCache.Count} agents from {FamilyCsvPath} (legacy format)");
         }
         catch (Exception ex)
         {
@@ -155,14 +246,25 @@ public static class FamilyManager
     /// </summary>
     public static FamilyData GetFamily(int agentId)
     {
-        if (_families == null)
+        if (_familiesCache == null)
         {
             LoadFamilies();
         }
 
-        if (_families != null && _families.TryGetValue(agentId, out var family))
+        if (_familiesCache != null && _familiesCache.TryGetValue(agentId, out var family))
         {
             return family;
+        }
+
+        // キャッシュにない場合は動的に生成を試みる（新形式のみ）
+        if (_useNewFormat)
+        {
+            var familyData = BuildFamilyDataForAgent(agentId);
+            if (familyData != null)
+            {
+                _familiesCache[agentId] = familyData;
+                return familyData;
+            }
         }
 
         return null;
@@ -173,15 +275,27 @@ public static class FamilyManager
     /// </summary>
     public static Dictionary<int, FamilyData> GetAllFamilies()
     {
-        if (_families == null)
+        if (_familiesCache == null)
         {
             LoadFamilies();
         }
-        return _families ?? new Dictionary<int, FamilyData>();
+        return _familiesCache ?? new Dictionary<int, FamilyData>();
+    }
+
+    /// <summary>
+    /// 新形式を使用しているかどうか
+    /// </summary>
+    public static bool IsUsingNewFormat()
+    {
+        return _useNewFormat;
+    }
+
+    /// <summary>
+    /// キャッシュをクリア（テスト用）
+    /// </summary>
+    public static void ClearCache()
+    {
+        _familiesCache = null;
+        FamilyGroupManager.ClearCache();
     }
 }
-
-
-
-
-

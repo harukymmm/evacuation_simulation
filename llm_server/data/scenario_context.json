@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "region": {
+    "name": "いわき市豊間地区",
+    "type": "coastal_residential",
+    "description": "福島県いわき市沿岸部の住宅地。太平洋に面し、海岸線から内陸に向かって緩やかな傾斜がある。",
+    "geography": {
+      "coast_distance_range": "100m〜1500m",
+      "elevation_range": "海抜0m〜35m",
+      "terrain": "東側が海、西側が丘陵地。海岸沿いは平坦だが、内陸に向かうにつれて傾斜がきつくなる。"
+    },
+    "population": {
+      "total": "約3000人",
+      "elderly_ratio": "約30%",
+      "weekday_daytime_note": "働き盛りの世代は市街地へ通勤中。地区には高齢者・主婦・幼児が多い。"
+    },
+    "major_landmarks": [
+      "豊間小学校（高台）",
+      "豊間漁港（海岸沿い）",
+      "県道382号線（海岸通り）",
+      "国道6号線"
+    ]
+  },
+  "infrastructure": {
+    "power": {
+      "normal_status": "電力供給正常",
+      "earthquake_impact": "震度6以上で停電の可能性が高い"
+    },
+    "communication": {
+      "mobile_coverage": "良好（主要キャリア対応）",
+      "landline_availability": "ほとんどの家庭に固定電話あり",
+      "earthquake_impact": "基地局損傷や回線輻輳により繋がりにくくなる可能性"
+    },
+    "broadcast_system": {
+      "type": "防災行政無線（屋外スピーカー）",
+      "coverage": "地区全域",
+      "reliability": "老朽化により一部不鳴動の可能性あり"
+    }
+  },
+  "evacuation_rules": {
+    "general_principles": [
+      "津波警報発表時は直ちに高台へ避難する",
+      "海抜20m以上の場所を目指す",
+      "車での避難は原則禁止（渋滞を招くため）",
+      "避難所に行けない場合は近くの頑丈な建物の3階以上へ（垂直避難）",
+      "避難開始後は絶対に家に戻らない（忘れ物を取りに戻って命を落とす例が多い）",
+      "可能であれば、近くにいる高齢者や体の不自由な方の避難を手伝う"
+    ],
+    "designated_shelters": [
+      {
+        "name": "豊間小学校",
+        "type": "primary",
+        "elevation_m": 25,
+        "capacity": 500,
+        "features": ["耐震構造", "備蓄食料あり", "医療班待機予定"],
+        "access_notes": "消防団詰所の脇の階段が最短ルート"
+      },
+      {
+        "name": "豊間公民館",
+        "type": "secondary",
+        "elevation_m": 18,
+        "capacity": 200,
+        "features": ["バリアフリー対応", "スロープあり"],
+        "access_notes": "高齢者や車椅子利用者に推奨"
+      },
+      {
+        "name": "豊間中学校",
+        "type": "secondary",
+        "elevation_m": 30,
+        "capacity": 400,
+        "features": ["体育館利用可能", "広い校庭"],
+        "access_notes": "小学校より遠いが標高が高い"
+      }
+    ],
+    "time_limits": {
+      "tsunami_arrival_estimate": "地震発生から約30分",
+      "recommended_evacuation_start": "揺れが収まったら直ちに避難開始",
+      "critical_note": "第1波が小さくても油断しない。第2波・第3波で急激に波高が上がることがある。"
+    }
+  },
+  "known_hazards": [
+    {
+      "area": "海岸から500m以内",
+      "risk": "津波到達まで約10分と推定。最優先で避難が必要。"
+    },
+    {
+      "area": "県道382号線（海岸通り）",
+      "risk": "海抜5m以下の低地を通る。津波時は通行危険。"
+    },
+    {
+      "area": "豊間漁港周辺",
+      "risk": "最も危険な区域。発災後は立ち入り禁止。"
+    },
+    {
+      "area": "海抜10m以下の住宅地",
+      "risk": "2011年の津波では浸水した区域。避難対象。"
+    }
+  ],
+  "local_knowledge": {
+    "historical_events": [
+      {
+        "year": 2011,
+        "event": "東日本大震災",
+        "impact": "津波により甚大な被害。死者・行方不明者多数。",
+        "lessons": [
+          "「ここまで来ない」という過信が多くの犠牲者を出した",
+          "引き波が始まったら数分以内に大波が来る",
+          "車で避難しようとして渋滞に巻き込まれた人が多かった"
+        ]
+      }
+    ],
+    "local_sayings": [
+      "津波てんでんこ（各自がまず自分の命を守る）",
+      "地震があったら高台へ",
+      "津波は繰り返し来る。一度引いても戻るな"
+    ]
+  }
+}
