@@ -99,8 +99,8 @@ evacuation_simulation/
 │   │   ├── scenario.csv            # シナリオ設定
 │   │   └── BuildingSpatialIndex.asset  # 建物空間インデックス
 │   ├── Scenes/                      # Unityシーン
-│   │   ├── Iwaki/                  # いわき市
-│   │   └── namie/                  # 浪江町
+│   │   ├── Iwaki/                  # いわき市平豊間地区・平薄磯地区
+│   │   └── namie/                  # 浪江町付近
 │   └── Editor/                      # エディタ拡張
 ├── llm_server/                      # Pythonサーバー
 │   ├── server.py                   # メインサーバー
@@ -143,8 +143,8 @@ python server.py
 ```
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
-LLM_SERVER_HOST=127.0.0.1
-LLM_SERVER_PORT=8765
+LLM_SERVER_HOST=
+LLM_SERVER_PORT=
 ```
 
 APIキー未設定時はヒューリスティック（最短距離避難所選択）で動作。
