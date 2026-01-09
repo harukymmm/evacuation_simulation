@@ -6,22 +6,27 @@
 
 ## ログディレクトリ構造
 
-すべてのログは `Logs/` ディレクトリ（プロジェクトルート直下）に統一して出力される。
+すべてのログは `Logs/` ディレクトリ（プロジェクトルート直下）に統一して出力される。SimulationMetricsによる評価ログとLLMサーバーの意思決定ログは、同一の実験セッションディレクトリに統合して出力される。
 
 ```
 Logs/
-├── experiment_results/           # SimulationMetricsによる評価ログ
+├── experiment_results/           # 実験結果（SimulationMetrics + LLMサーバー）
 │   └── YYYYMMDD_HHMMSS/         # 実験セッションごとのディレクトリ
 │       ├── episode_X_actions.csv # エピソードごとの行動ログ
 │       ├── episode_X_agents.csv  # エピソードごとのエージェント別メトリクス
-│       └── episode_X_summary.csv # エピソードサマリ
-├── llm_decisions/                # LLMサーバーの意思決定ログ
-│   └── YYYY_MM_DD-HH_MM_SS/      # サーバー起動セッションごと
-│       └── {evacuee_id}.txt      # 避難者ごとの詳細ログ
+│       ├── episode_X_summary.csv # エピソードサマリ
+│       └── llm_decisions/        # LLMサーバーの意思決定ログ（同セッション）
+│           └── {evacuee_id}.txt  # 避難者ごとの詳細ログ
 ├── YYYY_MM_DD-HH_MM_SS/          # EnvManagerのセッションログ
 │   └── EvaRatesPerSec_Episode_X.csv  # 避難率の時系列データ
 └── building_stats/               # 建物属性の統計情報
 ```
+
+**ログ統合の仕組み:**
+
+- `SimulationMetrics`が実験ID（`YYYYMMDD_HHMMSS`形式）を生成
+- 避難者（`Evacuee`）がLLMリクエスト時に`experiment_id`フィールドで実験IDをサーバーに送信
+- LLMサーバーは受信した実験IDに対応するディレクトリにログを出力
 
 ---
 

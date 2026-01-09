@@ -25,6 +25,11 @@ public class SimulationMetrics : MonoBehaviour
     private string _experimentId;
     private float _episodeStartTime;
 
+    /// <summary>
+    /// 現在の実験IDを取得（LLMサーバーとのログ統合用）
+    /// </summary>
+    public string ExperimentId => _experimentId;
+
     // エピソードごとの行動ログ
     private List<ActionLogEntry> _actionLogs = new List<ActionLogEntry>();
 

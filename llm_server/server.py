@@ -30,12 +30,24 @@ SERVER_HOST = os.getenv("LLM_SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("LLM_SERVER_PORT", "8765"))
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOG_BASE_DIR = PROJECT_ROOT / "Logs" / "llm_decisions"
+LOG_BASE_DIR = PROJECT_ROOT / "Logs" / "experiment_results"
 
-# サーバー起動時のタイムスタンプでディレクトリを作成
-_SESSION_TIMESTAMP = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
-LOG_DIR = LOG_BASE_DIR / _SESSION_TIMESTAMP
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+# 実験IDごとのログディレクトリを管理
+_experiment_log_dirs: Dict[str, Path] = {}
+
+
+def _get_log_dir(experiment_id: Optional[str]) -> Path:
+    """実験IDに対応するログディレクトリを取得（なければ作成）"""
+    if not experiment_id:
+        # experiment_idがない場合はサーバー起動時のタイムスタンプを使用
+        experiment_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if experiment_id not in _experiment_log_dirs:
+        log_dir = LOG_BASE_DIR / experiment_id / "llm_decisions"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _experiment_log_dirs[experiment_id] = log_dir
+
+    return _experiment_log_dirs[experiment_id]
 
 
 def _create_client() -> Optional[AsyncOpenAI]:
@@ -1357,6 +1369,7 @@ def _log_decision(
     input_snapshot: Dict[str, Any],
     output_snapshot: Dict[str, Any],
     prompt: Optional[str] = None,
+    experiment_id: Optional[str] = None,
 ) -> None:
     try:
         sanitized_id = _sanitize_filename(evacuee_id)
@@ -1365,8 +1378,11 @@ def _log_decision(
         jst = timezone(timedelta(hours=9))
         timestamp_jst = datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
 
+        # 実験IDに対応するログディレクトリを取得
+        log_dir = _get_log_dir(experiment_id)
+
         # 読みやすい形式のログファイル（.txt）
-        log_filename = LOG_DIR / f"{sanitized_id}.txt"
+        log_filename = log_dir / f"{sanitized_id}.txt"
 
         # promptを除いたメタデータ
         log_meta = {
@@ -1557,6 +1573,7 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         input_snapshot=input_snapshot,
         output_snapshot=output_snapshot,
         prompt=prompt,  # プロンプトをログに追加
+        experiment_id=payload.get("experiment_id"),  # 実験IDを渡してログ出力先を統合
     )
 
     return response_payload

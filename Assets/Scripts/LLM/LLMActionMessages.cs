@@ -416,6 +416,7 @@ namespace LLM
     public class LLMEvacDecisionRequest
     {
         public string request_id;
+        public string experiment_id;                     // 実験セッションID（ログ出力先ディレクトリ用）
         public float timestamp;
         public EvacueePayload evacuee;
         public ShelterCandidatePayload[] shelter_candidates;
