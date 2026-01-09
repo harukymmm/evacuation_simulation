@@ -2467,30 +2467,13 @@ public class Evacuee : MonoBehaviour {
         // 環境コンテキストを取得
         EnvironmentalContextPayload envPayload = BuildEnvironmentalContextPayload();
         
-        if (envPayload != null)
-        {
-            Debug.Log($"[Evacuee] {gameObject.name}: 環境コンテキストをLLMリクエストに含めます（建物{envPayload.nearby_buildings.Length}件）");
-        }
-        else
-        {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 環境コンテキストはnullです（LLMリクエストに含まれません）");
-        }
-        
         // 家族情報を取得
         FamilyMemberPayload[] familyPayloads = BuildFamilyPayload();
-        if (familyPayloads != null && familyPayloads.Length > 0)
-        {
-            Debug.Log($"[Evacuee] {gameObject.name}: 家族情報をLLMリクエストに含めます（{familyPayloads.Length}人）");
-        }
         
         // 周辺避難者情報を取得（詳細情報と統計情報）
         int nearbyEvacueesCount = 0;
         float nearbyEvacueesDensity = 0f;
         NearbyEvacueePayload[] nearbyEvacuees = GetNearbyEvacuees(FOLLOW_SEARCH_RADIUS, out nearbyEvacueesCount, out nearbyEvacueesDensity);
-        if (nearbyEvacuees != null && nearbyEvacuees.Length > 0)
-        {
-            Debug.Log($"[Evacuee] {gameObject.name}: 周辺避難者情報をLLMリクエストに含めます（詳細: {nearbyEvacuees.Length}人、総数: {nearbyEvacueesCount}人、混雑度: {nearbyEvacueesDensity:F2}人/100m²）");
-        }
 
         // 環境状態を取得（DisasterEventManagerから）
         EnvironmentStatePayload envStatePayload = null;
@@ -2498,11 +2481,6 @@ public class Evacuee : MonoBehaviour {
         if (disasterEventManager != null)
         {
             envStatePayload = disasterEventManager.GetEnvironmentStatePayload();
-            Debug.Log($"[Evacuee] {gameObject.name}: 環境状態をLLMリクエストに含めます（フェーズ: {envStatePayload?.disaster_phase}）");
-        }
-        else
-        {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: DisasterEventManagerが見つかりません（環境状態はnull）");
         }
 
         return new LLMEvacDecisionRequest
@@ -2716,9 +2694,6 @@ public class Evacuee : MonoBehaviour {
         var landUse = envContext.GetLandUseAtPosition(currentPosition);
         string currentLandUse = landUse?.landUseClassName ?? "";
 
-        Debug.Log($"[Evacuee] {gameObject.name}: 環境情報ペイロードを作成しました（建物{buildingPayloads.Length}件、" +
-                  $"津波リスク: {isInTsunamiZone}、土砂災害リスク: {isInLandslideZone}、標高: {currentElevation:F1}m）");
-
         return new EnvironmentalContextPayload
         {
             nearby_buildings = buildingPayloads,
@@ -2901,12 +2876,10 @@ public class Evacuee : MonoBehaviour {
         if (CurrentSpeedChoice == LLM.SpeedChoice.RUN && StaminaLevel < STAMINA_THRESHOLD_RUN)
         {
             ApplySpeedChoice(LLM.SpeedChoice.FAST);
-            Debug.Log($"[Evacuee] {gameObject.name}: 体力低下により「急ぎ足」に減速 (stamina={StaminaLevel:P0})");
         }
         if (CurrentSpeedChoice == LLM.SpeedChoice.FAST && StaminaLevel < STAMINA_THRESHOLD_FAST)
         {
             ApplySpeedChoice(LLM.SpeedChoice.NORMAL);
-            Debug.Log($"[Evacuee] {gameObject.name}: 体力低下により「普通」に減速 (stamina={StaminaLevel:P0})");
         }
     }
 

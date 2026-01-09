@@ -31,7 +31,7 @@ agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in
 14,子供,-1,木村 蓮,School,false,false
 15,self,-1,林 和子,Residential,true,true
 16,self,-1,山田 太郎,Residential,true,true
-17,self,-1,清水 恵子,Hospital,true,true
+17,self,-1,清水 恵子,Residential,true,true
 17,夫,-1,清水 健一,Residential,true,false
 17,子供,-1,清水 美咲,School,false,false
 18,self,-1,佐々木 修,Residential,true,true
@@ -56,5 +56,6 @@ agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in
 29,self,-1,太田 勝男,PublicFacility,true,true
 29,妻,-1,太田 節子,Residential,true,true
 30,self,-1,内田 トメ,Residential,true,true
+
 
 

@@ -60,6 +60,13 @@ public class ShelterManagementAgent : Agent {
     }
 
     public void OnEndEpisode() {
+        // AlwaysActivateAllSheltersが有効な場合はログ生成をスキップ
+        if (AlwaysActivateAllShelters)
+        {
+            ActionLogs.Clear();
+            return;
+        }
+
         // データの保存とActionLogsの初期化
         // 避難所の建物IDを取得
         string[] shelterIds = new string[ShelterCandidates.Length];

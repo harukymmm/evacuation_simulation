@@ -30,7 +30,11 @@ SERVER_HOST = os.getenv("LLM_SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("LLM_SERVER_PORT", "8765"))
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOG_DIR = PROJECT_ROOT / "Logs" / "llm_decisions"
+LOG_BASE_DIR = PROJECT_ROOT / "Logs" / "llm_decisions"
+
+# サーバー起動時のタイムスタンプでディレクトリを作成
+_SESSION_TIMESTAMP = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+LOG_DIR = LOG_BASE_DIR / _SESSION_TIMESTAMP
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -1525,6 +1529,10 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         response_payload["talk_target_id"] = decision.get("talk_target_id")
         response_payload["talk_topic"] = decision.get("talk_topic", "General")
         response_payload["talk_message"] = decision.get("talk_message")
+
+    # FOLLOWの場合は追加フィールドを含める
+    if decision and action_type == "FOLLOW":
+        response_payload["target_evacuee_id"] = decision.get("target_evacuee_id")
 
     # 注: 行動履歴の要約（LLM API呼び出し）は削除
     # レート制限を回避するため、直近3件の履歴をそのまま使用する方式に変更

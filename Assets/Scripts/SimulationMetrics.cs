@@ -570,7 +570,8 @@ public class SimulationMetrics : MonoBehaviour
 
     private string GetOutputDirectory()
     {
-        string basePath = Path.Combine(Application.dataPath, "Logs", OutputDirectory, _experimentId);
+        // プロジェクトルートのLogs/ディレクトリに出力（Assets/外）
+        string basePath = Path.Combine(Application.dataPath, "..", "Logs", OutputDirectory, _experimentId);
 
         if (!Directory.Exists(basePath))
         {

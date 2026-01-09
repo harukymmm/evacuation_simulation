@@ -254,20 +254,11 @@ public class SpawnLocationManager : MonoBehaviour
 
     /// <summary>
     /// 指定カテゴリの建物情報をランダムに取得（タグベースのフォールバック付き）
-    /// School/PreSchoolカテゴリでPLATEAUデータがない場合はタグから取得
+    /// School/PreSchoolカテゴリはタグから直接取得（PLATEAUデータには含まれないため）
     /// </summary>
     public static (Vector3 position, string buildingName) GetRandomSpawnPositionWithNameAndFallback(BuildingCategory category)
     {
-        // まずPLATEAUデータから取得を試みる
-        var result = GetRandomSpawnPositionWithName(category);
-
-        // 取得できた場合はそのまま返す
-        if (result.position != Vector3.zero)
-        {
-            return result;
-        }
-
-        // School/PreSchoolカテゴリでPLATEAUデータがない場合はタグから取得
+        // School/PreSchoolカテゴリはタグから直接取得（PLATEAUデータには含まれない）
         if (category == BuildingCategory.School)
         {
             return GetSchoolSpawnPosition();
@@ -277,9 +268,11 @@ public class SpawnLocationManager : MonoBehaviour
             return GetPreSchoolSpawnPosition();
         }
 
-        return result;
+        // その他のカテゴリはPLATEAUデータから取得
+        return GetRandomSpawnPositionWithName(category);
     }
 }
+
 
 
 
