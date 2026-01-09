@@ -100,11 +100,23 @@ public class ShelterManagementAgentEditor : Editor
         {
             Debug.LogWarning("[ShelterManagementAgent] ConstShelterタグが定義されていません。Shelterタグのみを追加します。");
         }
-        
+
+        // Schoolタグも避難所として取得
+        GameObject[] schools = new GameObject[0];
+        try
+        {
+            schools = GameObject.FindGameObjectsWithTag("School");
+        }
+        catch (UnityException)
+        {
+            // Schoolタグが存在しない場合は無視
+        }
+
         // 配列を結合
-        GameObject[] allShelters = new GameObject[shelters.Length + constShelters.Length];
+        GameObject[] allShelters = new GameObject[shelters.Length + constShelters.Length + schools.Length];
         shelters.CopyTo(allShelters, 0);
         constShelters.CopyTo(allShelters, shelters.Length);
+        schools.CopyTo(allShelters, shelters.Length + constShelters.Length);
         
         // 見つからなかった場合の処理
         if (allShelters.Length == 0)

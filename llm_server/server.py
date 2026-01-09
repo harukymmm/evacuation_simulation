@@ -903,7 +903,7 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
     lines.append("")
 
     lines.append("")
-    lines.append("【近くの避難所情報】")
+    lines.append("【近くの避難先情報】")
     for idx, shelter in enumerate(shelters, 1):
         # 基本情報
         shelter_id = shelter.get("id", "不明")
@@ -916,15 +916,34 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
         distance_m = shelter.get("distance_meters", 0)
         walking_time = shelter.get("walking_time_minutes", 0)
 
-        # 基本情報の表示（表示名をメインに）
-        shelter_info = f"{idx}. {display_name}"
+        # 避難先タイプと海抜情報
+        destination_type = shelter.get("destination_type", "shelter")
+        elevation_meters = shelter.get("elevation_meters", 0)
+
+        # 避難先タイプに応じた表示
+        if destination_type == "tsunami_evacuation_area":
+            type_label = "【津波避難地域】"
+            # 収容制限なし（int.MaxValueが送られてくる）
+            if capacity >= 2147483647:
+                capacity_info = "収容制限なし"
+            else:
+                capacity_info = f"残り受け入れ可能人数: {capacity}人"
+            # 海抜情報
+            elevation_info = f"海抜: {elevation_meters:.0f}m, " if elevation_meters > 0 else ""
+        else:
+            type_label = "【避難所】"
+            capacity_info = f"残り受け入れ可能人数: {capacity}人"
+            elevation_info = ""
+
+        # 基本情報の表示（タイプラベル + 表示名）
+        shelter_info = f"{idx}. {type_label} {display_name}"
 
         # 説明がある場合は追加
         if description:
             shelter_info += f"（{description}）"
 
-        # 収容人数を追加
-        shelter_info += f" - 残り受け入れ可能人数: {capacity}人"
+        # 海抜・収容人数を追加
+        shelter_info += f" - {elevation_info}{capacity_info}"
 
         # 距離と徒歩時間を追加
         if distance_m > 0:

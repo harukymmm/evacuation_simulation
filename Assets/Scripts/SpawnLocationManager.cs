@@ -180,16 +180,108 @@ public class SpawnLocationManager : MonoBehaviour
     public static Dictionary<BuildingCategory, int> GetAllCategoryCounts()
     {
         EnsureInitialized();
-        
+
         if (_instance == null || _instance._buildingsByCategory == null)
             return new Dictionary<BuildingCategory, int>();
-        
+
         return _instance._buildingsByCategory.ToDictionary(
             kvp => kvp.Key,
             kvp => kvp.Value.Count
         );
     }
+
+    /// <summary>
+    /// Schoolタグ付きオブジェクトからランダムにスポーン位置を取得
+    /// PLATEAUデータに学校がない場合のフォールバック用
+    /// </summary>
+    public static (Vector3 position, string buildingName) GetSchoolSpawnPosition()
+    {
+        try
+        {
+            GameObject[] schools = GameObject.FindGameObjectsWithTag("School");
+            if (schools.Length > 0)
+            {
+                int randomIndex = Random.Range(0, schools.Length);
+                var school = schools[randomIndex];
+                Vector3 position = school.transform.position;
+
+                if (_instance != null && _instance.adjustToGround)
+                {
+                    position.y = _instance.groundYOffset;
+                }
+
+                return (position, school.name);
+            }
+        }
+        catch (UnityException)
+        {
+            // Schoolタグが存在しない場合は無視
+        }
+
+        return (Vector3.zero, "不明");
+    }
+
+    /// <summary>
+    /// PreSchoolタグ付きオブジェクトからランダムにスポーン位置を取得
+    /// PLATEAUデータに保育園がない場合のフォールバック用
+    /// </summary>
+    public static (Vector3 position, string buildingName) GetPreSchoolSpawnPosition()
+    {
+        try
+        {
+            GameObject[] preschools = GameObject.FindGameObjectsWithTag("PreSchool");
+            if (preschools.Length > 0)
+            {
+                int randomIndex = Random.Range(0, preschools.Length);
+                var preschool = preschools[randomIndex];
+                Vector3 position = preschool.transform.position;
+
+                if (_instance != null && _instance.adjustToGround)
+                {
+                    position.y = _instance.groundYOffset;
+                }
+
+                return (position, preschool.name);
+            }
+        }
+        catch (UnityException)
+        {
+            // PreSchoolタグが存在しない場合は無視
+        }
+
+        return (Vector3.zero, "不明");
+    }
+
+    /// <summary>
+    /// 指定カテゴリの建物情報をランダムに取得（タグベースのフォールバック付き）
+    /// School/PreSchoolカテゴリでPLATEAUデータがない場合はタグから取得
+    /// </summary>
+    public static (Vector3 position, string buildingName) GetRandomSpawnPositionWithNameAndFallback(BuildingCategory category)
+    {
+        // まずPLATEAUデータから取得を試みる
+        var result = GetRandomSpawnPositionWithName(category);
+
+        // 取得できた場合はそのまま返す
+        if (result.position != Vector3.zero)
+        {
+            return result;
+        }
+
+        // School/PreSchoolカテゴリでPLATEAUデータがない場合はタグから取得
+        if (category == BuildingCategory.School)
+        {
+            return GetSchoolSpawnPosition();
+        }
+        else if (category == BuildingCategory.PreSchool)
+        {
+            return GetPreSchoolSpawnPosition();
+        }
+
+        return result;
+    }
 }
+
+
 
 
 

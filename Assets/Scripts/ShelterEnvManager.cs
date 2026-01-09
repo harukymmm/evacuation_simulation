@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 using TMPro;
@@ -74,6 +75,8 @@ public class EnvManager : MonoBehaviour {
     [System.NonSerialized]
     public List<GameObject> CurrentShelters; // 現在のアクティブな避難所のリスト
     public List<GameObject> Shelters; // 全避難所のリスト
+    [System.NonSerialized]
+    public List<GameObject> TsunamiEvacuationAreas; // 津波避難地域のリスト
 
     [Header("UI Elements")]
     public TextMeshProUGUI stepCounter;
@@ -152,13 +155,77 @@ public class EnvManager : MonoBehaviour {
 
         // 避難所登録
         Shelters = new List<GameObject>(GameObject.FindGameObjectsWithTag("Shelter"));
-        
+
         // 固定値の避難所を追加
         GameObject[] constSheleters = GameObject.FindGameObjectsWithTag("ConstShelter");
         foreach (var shelter in constSheleters) {
             Shelters.Add(shelter);
         }
-        
+
+        // Schoolタグを避難所として追加（Shelterと同じ動作）
+        try {
+            GameObject[] schools = GameObject.FindGameObjectsWithTag("School");
+            foreach (var school in schools) {
+                Shelters.Add(school);
+            }
+            if (schools.Length > 0) {
+                Debug.Log($"[EnvManager] Schoolタグを{schools.Length}件、避難所として登録");
+            }
+        } catch (UnityException) {
+            // Schoolタグが存在しない場合は無視
+        }
+
+        // 津波避難地域を登録
+        TsunamiEvacuationAreas = new List<GameObject>(GameObject.FindGameObjectsWithTag("TsunamiEvacuationArea"));
+
+        // PreSchoolタグを津波避難地域として追加（TsunamiEvacuationAreaと同じ動作）
+        try {
+            GameObject[] preschools = GameObject.FindGameObjectsWithTag("PreSchool");
+            foreach (var preschool in preschools) {
+                TsunamiEvacuationAreas.Add(preschool);
+            }
+            if (preschools.Length > 0) {
+                Debug.Log($"[EnvManager] PreSchoolタグを{preschools.Length}件、津波避難地域として登録");
+            }
+        } catch (UnityException) {
+            // PreSchoolタグが存在しない場合は無視
+        }
+
+        // 津波避難地域のコンポーネント初期化
+        foreach (var area in TsunamiEvacuationAreas) {
+            TsunamiEvacuationArea areaComponent = area.GetComponent<TsunamiEvacuationArea>();
+
+            if (areaComponent == null) {
+                areaComponent = area.AddComponent<TsunamiEvacuationArea>();
+                areaComponent.uuid = System.Guid.NewGuid().ToString();
+
+                if (string.IsNullOrEmpty(areaComponent.displayName)) {
+                    areaComponent.displayName = area.name;
+                }
+            }
+            else {
+                if (string.IsNullOrEmpty(areaComponent.displayName)) {
+                    areaComponent.displayName = area.name;
+                }
+            }
+        }
+
+        // 津波避難地域の一覧をログ出力
+        if (TsunamiEvacuationAreas.Count > 0)
+        {
+            var areaNames = TsunamiEvacuationAreas
+                .Where(a => a != null)
+                .Select(a => {
+                    var comp = a.GetComponent<TsunamiEvacuationArea>();
+                    return comp != null && !string.IsNullOrEmpty(comp.displayName) ? comp.displayName : a.name;
+                });
+            Debug.Log($"[EnvManager] 津波避難地域を{TsunamiEvacuationAreas.Count}件登録: {string.Join(", ", areaNames)}");
+        }
+        else
+        {
+            Debug.Log($"[EnvManager] 津波避難地域: 0件");
+        }
+
         // コンポーネントの初期化
         foreach (var shelter in Shelters) {
             Shelter tower = shelter.GetComponent<Shelter>();
@@ -194,6 +261,22 @@ public class EnvManager : MonoBehaviour {
                     tower.displayName = shelter.name;
                 }
             }
+        }
+
+        // 避難所の一覧をログ出力
+        if (Shelters.Count > 0)
+        {
+            var shelterNames = Shelters
+                .Where(s => s != null)
+                .Select(s => {
+                    var comp = s.GetComponent<Shelter>();
+                    return comp != null && !string.IsNullOrEmpty(comp.displayName) ? comp.displayName : s.name;
+                });
+            Debug.Log($"[EnvManager] 避難所を{Shelters.Count}件登録: {string.Join(", ", shelterNames)}");
+        }
+        else
+        {
+            Debug.Log($"[EnvManager] 避難所: 0件");
         }
 
         /** エピソード終了時の処理*/
@@ -380,6 +463,16 @@ public class EnvManager : MonoBehaviour {
                 }
             }
         }
+
+        // 津波避難地域のリセット
+        foreach (var areaObj in TsunamiEvacuationAreas) {
+            if (areaObj != null) {
+                var area = areaObj.GetComponent<TsunamiEvacuationArea>();
+                if (area != null) {
+                    area.Reset();
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -448,18 +541,21 @@ public class EnvManager : MonoBehaviour {
         
         if (familyData != null && familyData.owner_spawn_category != BuildingCategory.Other)
         {
-            // 家族情報に基づいてスポーン位置を取得
-            var (position, buildingName) = SpawnLocationManager.GetRandomSpawnPositionWithName(familyData.owner_spawn_category);
+            // 家族情報に基づいてスポーン位置を取得（School/PreSchoolはタグからフォールバック）
+            var (position, buildingName) = SpawnLocationManager.GetRandomSpawnPositionWithNameAndFallback(familyData.owner_spawn_category);
             if (position != Vector3.zero)
             {
                 finalSpawnPos = position;
-                Debug.Log($"[EnvManager] Agent {agentId}: {BuildingCategorizer.GetCategoryDisplayName(familyData.owner_spawn_category)}にスポーン - {buildingName}");
+            }
+            else
+            {
+                Debug.LogWarning($"[EnvManager] Agent {agentId}: {BuildingCategorizer.GetCategoryDisplayName(familyData.owner_spawn_category)}のスポーン位置が見つかりません");
             }
             
-            // 家族メンバーの探索位置を設定
+            // 家族メンバーの探索位置を設定（School/PreSchoolはタグからフォールバック）
             foreach (var member in familyData.members)
             {
-                var (searchPos, searchBuildingName) = SpawnLocationManager.GetRandomSpawnPositionWithName(member.spawn_category);
+                var (searchPos, searchBuildingName) = SpawnLocationManager.GetRandomSpawnPositionWithNameAndFallback(member.spawn_category);
                 if (searchPos != Vector3.zero)
                 {
                     member.search_position = searchPos;

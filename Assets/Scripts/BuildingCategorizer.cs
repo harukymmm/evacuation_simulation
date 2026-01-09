@@ -9,7 +9,8 @@ public enum BuildingCategory
     WorkplaceResidential, // 職場兼住宅（作業所共同住宅・店舗共同住宅など）
     Office,               // 職場・オフィス・工場・商業施設等
     PublicFacility,       // 公共施設（官公庁施設など）
-    School,               // 学校（※現時点ではusageでは判定しない）
+    School,               // 学校（※現時点ではusageでは判定しない、タグで対応）
+    PreSchool,            // 保育園・幼稚園（※現時点ではusageでは判定しない、タグで対応）
     Hospital,             // 病院・医療施設（※現時点ではusageでは判定しない）
     Unknown,              // 用途が不明
     Other                 // 上記以外
@@ -89,6 +90,8 @@ public static class BuildingCategorizer
                 return "公共施設";
             case BuildingCategory.School:
                 return "学校";
+            case BuildingCategory.PreSchool:
+                return "保育園・幼稚園";
             case BuildingCategory.Hospital:
                 return "病院";
             case BuildingCategory.Unknown:

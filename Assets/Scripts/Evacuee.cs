@@ -202,19 +202,14 @@ public class Evacuee : MonoBehaviour {
             {
                 NavAgent.speed = DefaultSpeed * _persona.speed_multiplier;
             }
-            Debug.Log($"[Evacuee] {gameObject.name}: ペルソナ設定 - {_persona.name} ({_persona.role}), 速度倍率: {_persona.speed_multiplier}, agent_id: {id}");
         }
         else
         {
             Debug.LogWarning($"[Evacuee] {gameObject.name}: ペルソナデータが見つかりません (agent_id: {id})");
         }
-        
+
         // 家族データを読み込んで設定
         _familyData = FamilyManager.GetFamily(id);
-        if (_familyData != null && _familyData.members.Count > 0)
-        {
-            Debug.Log($"[Evacuee] {gameObject.name}: 家族情報設定 - {_familyData.members.Count}人の家族");
-        }
     }
     
     /// <summary>
@@ -540,13 +535,25 @@ public class Evacuee : MonoBehaviour {
         foreach (var shelter in constShelters) {
             Iterates.Add(shelter);
         }
+        // Schoolタグも避難所として検索対象に追加
+        try {
+            GameObject[] schools = GameObject.FindGameObjectsWithTag("School");
+            foreach (var school in schools) {
+                Iterates.Add(school);
+            }
+        } catch (UnityException) {
+            // Schoolタグが存在しない場合は無視
+        }
         // 訪れたことのない避難所を探す
         List<GameObject> sortedTowerPoints = new List<GameObject>();
         foreach (var tower in Iterates) {
             if(excludeTowerUUIDs != null && excludeTowerUUIDs.Contains(tower.GetComponent<Shelter>().uuid)) {
                 continue;
             }
-            GameObject point = tower.transform.GetChild(0).gameObject; // 避難所に設置した目印オブジェクトを取得
+            // 子オブジェクトがある場合はそれを使用、ない場合は親オブジェクト自体を使用
+            GameObject point = tower.transform.childCount > 0
+                ? tower.transform.GetChild(0).gameObject
+                : tower;
             sortedTowerPoints.Add(point);
         }
         // NOTE: エピソード更新時にgameObjectがnullになることがあるので、nullチェックを行う
@@ -586,6 +593,23 @@ public class Evacuee : MonoBehaviour {
                 }
             }
         }
+        isEvacuating = false;
+    }
+
+    /// <summary>
+    /// 津波避難地域への避難完了処理
+    /// </summary>
+    /// <param name="area">到達した津波避難地域</param>
+    public void EvacuationToArea(TsunamiEvacuationArea area) {
+        if(isEvacuating) {
+            return;
+        }
+        isEvacuating = true;
+
+        // 津波避難地域は収容制限がないため、常に避難完了
+        Debug.Log($"[Evacuee] {gameObject.name}: 津波避難地域 {area.displayName} に到達しました！");
+        gameObject.SetActive(false);
+
         isEvacuating = false;
     }
 
@@ -2144,6 +2168,38 @@ public class Evacuee : MonoBehaviour {
             }
         }
         
+        // Shelterで見つからなければ、津波避難地域を検索（displayNameでマッチング）
+        if (selectedShelter == null && _env.TsunamiEvacuationAreas != null)
+        {
+            foreach (var areaObj in _env.TsunamiEvacuationAreas)
+            {
+                if (areaObj == null) continue;
+
+                var areaComp = areaObj.GetComponent<TsunamiEvacuationArea>();
+                if (areaComp != null && !string.IsNullOrEmpty(areaComp.displayName))
+                {
+                    if (areaComp.displayName == response.selected_shelter_id)
+                    {
+                        selectedShelter = areaObj;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 津波避難地域でもdisplayNameで見つからなければGameObject.nameでフォールバック
+        if (selectedShelter == null && _env.TsunamiEvacuationAreas != null)
+        {
+            foreach (var areaObj in _env.TsunamiEvacuationAreas)
+            {
+                if (areaObj != null && areaObj.name == response.selected_shelter_id)
+                {
+                    selectedShelter = areaObj;
+                    break;
+                }
+            }
+        }
+
         // それでも見つからなければGameObject.Findで検索
         if (selectedShelter == null)
         {
@@ -2152,19 +2208,42 @@ public class Evacuee : MonoBehaviour {
 
         if (selectedShelter == null)
         {
-            // 利用可能な避難所の名前リストを作成
+            // 避難所の名前リスト
             var availableShelters = _env.Shelters
                 .Where(s => s != null)
                 .Select(s => {
                     var sc = s.GetComponent<Shelter>();
-                    return sc != null && !string.IsNullOrEmpty(sc.displayName) 
-                        ? sc.displayName 
+                    return sc != null && !string.IsNullOrEmpty(sc.displayName)
+                        ? sc.displayName
                         : s.name;
                 })
                 .ToList();
-            
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: LLMが選択した避難所が見つかりません: '{response.selected_shelter_id}' " +
-                           $"(利用可能な避難所: {string.Join(", ", availableShelters)})");
+
+            // 津波避難地域の名前リスト（別リストとして管理）
+            var availableAreas = new List<string>();
+            if (_env.TsunamiEvacuationAreas != null)
+            {
+                availableAreas = _env.TsunamiEvacuationAreas
+                    .Where(a => a != null)
+                    .Select(a => {
+                        var ac = a.GetComponent<TsunamiEvacuationArea>();
+                        return ac != null && !string.IsNullOrEmpty(ac.displayName)
+                            ? ac.displayName
+                            : a.name;
+                    })
+                    .ToList();
+            }
+
+            // 区別してエラーメッセージを表示
+            string shelterList = availableShelters.Count > 0
+                ? $"避難所: {string.Join(", ", availableShelters)}"
+                : "避難所: なし";
+            string areaList = availableAreas.Count > 0
+                ? $"津波避難地域: {string.Join(", ", availableAreas)}"
+                : "津波避難地域: なし";
+
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: LLMが選択した避難先が見つかりません: '{response.selected_shelter_id}' " +
+                           $"(利用可能な {shelterList} / {areaList})");
             return false;
         }
 
@@ -2180,12 +2259,15 @@ public class Evacuee : MonoBehaviour {
         
         ApplySpeedFromLLMResponse(response.desired_speed);
         
-        // 表示名を取得（bldg_で始まる場合は簡略表示）
+        // 表示名と種別を取得（Shelter または TsunamiEvacuationArea のdisplayNameを使用）
         var selectedShelterComp = selectedShelter.GetComponent<Shelter>();
+        var selectedAreaComp = selectedShelter.GetComponent<TsunamiEvacuationArea>();
         string displayName = selectedShelter.name;
+        string destinationType = "避難所";  // デフォルト
 
         if (selectedShelterComp != null && !string.IsNullOrEmpty(selectedShelterComp.displayName))
         {
+            // Shelterの場合
             // displayNameが「bldg_」で始まる場合は簡略表示、それ以外はそのまま
             if (selectedShelterComp.displayName.StartsWith("bldg_"))
             {
@@ -2198,13 +2280,20 @@ public class Evacuee : MonoBehaviour {
             {
                 displayName = selectedShelterComp.displayName;
             }
+            destinationType = "避難所";
+        }
+        else if (selectedAreaComp != null && !string.IsNullOrEmpty(selectedAreaComp.displayName))
+        {
+            // 津波避難地域の場合
+            displayName = selectedAreaComp.displayName;
+            destinationType = "津波避難地域";
         }
 
         // メトリクス記録
         var metrics = FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.EVACUATE, response.selected_shelter_id, response.reasoning, response.confidence);
 
-        Debug.Log($"[Evacuee] {gameObject.name}: EVACUATE - {displayName}に向かいます "
+        Debug.Log($"[Evacuee] {gameObject.name}: EVACUATE - 【{destinationType}】{displayName}に向かいます "
               + $"(pos: {Target.transform.position}), "
               + $"reason='{response.reasoning}', confidence={response.confidence:F2}, "
               + $"speed={NavAgent.speed:F2} m/s（{SpeedChoiceNames[CurrentSpeedChoice]}）");
@@ -2266,8 +2355,67 @@ public class Evacuee : MonoBehaviour {
                 current_capacity = currentCapacity,
                 max_capacity = maxCapacity,
                 distance_meters = distanceMeters,
-                walking_time_minutes = walkingTimeMinutes
+                walking_time_minutes = walkingTimeMinutes,
+                destination_type = "shelter",
+                elevation_meters = 0f
             });
+        }
+
+        // 津波避難地域を候補に追加
+        if (_env.TsunamiEvacuationAreas != null)
+        {
+            foreach (var areaObj in _env.TsunamiEvacuationAreas)
+            {
+                if (areaObj == null)
+                {
+                    continue;
+                }
+                var area = areaObj.GetComponent<TsunamiEvacuationArea>();
+                var pointTransform = areaObj.transform.childCount > 0
+                    ? areaObj.transform.GetChild(0)
+                    : areaObj.transform;
+                var pointPosition = pointTransform.position;
+
+                string displayName = area != null && !string.IsNullOrEmpty(area.displayName)
+                    ? area.displayName
+                    : areaObj.name;
+                string description = area != null ? area.description : "";
+                float elevationMeters = area != null ? area.elevationMeters : 0f;
+
+                // NavMeshでの経路距離と徒歩時間を計算
+                float distanceMeters = 0f;
+                float walkingTimeMinutes = 0f;
+
+                Vector3 targetPos = pointPosition;
+                try
+                {
+                    Vector3? cachedNavMeshPos = area != null ? area.GetNavMeshPosition() : null;
+                    if (cachedNavMeshPos.HasValue)
+                    {
+                        targetPos = cachedNavMeshPos.Value;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[Evacuee] {gameObject.name}: GetNavMeshPosition failed for {areaObj.name}, using default position - {ex.Message}");
+                }
+
+                CalculateNavMeshDistance(transform.position, targetPos, out distanceMeters, out walkingTimeMinutes);
+
+                shelterPayloads.Add(new ShelterCandidatePayload
+                {
+                    id = areaObj.name,
+                    display_name = displayName,
+                    description = description,
+                    position = new Vector3Payload(pointPosition),
+                    current_capacity = int.MaxValue,  // 収容制限なし
+                    max_capacity = int.MaxValue,
+                    distance_meters = distanceMeters,
+                    walking_time_minutes = walkingTimeMinutes,
+                    destination_type = "tsunami_evacuation_area",
+                    elevation_meters = elevationMeters
+                });
+            }
         }
 
         // ペルソナ情報をペイロードに変換

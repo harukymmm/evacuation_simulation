@@ -55,6 +55,8 @@ namespace LLM
         public int max_capacity;
         public float distance_meters;    // NavMeshでの経路距離（メートル）
         public float walking_time_minutes; // 徒歩所要時間（分）
+        public string destination_type;  // 避難先タイプ: "shelter" or "tsunami_evacuation_area"
+        public float elevation_meters;   // 津波避難地域の場合の海抜（メートル）
     }
 
     [Serializable]

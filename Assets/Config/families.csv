@@ -9,7 +9,7 @@ agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in
 4,self,-1,鈴木 誠,Residential,true,true
 5,self,-1,小林 愛,School,true,true
 5,母,-1,小林 由美,Residential,true,false
-6,self,-1,高橋 一郎,Commercial,true,true
+6,self,-1,高橋 一郎,Office,true,true
 6,妻,-1,高橋 幸恵,Residential,true,false
 7,self,-1,渡辺 美香,Residential,true,true
 7,子供,-1,渡辺 翔,School,false,false
@@ -20,8 +20,8 @@ agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in
 10,self,-1,加藤 正男,Residential,true,true
 10,妻,-1,加藤 久美子,Residential,true,true
 10,子供,-1,加藤 拓也,School,false,false
-11,self,-1,斎藤 由美,Commercial,true,true
-12,self,-1,松本 隆,Commercial,true,true
+11,self,-1,斎藤 由美,Office,true,true
+12,self,-1,松本 隆,Office,true,true
 12,妻,-1,松本 恵子,Residential,true,false
 13,self,-1,井上 真理,Residential,true,true
 13,夫,-1,井上 大輔,Office,true,false
@@ -43,16 +43,18 @@ agent_id,relation,target_agent_id,target_name,spawn_category,has_phone,exists_in
 22,self,-1,前田 健,Office,true,true
 22,妻,-1,前田 沙織,Residential,true,false
 22,子供,-1,前田 陽菜,School,false,false
-23,self,-1,藤田 さくら,Commercial,true,true
+23,self,-1,藤田 さくら,Office,true,true
 24,self,-1,橋本 正夫,Office,true,true
 24,妻,-1,橋本 美代子,Residential,true,false
 25,self,-1,遠藤 美紀,PublicFacility,true,true
 25,子供,-1,遠藤 大地,PublicFacility,true,true
-26,self,-1,近藤 太一,Commercial,true,true
+26,self,-1,近藤 太一,Office,true,true
 26,妻,-1,近藤 真由美,Residential,true,false
 26,子供,-1,近藤 颯太,School,false,false
-27,self,-1,村上 恵,Commercial,true,true
+27,self,-1,村上 恵,Office,true,true
 28,self,-1,坂本 翔太,School,true,true
 29,self,-1,太田 勝男,PublicFacility,true,true
 29,妻,-1,太田 節子,Residential,true,true
 30,self,-1,内田 トメ,Residential,true,true
+
+

@@ -279,7 +279,18 @@ public class ShelterInfoEditor : EditorWindow
         {
             // ConstShelterタグが存在しない場合は無視
         }
-        
+
+        // Schoolタグも追加（避難所として動作するため）
+        try
+        {
+            var schools = GameObject.FindGameObjectsWithTag("School");
+            shelterObjects.AddRange(schools);
+        }
+        catch (UnityException)
+        {
+            // Schoolタグが存在しない場合は無視
+        }
+
         // Shelterコンポーネントを取得
         shelters = new List<Shelter>();
         

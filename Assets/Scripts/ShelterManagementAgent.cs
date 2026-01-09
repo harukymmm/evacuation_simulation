@@ -97,7 +97,11 @@ public class ShelterManagementAgent : Agent {
 
         // 避難所候補地のリストを巡回し、各避難所候補地の位置情報と収容可能人数を入力
         foreach(GameObject shelter in ShelterCandidates) {
-            sensor.AddObservation(shelter.transform.GetChild(0).gameObject.transform.position);
+            // 子オブジェクトがある場合はその位置、ない場合は親オブジェクトの位置を観測
+            Transform targetTransform = shelter.transform.childCount > 0
+                ? shelter.transform.GetChild(0)
+                : shelter.transform;
+            sensor.AddObservation(targetTransform.position);
             sensor.AddObservation(shelter.GetComponent<Shelter>().currentCapacity);
         }
 

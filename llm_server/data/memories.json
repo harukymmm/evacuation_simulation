@@ -2,20 +2,44 @@
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "豊間小学校は海抜約25mに位置し、津波避難ビルとして指定されています。収容人数は約500人で、耐震構造が施されています。医療班も待機予定です。",
-    "metadata": {"location": "豊間小学校", "elevation": 25, "category": "shelter"}
-  },
-  {
-    "memory_type": "regional_knowledge",
-    "agent_id": null,
-    "content": "豊間公民館は海抜約18mに位置し、バリアフリー対応でスロープがあります。高齢者や車椅子利用者の避難に適しています。収容人数は約200人です。",
-    "metadata": {"location": "豊間公民館", "elevation": 18, "category": "shelter"}
-  },
-  {
-    "memory_type": "regional_knowledge",
-    "agent_id": null,
-    "content": "豊間中学校は海抜約30mの高台にあり、小学校より標高が高いです。体育館と広い校庭があり、収容人数は約400人です。",
+    "content": "豊間中学校は海抜約30mの高台にあり、津波避難ビルとして指定されています。体育館と広い校庭があり、収容人数は約400人です。標高が高いため津波避難に最適です。",
     "metadata": {"location": "豊間中学校", "elevation": 30, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "江名小学校は海抜約25mに位置し、耐震構造の建物です。収容人数は約500人で、江名地区の主要避難所として指定されています。",
+    "metadata": {"location": "江名小学校", "elevation": 25, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "江名公民館は海抜約20mに位置し、バリアフリー対応です。高齢者や車椅子利用者の避難に適しています。収容人数は約200人です。",
+    "metadata": {"location": "江名公民館", "elevation": 20, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "健登師記念会館は海抜約22mに位置する堅牢な建物です。薄磯地区からのアクセスが良く、収容人数は約150人です。",
+    "metadata": {"location": "健登師記念会館", "elevation": 22, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "望洋荘は海抜約28mの高台に位置する施設です。海岸から離れており、津波避難に適しています。収容人数は約100人です。",
+    "metadata": {"location": "望洋荘", "elevation": 28, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "諏訪神社は海抜約35mの高台に位置し、古くから津波避難場所として地元で知られています。収容人数は約100人です。",
+    "metadata": {"location": "諏訪神社", "elevation": 35, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "中田山は海抜約40mの高台エリアで、津波避難地域として指定されています。広いエリアのため収容制限がなく、多くの避難者を受け入れることができます。",
+    "metadata": {"location": "中田山", "elevation": 40, "category": "tsunami_evacuation_area"}
   },
   {
     "memory_type": "regional_knowledge",
@@ -44,32 +68,14 @@
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "海岸沿いから豊間小学校への最短ルートは、消防団詰所の脇の階段を上るコースです。徒歩約8〜10分で到着できます。",
-    "metadata": {"from": "海岸沿い", "to": "豊間小学校", "category": "route"}
-  },
-  {
-    "memory_type": "regional_knowledge",
-    "agent_id": null,
-    "content": "高齢者や車椅子利用者は、階段のない豊間公民館ルートが推奨されます。スロープがあり、バリアフリーで移動できます。",
-    "metadata": {"target_group": "elderly", "to": "豊間公民館", "category": "route"}
+    "content": "高齢者や車椅子利用者は、バリアフリー対応の江名公民館への避難が推奨されます。",
+    "metadata": {"target_group": "elderly", "to": "江名公民館", "category": "route"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
     "content": "豊間漁港周辺は最も危険な区域です。海抜が低く、津波の影響を最も早く受けます。発災後は立ち入り禁止となります。",
     "metadata": {"location": "豊間漁港", "hazard_type": "tsunami", "category": "hazard"}
-  },
-  {
-    "memory_type": "regional_knowledge",
-    "agent_id": null,
-    "content": "地区内のスーパーマルトは国道6号線沿いにあり、ここから豊間小学校への避難は約600m、徒歩約8分です。",
-    "metadata": {"location": "スーパーマルト", "category": "landmark"}
-  },
-  {
-    "memory_type": "regional_knowledge",
-    "agent_id": null,
-    "content": "豊間診療所は小学校の近くにあり、災害時は応急処置を行います。医療物資の備蓄もあります。",
-    "metadata": {"location": "豊間診療所", "category": "facility"}
   },
   {
     "memory_type": "social_knowledge",
@@ -142,18 +148,6 @@
     "agent_id": null,
     "content": "引き波（海面が急激に下がる現象）が始まったら、数分以内に大きな津波が来る前兆です。海が見える場所にいる人は特に注意してください。",
     "metadata": {"category": "warning_sign"}
-  },
-  {
-    "memory_type": "facility_knowledge",
-    "agent_id": null,
-    "content": "豊間郵便局は海岸から約200mの位置にあり、周辺には小さな商店街があります。この付近は津波浸水想定区域です。",
-    "metadata": {"location": "豊間郵便局", "category": "landmark"}
-  },
-  {
-    "memory_type": "facility_knowledge",
-    "agent_id": null,
-    "content": "地区内のコンビニエンスストアは国道6号線沿いにあります。海抜は約10mで、避難の中継点として利用できますが、最終避難場所としては不十分です。",
-    "metadata": {"category": "facility"}
   },
   {
     "memory_type": "regional_knowledge",
