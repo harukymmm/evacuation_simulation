@@ -2483,14 +2483,18 @@ public class Evacuee : MonoBehaviour {
             envStatePayload = disasterEventManager.GetEnvironmentStatePayload();
         }
 
-        // 実験IDを取得（SimulationMetricsから）
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
-        string experimentId = metrics?.ExperimentId ?? DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        // 実験IDを取得（EnvManagerのrecordIDから統一的に生成）
+        // 形式: yyyy_MM_dd-HH_mm_ss → yyyyMMdd_HHmmss
+        string experimentId = !string.IsNullOrEmpty(_env?.recordID)
+            ? _env.recordID.Replace("_", "").Replace("-", "_")
+            : DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
         return new LLMEvacDecisionRequest
         {
             request_id = $"{_env.currentEpisodeId}-{gameObject.name}-{Guid.NewGuid()}",
             experiment_id = experimentId,
+            episode_id = _env.currentEpisodeId,
+            episode_elapsed_time = _env.CurrentTimeSec,
             timestamp = Time.time,
             evacuee = new EvacueePayload
             {

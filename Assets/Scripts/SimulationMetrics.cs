@@ -24,6 +24,8 @@ public class SimulationMetrics : MonoBehaviour
     private EnvManager _envManager;
     private string _experimentId;
     private float _episodeStartTime;
+    private bool _episodeInProgress = false;  // エピソード進行中フラグ
+    private bool _partialLogsSaved = false;   // 部分ログ保存済みフラグ（二重保存防止）
 
     /// <summary>
     /// 現在の実験IDを取得（LLMサーバーとのログ統合用）
@@ -130,9 +132,6 @@ public class SimulationMetrics : MonoBehaviour
             return;
         }
 
-        // 実験IDを生成
-        _experimentId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-
         // イベントハンドラを登録
         _envManager.OnStartEpisode += OnEpisodeStart;
         _envManager.OnEndEpisode += OnEpisodeEnd;
@@ -140,13 +139,72 @@ public class SimulationMetrics : MonoBehaviour
         InitializeActionCounts();
     }
 
+    void Start()
+    {
+        // EnvManagerのrecordIDを実験IDとして使用（EnvManager.Start()で生成される）
+        // 形式を統一: yyyy_MM_dd-HH_mm_ss → yyyyMMdd_HHmmss
+        if (_envManager != null && !string.IsNullOrEmpty(_envManager.recordID))
+        {
+            _experimentId = _envManager.recordID.Replace("_", "").Replace("-", "_");
+        }
+        else
+        {
+            _experimentId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        }
+        Debug.Log($"[SimulationMetrics] 実験ID: {_experimentId}");
+    }
+
     void OnDestroy()
     {
+        // 途中停止時に部分ログを保存
+        SavePartialLogsIfNeeded();
+
         if (_envManager != null)
         {
             _envManager.OnStartEpisode -= OnEpisodeStart;
             _envManager.OnEndEpisode -= OnEpisodeEnd;
         }
+    }
+
+    /// <summary>
+    /// アプリケーション終了時に部分ログを保存
+    /// </summary>
+    void OnApplicationQuit()
+    {
+        SavePartialLogsIfNeeded();
+    }
+
+    /// <summary>
+    /// エピソード進行中に停止された場合、部分ログを保存
+    /// </summary>
+    private void SavePartialLogsIfNeeded()
+    {
+        if (!EnableMetrics) return;
+        if (!_episodeInProgress) return;
+        if (_partialLogsSaved) return;  // 二重保存を防止
+
+        _partialLogsSaved = true;
+
+        Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} が途中で停止されました - 部分ログを保存します");
+
+        // 避難完了記録を収集
+        CollectEvacuationRecords();
+
+        // 未完了エージェントのSTAY継続時間を確定
+        FinalizeAgentMetrics();
+
+        // サマリを生成（部分データであることをマーク）
+        var summary = GenerateEpisodeSummary();
+
+        // 部分ログを出力（ファイル名に_PARTIALを付与）
+        SaveEpisodeLogs(isPartial: true);
+        SaveEpisodeSummary(summary, isPartial: true);
+        SaveAgentMetrics(isPartial: true);
+
+        Debug.Log($"[SimulationMetrics] 部分ログを保存完了 - " +
+                  $"エピソード: {_envManager.currentEpisodeId}, " +
+                  $"経過時間: {_envManager.CurrentTimeSec:F1}秒, " +
+                  $"避難完了率: {summary.evacuationRate:P1}");
     }
 
     private void InitializeActionCounts()
@@ -163,6 +221,9 @@ public class SimulationMetrics : MonoBehaviour
         if (!EnableMetrics) return;
 
         _episodeStartTime = Time.time;
+        _episodeInProgress = true;
+        _partialLogsSaved = false;
+
         _actionLogs.Clear();
         _evacuationRecords.Clear();
         InitializeActionCounts();
@@ -220,6 +281,15 @@ public class SimulationMetrics : MonoBehaviour
     {
         if (!EnableMetrics) return;
 
+        _episodeInProgress = false;  // エピソード終了をマーク
+
+        // 既に部分ログが保存されている場合はスキップ（二重保存防止）
+        if (_partialLogsSaved)
+        {
+            Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} - 部分ログが既に保存済みのためスキップ");
+            return;
+        }
+
         // 避難完了記録を収集
         CollectEvacuationRecords();
 
@@ -229,10 +299,10 @@ public class SimulationMetrics : MonoBehaviour
         // サマリを生成
         var summary = GenerateEpisodeSummary();
 
-        // ログを出力
-        SaveEpisodeLogs();
-        SaveEpisodeSummary(summary);
-        SaveAgentMetrics();
+        // ログを出力（完全なログ）
+        SaveEpisodeLogs(isPartial: false);
+        SaveEpisodeSummary(summary, isPartial: false);
+        SaveAgentMetrics(isPartial: false);
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 終了 - " +
                   $"避難完了率: {summary.evacuationRate:P1}, " +
@@ -509,14 +579,24 @@ public class SimulationMetrics : MonoBehaviour
         return sorted[mid];
     }
 
-    private void SaveEpisodeLogs()
+    private void SaveEpisodeLogs(bool isPartial = false)
     {
         string directory = GetOutputDirectory();
-        string filename = $"episode_{_envManager.currentEpisodeId}_actions.csv";
+        string partialSuffix = isPartial ? "_PARTIAL" : "";
+        string filename = $"episode_{_envManager.currentEpisodeId}_actions{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
         {
+            // 部分ログの場合はヘッダーにメタ情報を追加
+            if (isPartial)
+            {
+                writer.WriteLine($"# PARTIAL LOG - シミュレーション途中停止時のデータ");
+                writer.WriteLine($"# 停止時刻: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                writer.WriteLine($"# 経過時間: {_envManager.CurrentTimeSec:F2}秒");
+                writer.WriteLine($"# 記録された行動数: {_actionLogs.Count}");
+            }
+
             // ヘッダー（階層的意思決定フィールドを追加）
             writer.WriteLine("timestamp,agent_id,action_type,target_shelter,reasoning,confidence,primary_goal,plan_steps,goal_updated,plan_updated");
 
@@ -532,20 +612,33 @@ public class SimulationMetrics : MonoBehaviour
             }
         }
 
-        Debug.Log($"[SimulationMetrics] 行動ログを保存: {filepath}");
+        string logType = isPartial ? "部分行動ログ" : "行動ログ";
+        Debug.Log($"[SimulationMetrics] {logType}を保存: {filepath}");
     }
 
-    private void SaveEpisodeSummary(EpisodeSummary summary)
+    private void SaveEpisodeSummary(EpisodeSummary summary, bool isPartial = false)
     {
         string directory = GetOutputDirectory();
-        string filename = $"episode_{summary.episodeId}_summary.csv";
+        string partialSuffix = isPartial ? "_PARTIAL" : "";
+        string filename = $"episode_{summary.episodeId}_summary{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
         {
+            // 部分ログの場合はヘッダーにメタ情報を追加
+            if (isPartial)
+            {
+                writer.WriteLine($"# PARTIAL LOG - シミュレーション途中停止時のデータ");
+                writer.WriteLine($"# 停止時刻: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                writer.WriteLine($"# 経過時間: {_envManager.CurrentTimeSec:F2}秒");
+                writer.WriteLine($"# 注意: このデータは不完全です。避難率・避難時間は停止時点の値です。");
+            }
+
             writer.WriteLine("metric,value");
             writer.WriteLine($"episode_id,{summary.episodeId}");
             writer.WriteLine($"agent_type,{summary.agentType}");
+            writer.WriteLine($"is_partial,{isPartial}");  // 部分ログフラグを追加
+            writer.WriteLine($"elapsed_time,{_envManager.CurrentTimeSec:F2}");  // 経過時間を追加
             writer.WriteLine($"evacuation_rate,{summary.evacuationRate:F4}");
             writer.WriteLine($"average_evacuation_time,{summary.averageEvacuationTime:F2}");
             writer.WriteLine($"median_evacuation_time,{summary.medianEvacuationTime:F2}");
@@ -570,7 +663,8 @@ public class SimulationMetrics : MonoBehaviour
             }
         }
 
-        Debug.Log($"[SimulationMetrics] サマリを保存: {filepath}");
+        string logType = isPartial ? "部分サマリ" : "サマリ";
+        Debug.Log($"[SimulationMetrics] {logType}を保存: {filepath}");
     }
 
     private string GetOutputDirectory()
@@ -589,14 +683,24 @@ public class SimulationMetrics : MonoBehaviour
     /// <summary>
     /// エージェント別メトリクスをCSVに保存
     /// </summary>
-    private void SaveAgentMetrics()
+    private void SaveAgentMetrics(bool isPartial = false)
     {
         string directory = GetOutputDirectory();
-        string filename = $"episode_{_envManager.currentEpisodeId}_agents.csv";
+        string partialSuffix = isPartial ? "_PARTIAL" : "";
+        string filename = $"episode_{_envManager.currentEpisodeId}_agents{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
         {
+            // 部分ログの場合はヘッダーにメタ情報を追加
+            if (isPartial)
+            {
+                writer.WriteLine($"# PARTIAL LOG - シミュレーション途中停止時のデータ");
+                writer.WriteLine($"# 停止時刻: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                writer.WriteLine($"# 経過時間: {_envManager.CurrentTimeSec:F2}秒");
+                writer.WriteLine($"# 注意: evacuation_completed=falseのエージェントは避難完了前に停止された可能性があります");
+            }
+
             // ヘッダー
             writer.WriteLine("agent_id,persona_name,mental_state,first_evacuate_time,total_stay_duration," +
                            "follow_count,talk_count,contact_count,search_family_count," +
@@ -616,7 +720,8 @@ public class SimulationMetrics : MonoBehaviour
             }
         }
 
-        Debug.Log($"[SimulationMetrics] エージェント別メトリクスを保存: {filepath}");
+        string logType = isPartial ? "部分エージェントメトリクス" : "エージェント別メトリクス";
+        Debug.Log($"[SimulationMetrics] {logType}を保存: {filepath}");
     }
 
     /// <summary>

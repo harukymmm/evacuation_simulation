@@ -12,11 +12,14 @@
 Logs/
 ├── experiment_results/           # 実験結果（SimulationMetrics + LLMサーバー）
 │   └── YYYYMMDD_HHMMSS/         # 実験セッションごとのディレクトリ
-│       ├── episode_X_actions.csv # エピソードごとの行動ログ
-│       ├── episode_X_agents.csv  # エピソードごとのエージェント別メトリクス
-│       ├── episode_X_summary.csv # エピソードサマリ
-│       └── llm_decisions/        # LLMサーバーの意思決定ログ（同セッション）
-│           └── {evacuee_id}.txt  # 避難者ごとの詳細ログ
+│       ├── episode_X_actions.csv         # エピソードごとの行動ログ
+│       ├── episode_X_actions_PARTIAL.csv # 途中停止時の部分行動ログ
+│       ├── episode_X_agents.csv          # エピソードごとのエージェント別メトリクス
+│       ├── episode_X_agents_PARTIAL.csv  # 途中停止時の部分エージェントメトリクス
+│       ├── episode_X_summary.csv         # エピソードサマリ
+│       ├── episode_X_summary_PARTIAL.csv # 途中停止時の部分サマリ
+│       └── llm_decisions/                # LLMサーバーの意思決定ログ（同セッション）
+│           └── {evacuee_id}.txt          # 避難者ごとの詳細ログ
 ├── YYYY_MM_DD-HH_MM_SS/          # EnvManagerのセッションログ
 │   └── EvaRatesPerSec_Episode_X.csv  # 避難率の時系列データ
 └── building_stats/               # 建物属性の統計情報
@@ -49,9 +52,10 @@ Logs/
 #### ライフサイクル
 
 1. **Awake**: EnvManagerのイベントハンドラに登録、実験IDを生成
-2. **OnEpisodeStart**: 各種メトリクスを初期化
+2. **OnEpisodeStart**: 各種メトリクスを初期化、エピソード進行フラグをセット
 3. **シミュレーション中**: `RecordAction`/`RecordEvacuation`で行動・避難完了を記録
-4. **OnEpisodeEnd**: ログファイルを出力
+4. **OnEpisodeEnd**: ログファイルを出力、エピソード進行フラグをリセット
+5. **OnApplicationQuit/OnDestroy**: エピソード進行中であれば部分ログを出力
 
 #### 出力ファイル
 
@@ -102,6 +106,8 @@ Logs/
 |---|---|
 | episode_id | エピソード番号 |
 | agent_type | エージェントタイプ（LLM or RuleBased） |
+| is_partial | 部分ログかどうか（true/false） |
+| elapsed_time | シミュレーション経過時間（秒） |
 | evacuation_rate | 避難完了率（0.0-1.0） |
 | average_evacuation_time | 平均避難時間（秒） |
 | median_evacuation_time | 中央値避難時間（秒） |
@@ -233,6 +239,45 @@ LLMの意思決定プロセスを詳細に記録。
             └→ (AlwaysActivateAllShelters=falseの場合のみ)
                     Utils.SaveResultCSV() → ActionLog_Episode_X.csv
 ```
+
+---
+
+## 途中停止時の部分ログ出力
+
+シミュレーションがエピソード途中で停止された場合（エディタ停止、アプリケーション終了など）、その時点までの記録を部分ログとして保存する。
+
+### 部分ログの特徴
+
+1. **ファイル名**: `_PARTIAL` サフィックスが付与される
+   - `episode_0_actions_PARTIAL.csv`
+   - `episode_0_agents_PARTIAL.csv`
+   - `episode_0_summary_PARTIAL.csv`
+
+2. **メタ情報ヘッダー**: 各CSVファイルの先頭にコメント形式でメタ情報が追加される
+
+   ```csv
+   # PARTIAL LOG - シミュレーション途中停止時のデータ
+   # 停止時刻: 2026-01-10 15:30:45
+   # 経過時間: 450.25秒
+   # 注意: このデータは不完全です。
+   ```
+
+3. **サマリの追加フィールド**:
+   - `is_partial`: `true`（部分ログであることを示す）
+   - `elapsed_time`: 停止時点の経過時間
+
+### 部分ログ出力のトリガー
+
+以下のタイミングで部分ログが出力される:
+
+1. **OnApplicationQuit**: アプリケーション終了時
+2. **OnDestroy**: SimulationMetricsコンポーネント破棄時
+
+### 注意事項
+
+- 部分ログはエピソード進行中（`_episodeInProgress = true`）の場合のみ出力される
+- 二重保存を防ぐため、一度部分ログが保存されると`_partialLogsSaved`フラグがセットされる
+- 部分ログ保存後に正常終了した場合、`OnEpisodeEnd`での保存はスキップされる
 
 ---
 

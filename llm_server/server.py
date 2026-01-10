@@ -120,7 +120,143 @@ def _get_speed_description(speed_multiplier: float) -> str:
         return None
 
 
-def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> str:
+def _get_distance_description(distance_m: float, walking_time: float) -> str:
+    """距離を感覚的な表現に変換する"""
+    if distance_m <= 200:
+        return "すぐ近く"
+    elif distance_m <= 500:
+        return "歩いて数分"
+    elif distance_m <= 1000:
+        return f"歩いて10分くらい"
+    elif distance_m <= 2000:
+        return f"歩いて20分くらい"
+    elif distance_m <= 3000:
+        return f"歩いて30分くらい"
+    else:
+        return f"かなり遠い（歩いて{int(walking_time)}分以上）"
+
+
+def _get_elevation_description(elevation_m: float) -> str:
+    """海抜を感覚的な表現に変換する"""
+    if elevation_m >= 30:
+        return "高台"
+    elif elevation_m >= 20:
+        return "やや高い場所"
+    elif elevation_m >= 10:
+        return "少し高い場所"
+    else:
+        return "低地"
+
+
+def _get_capacity_description(current_capacity: int, max_capacity: int) -> str:
+    """収容状況を感覚的な表現に変換する"""
+    if current_capacity >= 2147483647:  # int.MaxValue
+        return "広い場所"
+
+    if max_capacity > 0:
+        ratio = current_capacity / max_capacity
+        if ratio >= 0.8:
+            return "まだ余裕がある"
+        elif ratio >= 0.5:
+            return "半分くらい埋まっている"
+        elif ratio >= 0.2:
+            return "かなり混雑している"
+        else:
+            return "ほぼ満員"
+
+    # max_capacityがない場合は残り人数で判断
+    if current_capacity >= 500:
+        return "まだ余裕がある"
+    elif current_capacity >= 100:
+        return "それなりに受け入れ可能"
+    elif current_capacity >= 30:
+        return "あまり余裕がない"
+    else:
+        return "ほぼ満員"
+
+
+def _get_shelter_features(shelter_name: str) -> list[str]:
+    """シナリオコンテキストから避難所の特徴情報を取得する"""
+    scenario_context = load_scenario_context()
+    if not scenario_context:
+        return []
+
+    evac_rules = scenario_context.get("evacuation_rules", {})
+    designated_shelters = evac_rules.get("designated_shelters", [])
+
+    for shelter in designated_shelters:
+        if shelter.get("name") == shelter_name:
+            return shelter.get("features", [])
+
+    return []
+
+
+def build_system_prompt() -> str:
+    """
+    システムプロンプトを構築する（静的な内容のみ）。
+    行動選択肢、出力形式の説明など、毎回変わらない情報を含む。
+    """
+    lines = []
+
+    lines.append("あなたは災害時の一般市民です。")
+    lines.append("与えられたペルソナ（性格・状況・優先事項）に基づいて、その人物として自然に行動してください。")
+    lines.append("")
+
+    # 人間らしさの強調
+    lines.append("【重要】")
+    lines.append("あなたは避難のプロではなく、突然の災害に直面した普通の人間です。")
+    lines.append("以下のような人間らしい反応を示すことがあります：")
+    lines.append("- パニックや混乱で判断力が鈍る")
+    lines.append("- 家族や大切な人のことが心配で、安全より合流を優先してしまう")
+    lines.append("- 土地勘がなく、どこに逃げればいいかわからない")
+    lines.append("- 周りの人の行動に流される")
+    lines.append("- 「まだ大丈夫」と危険を過小評価する")
+    lines.append("- 貴重品や思い出の品を取りに戻りたくなる")
+    lines.append("- 疲労や体力の限界を感じる")
+    lines.append("")
+    lines.append("ペルソナの性格・心理状態・優先事項を最優先に考え、")
+    lines.append("その人物が実際にとりそうな行動を選んでください。")
+    lines.append("「正しい避難行動」ではなく「その人らしい行動」を選択してください。")
+    lines.append("")
+
+    # 行動選択肢
+    lines.append("【行動選択肢】")
+    lines.append("1. EVACUATE - 避難所へ移動")
+    lines.append("2. STAY - その場で待機")
+    lines.append("3. SEARCH_FAMILY - 家族を探しに行く")
+    lines.append("4. CONTACT - 家族へ連絡（メール等）")
+    lines.append("5. FOLLOW - 周囲の避難者について行く")
+    lines.append("6. TALK - 周辺の避難者と会話")
+    lines.append("")
+
+    # 出力形式
+    lines.append("【出力形式】")
+    lines.append("以下の形式でJSON1つだけを出力してください。全フィールドをフラットに並べてください。")
+    lines.append("")
+    lines.append("EVACUATEの例:")
+    lines.append('{"action_type": "EVACUATE", "selected_shelter_id": "避難所名", "desired_speed": "急ぎ足", "long_term_goal": "安全な場所に逃げたい", "mid_term_plan": "近くの高台を目指そう", "reasoning": "津波が心配なので高い場所に行きたい", "confidence": 0.7}')
+    lines.append("")
+    lines.append("STAYの例:")
+    lines.append('{"action_type": "STAY", "long_term_goal": "...", "mid_term_plan": "...", "reasoning": "...", "confidence": 0.5}')
+    lines.append("")
+    lines.append("SEARCH_FAMILYの例:")
+    lines.append('{"action_type": "SEARCH_FAMILY", "target_family_member": "息子", "long_term_goal": "...", "mid_term_plan": "...", "reasoning": "...", "confidence": 0.6}')
+    lines.append("")
+    lines.append("FOLLOWの例:")
+    lines.append('{"action_type": "FOLLOW", "target_evacuee_id": "14", "long_term_goal": "...", "mid_term_plan": "...", "reasoning": "...", "confidence": 0.4}')
+    lines.append("")
+    lines.append("【移動速度】desired_speed: ゆっくり/普通/急ぎ足/走る")
+    lines.append("")
+    lines.append("【注意】selected_shelter_idは表示されている避難所名を正確に指定してください。")
+
+    return "\n".join(lines)
+
+
+def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> str:
+    """
+    ユーザープロンプトを構築する（動的な内容）。
+    ペルソナ、現在の状況、避難所情報など、リクエストごとに変わる情報を含む。
+    """
     shelters = payload.get("shelter_candidates", [])
     evacuee = payload.get("evacuee", {})
     persona = payload.get("persona")
@@ -279,19 +415,7 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
                 if time_limits.get("critical_note"):
                     lines.append(f"※ 重要: {time_limits['critical_note']}")
 
-            # 指定避難所
-            designated_shelters = evac_rules.get("designated_shelters", [])
-            if designated_shelters:
-                lines.append("")
-                lines.append("《指定避難所》")
-                for shelter in designated_shelters:
-                    shelter_line = f"・{shelter.get('name', '不明')}"
-                    if shelter.get('elevation_m'):
-                        shelter_line += f"（海抜{shelter['elevation_m']}m）"
-                    features = shelter.get('features', [])
-                    if features:
-                        shelter_line += f" - {', '.join(features[:3])}"
-                    lines.append(shelter_line)
+            # 指定避難所は「近くの避難先情報」で動的に表示されるため、ここでは省略
 
         # 既知の危険箇所
         hazards = scenario_context.get("known_hazards", [])
@@ -337,31 +461,6 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
         f"{evacuee.get('position', {}).get('z', 0):.2f})"
     )
 
-    # 階層的意思決定の説明を追加
-    lines.append("")
-    lines.append("【階層的意思決定について】")
-    lines.append("あなたの意思決定は、以下の3つの階層で構成されます：")
-    lines.append("")
-    lines.append(
-        "1. 長期目標（Long-term Goal）: 避難所到達、家族合流、安全確保などの長期目標"
-    )
-    lines.append("   - 災害発生直後や状況が大きく変化した際に更新")
-    lines.append("   - Primary Goal: 主要目標")
-    lines.append("   - Secondary Goals: 副次目標")
-    lines.append("   - Constraints: 制約条件")
-    lines.append("")
-    lines.append("2. 中期計画（Mid-term Plan）: 長期目標を達成するための具体的な手順")
-    lines.append("   - 数分ごと、または新しい情報を受信した際に更新")
-    lines.append("   - Steps: 手順のリスト")
-    lines.append("   - Contingency: 緊急時の代替案")
-    lines.append("")
-    lines.append(
-        "3. 即時判断（Immediate Decision）: 現在のタイムステップで実行する具体的な行動"
-    )
-    lines.append("   - 毎タイムステップ（数秒ごと）に更新")
-    lines.append("   - 行動タイプ: EVACUATE, STAY, SEARCH_FAMILY, CONTACT, FOLLOW")
-    lines.append("")
-
     # 現在の長期目標と中期計画を表示（存在する場合）
     current_goal = payload.get("current_long_term_goal")
     current_plan = payload.get("current_mid_term_plan")
@@ -395,25 +494,6 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
         contingency = current_plan.get("contingency")
         if contingency:
             lines.append(f"緊急時の代替案: {contingency}")
-        lines.append("")
-
-    # 更新判断の指示
-    if current_goal or current_plan:
-        lines.append("【更新判断】")
-        lines.append(
-            "以下の場合、長期目標を更新してください（should_update_goal = true）："
-        )
-        lines.append("- 災害発生直後")
-        lines.append(
-            "- 状況が大きく変化した（例: 津波到達時刻が早まった、家族の位置が判明した）"
-        )
-        lines.append("")
-        lines.append(
-            "以下の場合、中期計画を更新してください（should_update_plan = true）："
-        )
-        lines.append("- 新しい情報を受信した（例: 避難所が満員、道路が通行止め）")
-        lines.append("- 数分経過した")
-        lines.append("- 現在の計画が実行不可能になった")
         lines.append("")
 
     if agent_input is not None:
@@ -918,186 +998,64 @@ def build_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> 
 
     lines.append("")
 
-    lines.append("")
-    lines.append("【近くの避難先情報】")
-    for idx, shelter in enumerate(shelters, 1):
-        # 基本情報
-        shelter_id = shelter.get("id", "不明")
-        display_name = shelter.get("display_name", shelter_id)
-        description = shelter.get("description", "")
-        capacity = shelter.get("current_capacity", 0)
-        max_capacity = shelter.get("max_capacity", 0)
+    # 避難所と津波避難地域を分けて、それぞれ上位3件のみ表示
+    regular_shelters = [s for s in shelters if s.get("destination_type") != "tsunami_evacuation_area"]
+    tsunami_areas = [s for s in shelters if s.get("destination_type") == "tsunami_evacuation_area"]
 
-        # 距離情報
-        distance_m = shelter.get("distance_meters", 0)
-        walking_time = shelter.get("walking_time_minutes", 0)
+    # 避難所（上位3件）
+    if regular_shelters:
+        lines.append("")
+        lines.append("【近くの避難所】")
+        for idx, shelter in enumerate(regular_shelters[:3], 1):
+            display_name = shelter.get("display_name", shelter.get("id", "不明"))
+            distance_m = shelter.get("distance_meters", 0)
+            walking_time = shelter.get("walking_time_minutes", 0)
+            elevation_meters = shelter.get("elevation_meters", 0)
 
-        # 避難先タイプと海抜情報
-        destination_type = shelter.get("destination_type", "shelter")
-        elevation_meters = shelter.get("elevation_meters", 0)
+            distance_desc = _get_distance_description(distance_m, walking_time)
+            features = _get_shelter_features(display_name)
 
-        # 避難先タイプに応じた表示
-        if destination_type == "tsunami_evacuation_area":
-            type_label = "【津波避難地域】"
-            # 収容制限なし（int.MaxValueが送られてくる）
-            if capacity >= 2147483647:
-                capacity_info = "収容制限なし"
-            else:
-                capacity_info = f"残り受け入れ可能人数: {capacity}人"
-            # 海抜情報
-            elevation_info = f"海抜: {elevation_meters:.0f}m, " if elevation_meters > 0 else ""
-        else:
-            type_label = "【避難所】"
-            capacity_info = f"残り受け入れ可能人数: {capacity}人"
-            elevation_info = ""
+            # 特徴をまとめる
+            characteristics = [distance_desc]
+            if elevation_meters >= 20:
+                characteristics.append(_get_elevation_description(elevation_meters))
+            if features:
+                characteristics.append(features[0])  # 最も重要な特徴1つのみ
 
-        # 基本情報の表示（タイプラベル + 表示名）
-        shelter_info = f"{idx}. {type_label} {display_name}"
+            lines.append(f"{idx}. {display_name} - {', '.join(characteristics)}")
 
-        # 説明がある場合は追加
-        if description:
-            shelter_info += f"（{description}）"
+    # 津波避難場所（上位3件）
+    if tsunami_areas:
+        lines.append("")
+        lines.append("【近くの津波避難場所】")
+        for idx, shelter in enumerate(tsunami_areas[:3], 1):
+            display_name = shelter.get("display_name", shelter.get("id", "不明"))
+            distance_m = shelter.get("distance_meters", 0)
+            walking_time = shelter.get("walking_time_minutes", 0)
+            elevation_meters = shelter.get("elevation_meters", 0)
 
-        # 海抜・収容人数を追加
-        shelter_info += f" - {elevation_info}{capacity_info}"
+            distance_desc = _get_distance_description(distance_m, walking_time)
+            features = _get_shelter_features(display_name)
 
-        # 距離と徒歩時間を追加
-        if distance_m > 0:
-            shelter_info += f", 距離: 約{distance_m:.0f}m（徒歩約{walking_time:.0f}分）"
+            # 特徴をまとめる
+            characteristics = [distance_desc]
+            if elevation_meters >= 20:
+                characteristics.append(_get_elevation_description(elevation_meters))
+            if features:
+                characteristics.append(features[0])  # 最も重要な特徴1つのみ
 
-        lines.append(shelter_info)
+            lines.append(f"{idx}. {display_name} - {', '.join(characteristics)}")
 
-    # ペルソナ情報に基づく追加指示
+    # ペルソナ情報に基づく追加指示（移動能力）
     if persona:
         speed_multiplier = persona.get("speed_multiplier", 1.0)
         speed_desc = _get_speed_description(speed_multiplier)
         if speed_desc is not None:
+            lines.append("")
             if speed_multiplier < 1.0:
-                lines.append(
-                    f"注意: {speed_desc}。無理をしない範囲で避難してください。"
-                )
+                lines.append(f"※ {speed_desc}")
             elif speed_multiplier > 1.0:
-                lines.append(f"{speed_desc}。状況に応じて速度を調整してください。")
-
-    lines.append("")
-    lines.append("【行動選択】")
-    lines.append("以下の行動から1つ選択してください:")
-    lines.append("")
-    lines.append("1. EVACUATE - 避難所に向かう")
-    lines.append("   避難所に移動します。")
-    lines.append("")
-    lines.append("2. STAY - その場で待機する")
-    lines.append("   避難所に移動する必要がない場合、その場で待機します。")
-    lines.append("")
-    lines.append("3. SEARCH_FAMILY - 家族を探しに行く")
-    lines.append("   家族がいそうな場所（自宅・学校・職場など）に向かいます。")
-    lines.append("")
-    lines.append("4. CONTACT - 家族に連絡を取る（メールなど）")
-    lines.append("   電話やメールで家族に安否確認を行います。")
-    lines.append("")
-    lines.append("5. FOLLOW - 周囲の避難者について行く")
-    lines.append(
-        "   避難所の場所が分からない場合や、周囲の人の動きに従いたい場合に選択します。"
-    )
-    lines.append("   周辺の避難者情報を参考に、誰について行くかを決定してください。")
-    lines.append("")
-    lines.append("6. TALK - 周辺の避難者と会話する")
-    lines.append(
-        "   近くにいる避難者に話しかけて、避難所の情報や現状について尋ねます。"
-    )
-    lines.append(
-        "   話しかけた相手は、自分の状況に基づいて返答します（相手のLLMが返答を生成）。"
-    )
-    lines.append(
-        "   会話の話題: ShelterInfo（避難所情報）、CurrentSituation（現状確認）、"
-    )
-    lines.append(
-        "              ActionAdvice（行動相談）、SafetyConfirm（安全確認）、General（一般）"
-    )
-    lines.append("")
-    lines.append("【重要】以下のJSON形式で回答してください。")
-    lines.append("")
-    lines.append("■ EVACUATE を選択する場合:")
-    lines.append(
-        '{"action_type": "EVACUATE", "selected_shelter_id": "避難所の名前", '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0, "desired_speed": "ゆっくり/普通/急ぎ足/走る のいずれか"}'
-    )
-    lines.append("")
-    lines.append("■ STAY を選択する場合:")
-    lines.append(
-        '{"action_type": "STAY", "reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("■ SEARCH_FAMILY を選択する場合:")
-    lines.append(
-        '{"action_type": "SEARCH_FAMILY", '
-        '"target_family_member": "探しに行く家族の名前または続柄（例: 息子）", '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("■ CONTACT を選択する場合:")
-    lines.append(
-        '{"action_type": "CONTACT", '
-        '"contact_target": "連絡する家族の名前または続柄（例: 妻）", '
-        '"contact_message": "家族に送る短いメール本文（口語的な日本語）", '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("■ FOLLOW を選択する場合:")
-    lines.append(
-        '{"action_type": "FOLLOW", '
-        '"target_evacuee_id": "周辺避難者のID（上記の【周辺の避難者】に表示されているID）", '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("■ TALK を選択する場合:")
-    lines.append(
-        '{"action_type": "TALK", '
-        '"talk_target_id": "周辺避難者のID（上記の【周辺の避難者】に表示されているID）", '
-        '"talk_topic": "ShelterInfo/CurrentSituation/ActionAdvice/SafetyConfirm/General のいずれか", '
-        '"talk_message": "話しかける内容（口語的な日本語）", '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("■ 階層的意思決定を含む場合（推奨）:")
-    lines.append(
-        '{"action_type": "EVACUATE", '
-        '"selected_shelter_id": "避難所の名前", '
-        '"long_term_goal": {'
-        '  "primary_goal": "家族全員で○○避難所に到達する", '
-        '  "secondary_goals": ["途中で怪我をしない", "できるだけ早く到達する"], '
-        '  "constraints": ["高齢の母を連れているため、階段の多い経路は避ける"]'
-        "}, "
-        '"mid_term_plan": {'
-        '  "steps": ["まず自宅から○○小学校に移動し、子供を迎える", "次に○○交差点を経由して△△避難所に向かう"], '
-        '  "contingency": "もし津波が早く来そうなら、子供を迎えずに最寄りの高台に避難する"'
-        "}, "
-        '"should_update_goal": true, '
-        '"should_update_plan": true, '
-        '"reasoning": "短い説明", "confidence": 0.0-1.0}'
-    )
-    lines.append("")
-    lines.append("注意事項:")
-    lines.append(
-        "- action_type は必ず「EVACUATE」「STAY」「SEARCH_FAMILY」「CONTACT」「FOLLOW」「TALK」のいずれかを指定してください"
-    )
-    lines.append(
-        "- EVACUATE の場合、selected_shelter_idには必ず上記に表示されている避難所の名前を正確に指定"
-    )
-    lines.append(
-        "  例: 「豊間小学校」「いわき市役所」など（「1」「2」などの番号は使用不可）"
-    )
-    lines.append(
-        "- CONTACT を選ぶ場合、contact_message には実際に家族に送るつもりの短いメール本文を書いてください"
-    )
-    lines.append(
-        "- TALK を選ぶ場合、talk_message には実際に相手に話しかけるつもりの内容を書いてください"
-    )
-    lines.append("- desired_speedは体力状態に応じて選択してください:")
-    lines.append("  - ゆっくり: 体力を回復しながらゆっくり歩く")
-    lines.append("  - 普通: 通常の歩行速度")
-    lines.append("  - 急ぎ足: 早歩き（体力を消費、体力30%以上で選択可）")
-    lines.append("  - 走る: 全力で走る（体力を大きく消費、体力50%以上で選択可）")
+                lines.append(f"※ {speed_desc}")
 
     return "\n".join(lines)
 
@@ -1216,13 +1174,17 @@ def _build_agent_input(payload: Dict[str, Any]) -> Optional[AgentInput]:
 
 
 async def _call_openai_with_retry(
-    prompt: str, max_retries: int = 3, base_delay: float = 1.0
+    system_prompt: str,
+    user_prompt: str,
+    max_retries: int = 3,
+    base_delay: float = 1.0
 ) -> Optional[str]:
     """
     Exponential backoffによるリトライ機能付きでOpenAI APIを呼び出す。
 
     Args:
-        prompt: LLMに送信するプロンプト
+        system_prompt: システムプロンプト（静的な指示）
+        user_prompt: ユーザープロンプト（動的な状況情報）
         max_retries: 最大リトライ回数
         base_delay: 初回リトライまでの待機時間（秒）
 
@@ -1231,12 +1193,17 @@ async def _call_openai_with_retry(
     """
     from openai import RateLimitError, APIError, APIConnectionError
 
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
     last_exception = None
     for attempt in range(max_retries + 1):
         try:
             response = await OPENAI_CLIENT.chat.completions.create(
                 model=OPENAI_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 response_format={"type": "json_object"},
             )
             return response.choices[0].message.content
@@ -1270,15 +1237,23 @@ async def _call_openai_with_retry(
 
 async def call_openai(
     payload: Dict[str, Any], agent_input: Optional[AgentInput]
-) -> Optional[Dict[str, Any]]:
-    if OPENAI_CLIENT is None:
-        return None
+) -> tuple[Optional[Dict[str, Any]], str, str]:
+    """
+    OpenAI APIを呼び出して避難行動の決定を取得する。
 
-    prompt = build_prompt(payload, agent_input)
+    Returns:
+        (decision, system_prompt, user_prompt) のタプル
+    """
+    system_prompt = build_system_prompt()
+    user_prompt = build_user_prompt(payload, agent_input)
+
+    if OPENAI_CLIENT is None:
+        return None, system_prompt, user_prompt
+
     try:
-        content = await _call_openai_with_retry(prompt)
+        content = await _call_openai_with_retry(system_prompt, user_prompt)
         if content is None:
-            return None
+            return None, system_prompt, user_prompt
         decision = _safe_load_json(content)
 
         # action_typeが存在するか、または従来の形式（selected_shelter_idのみ）か確認
@@ -1287,12 +1262,12 @@ async def call_openai(
         # EVACUATEの場合はselected_shelter_idが必須
         if action_type == "EVACUATE":
             if "selected_shelter_id" in decision:
-                return decision
+                return decision, system_prompt, user_prompt
             else:
                 print(
                     f"[LLM SERVER] EVACUATE行動だがselected_shelter_idがありません: {decision}"
                 )
-                return None
+                return None, system_prompt, user_prompt
 
         # STAY, SEARCH_FAMILY, CONTACT, FOLLOW の場合はaction_typeがあればOK
         if "action_type" in decision:
@@ -1303,7 +1278,7 @@ async def call_openai(
                     print(
                         f"[LLM SERVER] FOLLOW行動だがtarget_evacuee_idがありません: {decision}"
                     )
-                    return None
+                    return None, system_prompt, user_prompt
 
             # TALKの場合はtalk_target_idとtalk_messageが必要
             if action_type == "TALK":
@@ -1311,12 +1286,12 @@ async def call_openai(
                     print(
                         f"[LLM SERVER] TALK行動だがtalk_target_idがありません: {decision}"
                     )
-                    return None
+                    return None, system_prompt, user_prompt
                 if "talk_message" not in decision:
                     print(
                         f"[LLM SERVER] TALK行動だがtalk_messageがありません: {decision}"
                     )
-                    return None
+                    return None, system_prompt, user_prompt
 
             # 長期目標と中期計画の検証
             if decision.get("should_update_goal"):
@@ -1333,16 +1308,16 @@ async def call_openai(
                         f"[LLM SERVER] WARNING: should_update_plan=true but mid_term_plan.steps is missing"
                     )
 
-            return decision
+            return decision, system_prompt, user_prompt
 
         # 従来の形式（action_typeなし、selected_shelter_idあり）もサポート
         if "selected_shelter_id" in decision:
             decision["action_type"] = "EVACUATE"  # デフォルトで追加
-            return decision
+            return decision, system_prompt, user_prompt
 
     except Exception as exc:  # pragma: no cover
         print(f"[LLM SERVER] OpenAI呼び出しで例外: {exc}")
-    return None
+    return None, system_prompt, user_prompt
 
 
 def _safe_load_json(text: str) -> Dict[str, Any]:
@@ -1368,8 +1343,11 @@ def _log_decision(
     source: str,
     input_snapshot: Dict[str, Any],
     output_snapshot: Dict[str, Any],
-    prompt: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    user_prompt: Optional[str] = None,
     experiment_id: Optional[str] = None,
+    episode_id: Optional[int] = None,
+    episode_elapsed_time: Optional[float] = None,
 ) -> None:
     try:
         sanitized_id = _sanitize_filename(evacuee_id)
@@ -1384,9 +1362,11 @@ def _log_decision(
         # 読みやすい形式のログファイル（.txt）
         log_filename = log_dir / f"{sanitized_id}.txt"
 
-        # promptを除いたメタデータ
+        # プロンプトを除いたメタデータ
         log_meta = {
             "timestamp": timestamp_jst,
+            "episode_id": episode_id,
+            "episode_elapsed_time": round(episode_elapsed_time, 2) if episode_elapsed_time is not None else None,
             "request_id": request_id,
             "source": source,
             "input": input_snapshot,
@@ -1401,12 +1381,20 @@ def _log_decision(
             fp.write(json.dumps(log_meta, ensure_ascii=False, indent=2))
             fp.write("\n\n")
 
-            # プロンプトを別セクションとして出力（改行をそのまま表示）
-            if prompt:
+            # システムプロンプトを出力
+            if system_prompt:
                 fp.write("-" * 80 + "\n")
-                fp.write("[PROMPT]\n")
+                fp.write("[SYSTEM PROMPT]\n")
                 fp.write("-" * 80 + "\n")
-                fp.write(prompt)
+                fp.write(system_prompt)
+                fp.write("\n\n")
+
+            # ユーザープロンプトを出力
+            if user_prompt:
+                fp.write("-" * 80 + "\n")
+                fp.write("[USER PROMPT]\n")
+                fp.write("-" * 80 + "\n")
+                fp.write(user_prompt)
                 fp.write("\n\n")
     except Exception as exc:  # pragma: no cover
         print(f"[LLM SERVER] failed to write log: {exc}")
@@ -1486,10 +1474,8 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     agent_input = _build_agent_input(payload)
 
-    # LLMに与えるプロンプトを生成（ログに記録するため）
-    prompt = build_prompt(payload, agent_input)
-
-    decision = await call_openai(payload, agent_input)
+    # LLMを呼び出し（システムプロンプトとユーザープロンプトも返される）
+    decision, system_prompt, user_prompt = await call_openai(payload, agent_input)
     evacuee = payload.get("evacuee", {})
 
     # input_snapshotは最小限に（shelter_candidatesとpersonaはpromptに含まれているため省略）
@@ -1572,8 +1558,11 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         source=source,
         input_snapshot=input_snapshot,
         output_snapshot=output_snapshot,
-        prompt=prompt,  # プロンプトをログに追加
-        experiment_id=payload.get("experiment_id"),  # 実験IDを渡してログ出力先を統合
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        experiment_id=payload.get("experiment_id"),
+        episode_id=payload.get("episode_id"),
+        episode_elapsed_time=payload.get("episode_elapsed_time"),
     )
 
     return response_payload

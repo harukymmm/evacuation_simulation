@@ -417,6 +417,8 @@ namespace LLM
     {
         public string request_id;
         public string experiment_id;                     // 実験セッションID（ログ出力先ディレクトリ用）
+        public int episode_id;                           // エピソード番号
+        public float episode_elapsed_time;               // エピソード内経過時間（秒）
         public float timestamp;
         public EvacueePayload evacuee;
         public ShelterCandidatePayload[] shelter_candidates;
