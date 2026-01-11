@@ -1,5 +1,66 @@
 # 変更点とその意図
 
+- 避難場所情報を18施設に拡充し、LLMへの情報提供を改善
+  - `scenario_context.json`: 指定避難所を6施設→8施設に拡充（薄磯団地、豊間団地、沼ノ内団地を追加）
+  - `scenario_context.json`: 津波避難場所を1施設→10施設に拡充（諏訪神社、八幡神社、八坂神社、豊間公園、金倉稲荷神社、薄井神社、沼ノ内弁財天、江名幼稚園、小泉工業を追加）
+  - `scenario_context.json`: 各施設にfeatures（特徴情報）とaccess_notes（アクセス情報）を追加
+  - `scenario_context.json`: shelter_categories（垂直避難/福祉避難所/地形避難/生活支援避難所）とevacuation_phases（避難フェーズ別推奨施設）を追加
+  - `scenario_context.json`: 健登師記念会館の海抜を22m→6.1mに修正（調査資料に基づく正確な値）
+  - `server.py`: _get_shelter_info_from_context()関数を追加し、指定避難所と津波避難場所の両方から情報を検索可能に
+  - `server.py`: _get_shelter_elevation_from_context()関数を追加し、JSONからの海抜情報をUnity側より優先して取得
+  - `server.py`: 低海抜（20m未満）の避難所には警告表示を追加
+  - 意図: 避難場所調査.mdの詳細な調査データを活用し、LLMがより正確な避難所情報に基づいて意思決定できるようにするため
+- バッチ実験モード（複数実験連続実行）を追加
+  - `ExperimentConfig.cs`: BatchExperimentPreset enum（None/Experiment1/Experiment2/Experiment3/AllExperiments）を追加
+  - `ExperimentConfig.cs`: ExperimentCondition構造体、BatchConditionResult構造体を追加
+  - `ExperimentConfig.cs`: StartBatchExperiment()、GenerateConditions()、ApplyCondition()、OnConditionComplete()、OnBatchExperimentComplete()メソッドを追加
+  - `ExperimentConfig.cs`: バッチ実験サマリーCSV出力（batch_*.csv）と条件別詳細CSV出力を追加
+  - 実験1（LLM vs RuleBased、2条件）、実験2（認知バイアス4条件）、実験3（情報提供戦略4条件）を連続実行可能
+  - Unity Inspector上でBatchPresetを選択するだけで全10条件を自動実行
+  - 意図: 複数の実験条件を手動切り替えなしで一括実行し、実験効率を大幅に向上させるため
+- 実験3（情報提供戦略の検証）の実装を完了
+  - `Shelter.cs`: elevationMetersフィールドとGetElevation()メソッドを追加し、避難所の海抜情報をLLMに提供可能に
+  - `ExperimentConfig.cs`: InformationStrategy enum（Standard/Urgent/Detailed/DetailedUrgent）を追加
+  - `LLMActionMessages.cs`: AdministrativeGuidancePayloadクラスを追加（津波高さ、推奨避難所、切迫警告メッセージ等）
+  - `Evacuee.cs`: BuildAdministrativeGuidancePayload()メソッドを追加し、情報提供戦略に応じた行政ガイダンスを生成
+  - `Evacuee.cs`: 避難所候補のelevation_metersをShelter.GetElevation()から正しく取得するよう修正
+  - `server.py`: build_user_prompt()に行政情報セクションを追加（推奨避難所、津波高さ更新情報、切迫警告等）
+  - `SimulationMetrics.cs`: 生存判定ロジックを実装（海抜 ≥ 津波高さ × 2 で生存判定）
+  - `SimulationMetrics.cs`: EpisodeSummaryに生存率・生存者数・情報提供戦略を追加
+  - 意図: 実験3（情報提供戦略の検証）を実行可能にし、避難完了率に加えて生存率も評価指標として記録するため
+- 実験3（情報提供戦略の検証）の実験設計を2軸アプローチで再設計
+  - 「情報の具体性」×「表現の切迫感」の2軸で4条件（A〜D）を設定
+  - 東日本大震災の教訓（初報の過小評価、指定避難所の限界、事前知識の上書き困難）を背景に設計
+  - 生存判定ロジックを定義: 津波到達時の位置高度 ≥ 津波高さ × 2 で安全と判定
+  - FutureWorkとして「初報から最大値」「被害情報の開示」「情報更新タイミング比較」を記載
+  - 意図: 行政の情報提供戦略（具体性と切迫感）が住民の事前知識を上書きし、適切な避難行動を促進できるかを検証するため
+- 認知バイアス明示的制御機能を実装（実験2-2対応）
+  - `ExperimentConfig.cs`: BiasCondition enumを追加（None/NormalcyBias/ConformityBias/Combined）
+  - `LLMActionMessages.cs`: LLMEvacDecisionRequestにbias_conditionとoverride_persona_biasフィールドを追加
+  - `Evacuee.cs`: BuildEvacDecisionRequest()でExperimentConfigからバイアス条件を取得しリクエストに付加
+  - `server.py`: build_user_prompt()にバイアス条件に応じたプロンプト動的注入ロジックを追加
+  - 意図: 実験2-2（認知バイアスの影響検証）を実行可能にするため
+- ペルソナデータを30人から500人に拡張
+  - `scripts/generate_personas.py`: ペルソナ生成スクリプトを新規作成
+  - mental_state分布: 冷静系30%、正常性バイアス25%、同調系20%、焦燥10%、慎重15%
+  - 年齢分布: いわき市統計に準拠（60代以上35%）
+  - 意図: 統計的有意性を確保するための十分なサンプルサイズを提供
+- TALK/CONTACTにマルチターン会話機能を追加
+  - 1セッション内で最大10ターンまでの往復会話が可能に
+  - `want_to_continue`フラグによる双方合意型の会話終了を実装
+  - 会話継続判断用のLLMリクエスト（conversation_continuation）を追加
+  - 連続選択制限を2回から5回に変更（セッション終了後の再選択回数上限）
+  - `ConversationSessionContext`で会話セッションを管理
+  - 意図: 2往復では一般的な会話としては少なすぎるため、自然な会話の流れを実現し、どちらかが終了希望した時点で会話を終わらせる仕組みを導入
+- CONTACTアクションでTargetが未設定の場合に発生するUnity固有のnull参照エラーを修正
+  - `CurrentTargetShelterId`と`GetCurrentLocationDescription`でUnityのオブジェクトに対する安全なnullチェックを実装
+  - 意図: STAY等でTargetが未設定の状態からCONTACTを実行した際のエラーを防ぐため
+- SEARCH_FAMILYの家族探索機能を強化
+  - シーン内に実在する家族の場合、10秒間隔で現在座標を追跡するリアルタイム追跡モードを追加
+  - シーン外の家族は従来通り予測位置（ランダム選択された建物座標）を使用
+  - 家族との距離が10m以内になった場合に「合流」と判定し、自動的にFOLLOWに移行して連帯行動を開始
+  - 合流時に双方の家族データに`is_reunited`フラグを設定し、LLMプロンプトに「★合流済み★」と表示
+  - 意図: 家族探索が単なる座標への移動ではなく、実際の合流と連帯行動につながるようにするため。また、合流済みであることを双方が認識できるようにするため
 - 避難所の特徴情報は残しつつ、より現実的な状況を再現するために具体的な数値を人間の感覚的な表現に変換した
 - システムプロンプトを「最適な避難行動を選択する避難者エージェント」から「災害時の一般市民」に変更
   - 人間らしい反応（パニック、家族への心配、危険の過小評価、周囲への同調など）を明示的に許容
@@ -13,3 +74,58 @@
   - 意図: LLMがネストした形式（`{"EVACUATE": {...}}`）で返すパースエラーを防ぐため
 - Evaluation.mdの仕様書に部分ログ出力機能のドキュメントを追加
 - 社会的相互作用（TALK、CONTACT、FOLLOW）の仕様書`Connection.md`を新規作成
+- TALK/CONTACT機能の時間制御を改善
+  - シミュレーション時間基準のメッセージラグを導入（TALK: 5秒、CONTACT: 3秒）
+  - 話しかけられた側・連絡を受けた側も立ち止まるよう変更
+  - 会話/連絡終了後にLLMで次の行動を決定する仕組みを追加
+  - 応答拒否ロジックを追加（TALK中/CONTACT中は即座に拒否応答）
+  - 意図: 社会的行動に現実的な所要時間を反映し、会話による意思変化を可能にするため
+- SEARCH_FAMILYでシーン外家族を対象外に変更
+  - シーン外家族（`exists_in_scene=false`または`agent_id=-1`）は探索対象から除外
+  - シーン内家族がいない場合はEVACUATEにフォールバック
+  - 意図: シーン外家族はシミュレーション内に実体が存在しないため、座標取得・合流が不可能
+- CONTACTはシーン外家族にも対応（サーバー経由でLLM応答を生成）
+  - シーン内家族: 相手のEvacueeに直接連絡しマルチターン会話
+  - シーン外家族: サーバー側でペルソナに基づき応答を生成（1往復で終了）
+  - LLMプロンプトでシーン外家族を「この地域外にいる家族（探索の対象外、連絡は可能）」として表示
+- 実験計画書（Experiment.md）を新規作成
+  - Paper.mdで定義された実験1〜3の詳細な実行手順を記載
+  - 各実験の目的、条件、測定指標、期待される結果を整理
+  - 実装面での課題（ルールベースエージェント、認知バイアス制御、情報提供条件切り替え）を特定
+  - 意図: 実験の準備と実行を体系的に進めるためのガイドラインを提供
+- ExperimentConfigにN回自動終了機能を追加
+  - 指定した試行回数（NumberOfTrials）に達したら自動的に実験を終了
+  - 終了時のアクション選択（一時停止/停止/アプリ終了）を追加
+  - 各試行の結果（避難率、経過時間）を記録し、サマリーレポートを生成
+  - 結果をCSVファイル（Logs/experiment_results/）に自動出力
+  - 平均・最小・最大避難率、標準偏差を自動計算
+  - 意図: 実験の自動化を実現し、N回の試行を手動で監視する手間を省くため
+- ExperimentConfigに自動開始・自動リセット機能を追加
+  - `AutoStartOnPlay`オプション: 再生開始時に自動的に実験を開始（デフォルト有効）
+  - `OnApplicationQuit`で再生停止時に自動リセット
+  - `RuntimeInitializeOnLoadMethod`でドメインリロード時にシングルトンをリセット
+  - 意図: 手動でStartExperiment()を呼ぶ必要をなくし、完全自動化を実現
+- ルールベースエージェントの仕様書（RuleBasedAgent.md）を新規作成
+  - Level 1（EVACUATE/STAY）とLevel 2（+SEARCH_FAMILY/CONTACT）の仕様を整理
+  - 行動選択アルゴリズムの優先度と条件を明文化
+  - LLMエージェントとの比較指標を定義
+  - 意図: 実験1のベースライン実装に向けた設計ドキュメントを整備
+- ルールベースエージェントをLevel 2に拡張実装
+  - SEARCH_FAMILY/CONTACTアクションに対応
+  - 津波警報（Jアラート/行政無線/消防団呼びかけ）時のみEVACUATEを選択、地震のみでは動かない仕様に変更
+  - 待機時間上限を60秒から600秒（10分）に延長
+  - シーン内の未合流家族（距離500m以内）がいる場合にSEARCH_FAMILYを選択（子供優先）
+  - シーン外の家族への連絡（CONTACT）は1回限りで実行
+  - 意図: LLMエージェントとの比較実験のため、合理的だが単純な行動選択を行うベースラインを完成させる
+- RuleBasedAgent.mdにFuture Workセクションを追加
+  - ペルソナ情報（mental_state, age_group等）のルールベースへの反映案を整理
+  - 未対応アクション（FOLLOW/TALK）の実装案を記載
+  - 先行研究で一般的なルールベース要素（群衆回避、混雑回避、車避難、垂直避難等）の未実装項目を特定
+  - 実験2-2（認知バイアス検証）・実験3（情報条件検証）に必要な拡張を明記
+  - 意図: 現在の実装で再現できていない要素を明文化し、将来の拡張計画を整理するため
+- Experiment.mdをルールベースエージェント実装に合わせて更新
+  - 行動ルールをLevel 2アルゴリズム（津波警報のみEVACUATE、家族対応あり）に修正
+  - 実行手順をExperimentConfig経由の自動実験に変更
+  - 課題1（ルールベースエージェント）を実装済みとしてマーク
+  - 実装状況サマリーを最新化（ルールベース、ExperimentConfig、SEARCH_FAMILYを実装済みに）
+  - 意図: ドキュメントと実装の整合性を保つため

@@ -89,6 +89,10 @@ public class SimulationMetrics : MonoBehaviour
         public bool evacuationCompleted;    // 避難完了したか
         public float evacuationTime;        // 避難完了時間（-1なら未完了）
         public string finalShelter;         // 到達した避難所
+        // 実験3: 生存判定用フィールド
+        public bool survived;               // 津波到達時に生存したか
+        public float finalElevation;        // 最終地点の海抜（m）
+        public string survivalLocation;     // 生存判定時の場所（避難所名 or "field"）
     }
 
     /// <summary>
@@ -120,6 +124,11 @@ public class SimulationMetrics : MonoBehaviour
         public int evacuatedAgents;
         public Dictionary<string, float> actionDistribution;
         public Dictionary<string, int> shelterDistribution;
+        // 実験3: 生存判定結果
+        public float survivalRate;          // 生存率
+        public int survivedAgents;          // 生存したエージェント数
+        public float tsunamiHeight;         // 判定に使用した津波高さ（m）
+        public string informationStrategy;  // 情報提供戦略
     }
 
     void Awake()
@@ -296,6 +305,9 @@ public class SimulationMetrics : MonoBehaviour
         // 未完了エージェントのSTAY継続時間を確定
         FinalizeAgentMetrics();
 
+        // 実験3: 生存判定を実行
+        EvaluateSurvival();
+
         // サマリを生成
         var summary = GenerateEpisodeSummary();
 
@@ -306,6 +318,7 @@ public class SimulationMetrics : MonoBehaviour
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 終了 - " +
                   $"避難完了率: {summary.evacuationRate:P1}, " +
+                  $"生存率: {summary.survivalRate:P1}, " +
                   $"平均避難時間: {summary.averageEvacuationTime:F1}秒");
     }
 
@@ -328,6 +341,130 @@ public class SimulationMetrics : MonoBehaviour
         }
 
         _stayStartTimes.Clear();
+    }
+
+    /// <summary>
+    /// 全エージェントの生存判定を実行（実験3用）
+    /// 判定基準: エージェントの現在位置の海抜 ≥ 津波高さ × 2
+    /// </summary>
+    private void EvaluateSurvival()
+    {
+        // ExperimentConfigから津波高さを取得
+        float tsunamiHeight = 8f;  // デフォルト値
+        if (ExperimentConfig.Instance != null)
+        {
+            tsunamiHeight = ExperimentConfig.GetTsunamiHeight();
+        }
+
+        float safeElevation = tsunamiHeight * 2f;  // 安全ライン
+
+        Debug.Log($"[SimulationMetrics] 生存判定開始 - 津波高さ: {tsunamiHeight}m, 安全ライン: {safeElevation}m以上");
+
+        int survivedCount = 0;
+        int totalCount = 0;
+
+        foreach (var evacueeObj in _envManager.Evacuees)
+        {
+            if (evacueeObj == null) continue;
+
+            var evacuee = evacueeObj.GetComponent<Evacuee>();
+            if (evacuee == null) continue;
+
+            string agentId = evacueeObj.name;
+            totalCount++;
+
+            if (!_agentMetrics.TryGetValue(agentId, out var metrics))
+            {
+                continue;
+            }
+
+            // エージェントの最終位置の海抜を判定
+            float currentElevation = 0f;
+            string survivalLocation = "field";
+
+            if (metrics.evacuationCompleted && !string.IsNullOrEmpty(metrics.finalShelter))
+            {
+                // 避難所に到達している場合、避難所の海抜を使用
+                currentElevation = GetShelterElevation(metrics.finalShelter);
+                survivalLocation = metrics.finalShelter;
+            }
+            else
+            {
+                // 避難所に到達していない場合、現在位置のY座標を使用
+                // （簡易的に地形の高さとして扱う）
+                currentElevation = evacueeObj.transform.position.y;
+                survivalLocation = "field";
+            }
+
+            // 生存判定: 海抜 ≥ 津波高さ × 2
+            bool survived = currentElevation >= safeElevation;
+
+            metrics.survived = survived;
+            metrics.finalElevation = currentElevation;
+            metrics.survivalLocation = survivalLocation;
+
+            if (survived)
+            {
+                survivedCount++;
+            }
+
+            Debug.Log($"[SimulationMetrics] {agentId}: 海抜{currentElevation:F1}m @ {survivalLocation} → {(survived ? "生存" : "死亡")}");
+        }
+
+        float survivalRate = totalCount > 0 ? (float)survivedCount / totalCount : 0f;
+        Debug.Log($"[SimulationMetrics] 生存判定完了 - 生存率: {survivalRate:P1} ({survivedCount}/{totalCount})");
+    }
+
+    /// <summary>
+    /// 避難所の海抜を取得
+    /// </summary>
+    private float GetShelterElevation(string shelterName)
+    {
+        // 避難所（Shelter）から検索
+        if (_envManager.Shelters != null)
+        {
+            foreach (var shelterObj in _envManager.Shelters)
+            {
+                if (shelterObj == null) continue;
+
+                var shelter = shelterObj.GetComponent<Shelter>();
+                if (shelter == null) continue;
+
+                string displayName = !string.IsNullOrEmpty(shelter.displayName)
+                    ? shelter.displayName
+                    : shelterObj.name;
+
+                if (displayName == shelterName || shelterObj.name == shelterName)
+                {
+                    return shelter.GetElevation();
+                }
+            }
+        }
+
+        // 津波避難地域（TsunamiEvacuationArea）から検索
+        if (_envManager.TsunamiEvacuationAreas != null)
+        {
+            foreach (var areaObj in _envManager.TsunamiEvacuationAreas)
+            {
+                if (areaObj == null) continue;
+
+                var area = areaObj.GetComponent<TsunamiEvacuationArea>();
+                if (area == null) continue;
+
+                string displayName = !string.IsNullOrEmpty(area.displayName)
+                    ? area.displayName
+                    : areaObj.name;
+
+                if (displayName == shelterName || areaObj.name == shelterName)
+                {
+                    return area.elevationMeters;
+                }
+            }
+        }
+
+        // 見つからない場合はデフォルト値（0m）を返す
+        Debug.LogWarning($"[SimulationMetrics] 避難所 '{shelterName}' の海抜情報が見つかりません");
+        return 0f;
     }
 
     /// <summary>
@@ -536,6 +673,27 @@ public class SimulationMetrics : MonoBehaviour
                 : 0f;
         }
 
+        // 実験3: 生存率を計算
+        int survivedCount = _agentMetrics.Values.Count(m => m.survived);
+        int totalAgentsCount = _agentMetrics.Count;
+        float survivalRate = totalAgentsCount > 0 ? (float)survivedCount / totalAgentsCount : 0f;
+
+        // ExperimentConfigから実験3の設定を取得
+        float tsunamiHeight = 8f;
+        string informationStrategy = "standard";
+        if (ExperimentConfig.Instance != null)
+        {
+            tsunamiHeight = ExperimentConfig.GetTsunamiHeight();
+            informationStrategy = ExperimentConfig.GetInformationStrategy() switch
+            {
+                ExperimentConfig.InformationStrategy.Standard => "standard",
+                ExperimentConfig.InformationStrategy.Urgent => "urgent",
+                ExperimentConfig.InformationStrategy.Detailed => "detailed",
+                ExperimentConfig.InformationStrategy.DetailedUrgent => "detailed_urgent",
+                _ => "standard"
+            };
+        }
+
         return new EpisodeSummary
         {
             episodeId = _envManager.currentEpisodeId,
@@ -547,7 +705,12 @@ public class SimulationMetrics : MonoBehaviour
             totalAgents = _envManager.Evacuees.Count,
             evacuatedAgents = completedRecords.Count,
             actionDistribution = actionDistribution,
-            shelterDistribution = new Dictionary<string, int>(_shelterSelectionCounts)
+            shelterDistribution = new Dictionary<string, int>(_shelterSelectionCounts),
+            // 実験3: 生存判定結果
+            survivalRate = survivalRate,
+            survivedAgents = survivedCount,
+            tsunamiHeight = tsunamiHeight,
+            informationStrategy = informationStrategy
         };
     }
 

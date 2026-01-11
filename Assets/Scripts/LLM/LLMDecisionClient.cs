@@ -113,6 +113,12 @@ namespace LLM
             return SendRequestAsync<LLMFamilyContactResponseResponse>(payload, request.request_id, cancellationToken);
         }
 
+        public Task<LLMConversationContinuationResponse> RequestConversationContinuationAsync(LLMConversationContinuationRequest request, CancellationToken cancellationToken = default)
+        {
+            var payload = JsonUtility.ToJson(request);
+            return SendRequestAsync<LLMConversationContinuationResponse>(payload, request.request_id, cancellationToken);
+        }
+
         private async Task<T> SendRequestAsync<T>(string payloadJson, string requestId, CancellationToken cancellationToken)
         {
             await EnsureConnectionAsync();

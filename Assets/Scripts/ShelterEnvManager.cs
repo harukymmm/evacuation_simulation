@@ -78,6 +78,10 @@ public class EnvManager : MonoBehaviour {
     [System.NonSerialized]
     public List<GameObject> TsunamiEvacuationAreas; // 津波避難地域のリスト
 
+    // 避難者の高速検索用インデックス
+    private Dictionary<string, Evacuee> _evacueeById = new Dictionary<string, Evacuee>();
+    private Dictionary<string, Evacuee> _evacueeByName = new Dictionary<string, Evacuee>();
+
     [Header("UI Elements")]
     public TextMeshProUGUI stepCounter;
     public TextMeshProUGUI evacRateCounter;
@@ -145,6 +149,8 @@ public class EnvManager : MonoBehaviour {
         Agent = AgentObj.GetComponent<ShelterManagementAgent>();
         // 念のため null であっても初期化しておく（実行順で FixedUpdate が先行した場合のガード）
         Evacuees = new List<GameObject>(); // 避難者のリストを初期化
+        _evacueeById.Clear();
+        _evacueeByName.Clear();
         CurrentShelters = new List<GameObject>(); // 避難所のリストを初期化
         Shelters = new List<GameObject>(); // 避難所のリストを初期化
         currentStep = Agent.StepCount;
@@ -449,6 +455,8 @@ public class EnvManager : MonoBehaviour {
             point.ShowRangeOff();
         }
         Evacuees = new List<GameObject>(); // 新しいリストを作成
+        _evacueeById.Clear();
+        _evacueeByName.Clear();
         CurrentShelters = new List<GameObject>(); // 新しいリストを作成
         currentTimeSec = 0;
         evaRatePerSec.Clear();
@@ -562,19 +570,75 @@ public class EnvManager : MonoBehaviour {
                     member.spawn_building_name = searchBuildingName;
                     member.likely_location = $"{BuildingCategorizer.GetCategoryDisplayName(member.spawn_category)}（{searchBuildingName}）";
                 }
+                else
+                {
+                    Debug.LogWarning($"[EnvManager] Agent {agentId}: 家族 {member.name} の探索位置取得に失敗 (カテゴリ: {member.spawn_category}, 建物数: {SpawnLocationManager.GetBuildingCount(member.spawn_category)})");
+                }
             }
         }
         
         GameObject evacuee = Instantiate(SpawnEvacueePref, finalSpawnPos, Quaternion.identity, transform);
         evacuee.tag = "Evacuee";
         Evacuees.Add(evacuee);
-        
+
         // 避難者に生成順序のIDを設定（1から始まる）
         var evacueeComponent = evacuee.GetComponent<Evacuee>();
         if (evacueeComponent != null)
         {
             evacueeComponent.SetEvacueeId(agentId);
+
+            // 高速検索用インデックスに登録
+            _evacueeById[agentId.ToString()] = evacueeComponent;
+
+            // ペルソナ名が設定されていれば名前インデックスにも登録
+            var persona = evacueeComponent.GetPersona();
+            if (persona != null && !string.IsNullOrEmpty(persona.name))
+            {
+                _evacueeByName[persona.name] = evacueeComponent;
+            }
         }
+    }
+
+    /// <summary>
+    /// IDで避難者を高速検索（O(1)）
+    /// </summary>
+    public Evacuee GetEvacueeById(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+            return null;
+        return _evacueeById.TryGetValue(id, out var evacuee) ? evacuee : null;
+    }
+
+    /// <summary>
+    /// 名前で避難者を高速検索（O(1)、完全一致）
+    /// </summary>
+    public Evacuee GetEvacueeByName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return null;
+        return _evacueeByName.TryGetValue(name, out var evacuee) ? evacuee : null;
+    }
+
+    /// <summary>
+    /// 名前で避難者を検索（部分一致対応）
+    /// 完全一致で見つからない場合に部分一致で検索
+    /// </summary>
+    public Evacuee GetEvacueeByNamePartial(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return null;
+
+        // まず完全一致を試行
+        if (_evacueeByName.TryGetValue(name, out var evacuee))
+            return evacuee;
+
+        // 部分一致で検索
+        foreach (var kvp in _evacueeByName)
+        {
+            if (kvp.Key.Contains(name) || name.Contains(kvp.Key))
+                return kvp.Value;
+        }
+        return null;
     }
 
     /// <summary>

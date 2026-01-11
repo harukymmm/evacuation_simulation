@@ -13,10 +13,13 @@ public class Shelter : MonoBehaviour{
     [Header("避難所情報")]
     [Tooltip("避難所の表示名（例: 豊間小学校）")]
     public string displayName = ""; // 表示名
-    
+
     [Tooltip("避難所の説明（例: 海抜20m、耐震構造）")]
     [TextArea(2, 4)]
     public string description = ""; // 説明文
+
+    [Tooltip("避難所の海抜（メートル）。0の場合はY座標から自動計算")]
+    public float elevationMeters = 0f; // 海抜（メートル）
     
     [Header("収容情報")]
     [Tooltip("trueの場合、PLATEAUの床面積データから自動計算します")]
@@ -193,6 +196,22 @@ public class Shelter : MonoBehaviour{
         }
         
         return null;
+    }
+
+    /// <summary>
+    /// 避難所の海抜（メートル）を取得
+    /// elevationMetersが設定されている場合はその値を返し、
+    /// 0の場合はY座標を海抜として返す
+    /// </summary>
+    /// <returns>海抜（メートル）</returns>
+    public float GetElevation()
+    {
+        if (elevationMeters > 0f)
+        {
+            return elevationMeters;
+        }
+        // elevationMetersが設定されていない場合はY座標を使用
+        return transform.position.y;
     }
 
     /// <summary>

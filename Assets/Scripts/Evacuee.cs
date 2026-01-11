@@ -75,6 +75,14 @@ public class Evacuee : MonoBehaviour {
         { LLM.SpeedChoice.RUN, 2.0f }
     };
 
+    // 会話・連絡のラグ時間（シミュレーション秒）
+    // TALK: 発話時間も含めて5秒（往復で10秒程度）
+    // CONTACT: 電話/メール送受信で3秒（往復で6秒程度）
+    private const float CONVERSATION_MESSAGE_LAG_SEC = 5.0f;
+    private const float CONTACT_MESSAGE_LAG_SEC = 3.0f;
+    private const float CONVERSATION_TIMEOUT_SEC = 10.0f;  // 会話応答タイムアウト（ラグ込みで余裕を持たせる）
+    private const float CONTACT_TIMEOUT_SEC = 15.0f;       // 連絡応答タイムアウト（ラグ込みで余裕を持たせる）
+
     // 日本語名マッピング
     private static readonly Dictionary<LLM.SpeedChoice, string> SpeedChoiceNames = new Dictionary<LLM.SpeedChoice, string>
     {
@@ -115,7 +123,19 @@ public class Evacuee : MonoBehaviour {
     private string _lastContactTarget;       // 直近で連絡を試みた家族
     private string _lastContactMessage;      // 直近で送信したメール本文
     private int _consecutiveContactCount = 0; // 連続CONTACT回数
-    private const int MAX_CONSECUTIVE_CONTACT = 2; // 連続CONTACTの上限
+    private const int MAX_CONSECUTIVE_CONTACT = 5; // 連続CONTACTの上限（セッション間）
+    private bool _contactCooldown = false; // CONTACT上限後の一時禁止フラグ
+    // CONTACT応答状態（家族から連絡を受けた側の状態管理）
+    private bool _isRespondingToFamilyContact = false;
+    private LLM.ActionType _actionBeforeFamilyContact;
+    private string _targetShelterBeforeFamilyContact;
+
+    [Header("Search Family Action")]
+    private FamilyMember _searchFamilyTarget;        // 現在探索中の家族メンバー
+    private Evacuee _searchFamilyTargetEvacuee;      // 探索対象がシーン内に存在する場合のEvacuee参照
+    private float _lastSearchFamilyCheck = 0f;       // 最後に座標更新した時刻
+    private const float SEARCH_FAMILY_CHECK_INTERVAL = 10f; // 座標更新間隔（秒）
+    private const float FAMILY_REUNION_DISTANCE = 10f; // 合流判定距離（メートル）
 
     [Header("Follow Action")]
     private Evacuee _followTarget;           // 追従対象の避難者
@@ -129,10 +149,16 @@ public class Evacuee : MonoBehaviour {
     [Header("Talk Action")]
     private List<LLM.ConversationLogEntry> _conversationHistory = new List<LLM.ConversationLogEntry>();
     private int _consecutiveTalkCount = 0;
-    private const int MAX_CONSECUTIVE_TALK = 2;
+    private const int MAX_CONSECUTIVE_TALK = 5;         // 連続TALKの上限（セッション間）
+    private const int MAX_CONVERSATION_TURNS = 10;      // 1セッション内のターン上限
     private const int MAX_CONVERSATION_HISTORY = 5;
     private TaskCompletionSource<LLM.ConversationResponse> _conversationResponseTCS;
-    private bool _isWaitingForConversationResponse = false;
+    // TALK応答状態（話しかけられた側の状態管理）
+    private bool _isRespondingToConversation = false;
+    private LLM.ActionType _actionBeforeConversation;
+    private string _targetShelterBeforeConversation;
+    // マルチターン会話セッション管理
+    private LLM.ConversationSessionContext _conversationSession = null;
 
     [Header("Hierarchical Decision Making")]
     private LLM.LongTermGoalPayload _currentLongTermGoal;    // 現在の長期目標
@@ -181,8 +207,9 @@ public class Evacuee : MonoBehaviour {
 
     /// <summary>
     /// 現在の目標避難所ID（TALK行動で使用）
+    /// UnityのオブジェクトはC#のnull条件演算子と異なる挙動をするため、明示的にnullチェック
     /// </summary>
-    public string CurrentTargetShelterId => Target?.name ?? "";
+    public string CurrentTargetShelterId => (Target != null && Target) ? Target.name : "";
 
 
     /// <summary>
@@ -219,7 +246,15 @@ public class Evacuee : MonoBehaviour {
     {
         return _familyData;
     }
-    
+
+    /// <summary>
+    /// ペルソナデータを取得
+    /// </summary>
+    public PersonaData GetPersona()
+    {
+        return _persona;
+    }
+
     /// <summary>
     /// 行政無線の放送を聞いたことを記録（AlertManagerから呼ばれる）
     /// </summary>
@@ -380,6 +415,12 @@ public class Evacuee : MonoBehaviour {
         {
             _ruleBasedDecisionMaker = gameObject.AddComponent<RuleBasedDecisionMaker>();
             _ruleBasedDecisionMaker.Initialize(this, _env, NavAgent);
+
+            // Level 2: 家族情報を渡す
+            if (_familyData != null)
+            {
+                _ruleBasedDecisionMaker.InitializeExtended(_familyData);
+            }
         }
 
         _env.Agent.OnDidActioned += () => {
@@ -434,6 +475,12 @@ public class Evacuee : MonoBehaviour {
             UpdateFollowAction();
         }
 
+        // SEARCH_FAMILY行動の更新処理（シーン内家族の座標を定期的に更新）
+        if (CurrentAction == LLM.ActionType.SEARCH_FAMILY && _searchFamilyTargetEvacuee != null)
+        {
+            UpdateSearchFamilyAction();
+        }
+
         // ルールベースモードの定期評価
         if (UseRuleBasedDecision && _ruleBasedDecisionMaker != null && gameObject.activeSelf && _env != null)
         {
@@ -469,16 +516,21 @@ public class Evacuee : MonoBehaviour {
     }
 
     /// <summary>
-    /// ルールベース意思決定を実行
+    /// ルールベース意思決定を実行（Level 2: SEARCH_FAMILY/CONTACT対応）
     /// </summary>
     private void RequestRuleBasedDecision()
     {
         if (_ruleBasedDecisionMaker == null) return;
 
-        var (actionType, targetShelter, reasoning) = _ruleBasedDecisionMaker.MakeDecision();
+        var (actionType, targetShelter, reasoning, familyTarget) = _ruleBasedDecisionMaker.MakeDecisionExtended();
 
         // 行動が変更された場合のみ処理
-        if (CurrentAction != actionType || (actionType == LLM.ActionType.EVACUATE && Target != targetShelter))
+        bool actionChanged = CurrentAction != actionType;
+        bool targetChanged = actionType == LLM.ActionType.EVACUATE && Target != targetShelter;
+        bool familyTargetChanged = actionType == LLM.ActionType.SEARCH_FAMILY &&
+            (_searchFamilyTarget == null || (familyTarget != null && _searchFamilyTarget.agent_id != familyTarget.agent_id));
+
+        if (actionChanged || targetChanged || familyTargetChanged)
         {
             CurrentAction = actionType;
 
@@ -486,8 +538,8 @@ public class Evacuee : MonoBehaviour {
             var metrics = FindFirstObjectByType<SimulationMetrics>();
             if (metrics != null)
             {
-                string shelterName = targetShelter != null ? targetShelter.name : "";
-                metrics.RecordAction(_uniqueId ?? gameObject.name, actionType, shelterName, reasoning, 1.0f);
+                string targetName = targetShelter?.name ?? familyTarget?.name ?? "";
+                metrics.RecordAction(_uniqueId ?? gameObject.name, actionType, targetName, reasoning, 1.0f);
             }
 
             switch (actionType)
@@ -501,7 +553,7 @@ public class Evacuee : MonoBehaviour {
                             NavAgent.isStopped = false;
                             NavAgent.SetDestination(Target.transform.position);
                         }
-                        Debug.Log($"[Evacuee] {gameObject.name}: RuleBased EVACUATE - {targetShelter.name}に向かいます ({reasoning})");
+                        Debug.Log($"[RuleBased] {gameObject.name}: EVACUATE - {targetShelter.name}に向かいます ({reasoning})");
                     }
                     break;
 
@@ -512,10 +564,77 @@ public class Evacuee : MonoBehaviour {
                         NavAgent.isStopped = true;
                         NavAgent.ResetPath();
                     }
-                    Debug.Log($"[Evacuee] {gameObject.name}: RuleBased STAY - 待機します ({reasoning})");
+                    Debug.Log($"[RuleBased] {gameObject.name}: STAY - 待機します ({reasoning})");
+                    break;
+
+                case LLM.ActionType.SEARCH_FAMILY:
+                    ExecuteRuleBasedSearchFamily(familyTarget, reasoning);
+                    break;
+
+                case LLM.ActionType.CONTACT:
+                    ExecuteRuleBasedContact(familyTarget, reasoning);
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// ルールベースでSEARCH_FAMILYを実行
+    /// </summary>
+    private void ExecuteRuleBasedSearchFamily(FamilyMember target, string reasoning)
+    {
+        if (target == null) return;
+
+        _searchFamilyTarget = target;
+
+        // シーン内家族のEvacuee参照を取得
+        var allEvacuees = FindObjectsByType<Evacuee>(FindObjectsSortMode.None);
+        _searchFamilyTargetEvacuee = allEvacuees.FirstOrDefault(e =>
+            e.EvacueeId == target.agent_id.ToString());
+
+        Vector3 destination = _searchFamilyTargetEvacuee != null
+            ? _searchFamilyTargetEvacuee.transform.position
+            : target.search_position;
+
+        if (NavAgent != null)
+        {
+            NavAgent.isStopped = false;
+            NavAgent.SetDestination(destination);
+        }
+
+        string trackingMode = _searchFamilyTargetEvacuee != null ? "リアルタイム追跡" : "予測位置";
+        Debug.Log($"[RuleBased] {gameObject.name}: SEARCH_FAMILY - {target.relation} {target.name} を探しに向かいます ({trackingMode}) ({reasoning})");
+    }
+
+    /// <summary>
+    /// ルールベースでCONTACTを実行
+    /// </summary>
+    private void ExecuteRuleBasedContact(FamilyMember target, string reasoning)
+    {
+        if (target == null) return;
+
+        // 簡易実装: ログ出力と短時間の待機後にEVACUATEに移行
+        Debug.Log($"[RuleBased] {gameObject.name}: CONTACT - {target.relation} {target.name} に連絡を取りました ({reasoning})");
+
+        // 立ち止まって連絡
+        if (NavAgent != null)
+        {
+            NavAgent.isStopped = true;
+            NavAgent.ResetPath();
+        }
+
+        // CONTACT完了後はルール再評価で次の行動が決まる
+        // （_hasContactedFamily=trueになっているので、次はEVACUATEかSTAYが選ばれる）
+        StartCoroutine(TransitionAfterContact());
+    }
+
+    /// <summary>
+    /// CONTACT完了後に次の判断を行う
+    /// </summary>
+    private System.Collections.IEnumerator TransitionAfterContact()
+    {
+        yield return new WaitForSeconds(3f);  // 連絡に3秒
+        RequestRuleBasedDecision();
     }
 
     
@@ -638,6 +757,26 @@ public class Evacuee : MonoBehaviour {
         _ = DecideAndMoveAsync();
     }
 
+    /// <summary>
+    /// シミュレーション時間で指定秒数待機する
+    /// Task.Delay()と異なり、TimeScaleの影響を受けてシミュレーション時間基準で待機する
+    /// </summary>
+    private async Task WaitSimulationTimeAsync(float seconds)
+    {
+        float startTime = _env != null ? _env.CurrentTimeSec : Time.time;
+        float targetTime = startTime + seconds;
+
+        while (true)
+        {
+            await Task.Yield(); // 次のフレームまで待機
+            float currentTime = _env != null ? _env.CurrentTimeSec : Time.time;
+            if (currentTime >= targetTime)
+            {
+                break;
+            }
+        }
+    }
+
     private async Task DecideAndMoveAsync()
     {
         _isRequestingLLMDecision = true;
@@ -718,10 +857,11 @@ public class Evacuee : MonoBehaviour {
         
         CurrentAction = actionType;
 
-        // CONTACT以外の行動を選択した場合は連続CONTACTカウントをリセット
+        // CONTACT以外の行動を選択した場合は連続CONTACTカウントとクールダウンをリセット
         if (actionType != LLM.ActionType.CONTACT)
         {
             _consecutiveContactCount = 0;
+            _contactCooldown = false;
         }
 
         // TALK以外の行動を選択した場合は連続TALKカウントをリセット
@@ -838,6 +978,7 @@ public class Evacuee : MonoBehaviour {
 
     /// <summary>
     /// SEARCH_FAMILY 行動を実行（特定の家族の位置を目標に移動）
+    /// シーン内に存在する家族の場合は現在座標を追跡、存在しない家族は予測位置を使用
     /// </summary>
     private bool ExecuteSearchFamilyAction(LLMEvacDecisionResponse response)
     {
@@ -847,17 +988,25 @@ public class Evacuee : MonoBehaviour {
             return ExecuteEvacuateAction(response);
         }
 
+        // シーン内に存在する家族のみを対象とする
+        var searchableMembers = _familyData.members.Where(m => m.exists_in_scene && m.agent_id > 0).ToList();
+        if (searchableMembers.Count == 0)
+        {
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: シーン内に探索可能な家族がいないためSEARCH_FAMILYを実行できません。EVACUATEにフォールバックします。");
+            return ExecuteEvacuateAction(response);
+        }
+
         string targetKey = response.target_family_member;
         FamilyMember target = null;
 
         if (!string.IsNullOrEmpty(targetKey))
         {
-            // まず名前で一致を試みる
-            target = _familyData.members.FirstOrDefault(m => m.name == targetKey);
+            // まず名前で一致を試みる（シーン内家族のみ）
+            target = searchableMembers.FirstOrDefault(m => m.name == targetKey);
             // 見つからなければ続柄（「息子」「娘」「妻」など）で一致を試みる
             if (target == null)
             {
-                target = _familyData.members.FirstOrDefault(m => m.relation == targetKey);
+                target = searchableMembers.FirstOrDefault(m => m.relation == targetKey);
             }
         }
 
@@ -865,20 +1014,30 @@ public class Evacuee : MonoBehaviour {
         // 簡単なヒューリスティックでターゲットを選ぶ（子供優先 → 配偶者 → その他）
         if (target == null)
         {
-            target = _familyData.members
+            target = searchableMembers
                 .FirstOrDefault(m => m.relation.Contains("子") || m.relation.Contains("息子") || m.relation.Contains("娘"))
-                ?? _familyData.members.FirstOrDefault(m => m.relation.Contains("妻") || m.relation.Contains("夫"))
-                ?? _familyData.members.First();
+                ?? searchableMembers.FirstOrDefault(m => m.relation.Contains("妻") || m.relation.Contains("夫"))
+                ?? searchableMembers.First();
         }
 
-        // 目標位置を決定（search_position があればそれを優先、なければspawn_positionを使用）
-        Vector3 destination = target.search_position != Vector3.zero
-            ? target.search_position
-            : target.spawn_position;
+        // 探索対象を保存
+        _searchFamilyTarget = target;
+        _searchFamilyTargetEvacuee = null;
+        _lastSearchFamilyCheck = Time.time;
 
-        if (destination == Vector3.zero)
+        // 目標位置を決定（シーン内家族のみなので必ずEvacueeが存在するはず）
+        Vector3 destination;
+        var targetEvacuee = _env?.GetEvacueeById(target.agent_id.ToString());
+        if (targetEvacuee != null)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族 {target.name} の探索位置が未設定のためSEARCH_FAMILYを実行できません。EVACUATEにフォールバックします。");
+            _searchFamilyTargetEvacuee = targetEvacuee;
+            destination = targetEvacuee.transform.position;
+            Debug.Log($"[Evacuee] {gameObject.name}: シーン内家族 {target.name} (agent_id={target.agent_id}) の現在座標を追跡します");
+        }
+        else
+        {
+            // Evacueeが見つからない場合はフォールバック
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族 {target.name} (agent_id={target.agent_id}) のEvacueeが見つかりません。EVACUATEにフォールバックします。");
             return ExecuteEvacuateAction(response);
         }
 
@@ -893,7 +1052,8 @@ public class Evacuee : MonoBehaviour {
         var metrics = FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.SEARCH_FAMILY, null, response.reasoning, response.confidence);
 
-        Debug.Log($"[Evacuee] {gameObject.name}: SEARCH_FAMILY行動を選択 - {target.relation} {target.name} を探しに {destination} に向かいます "
+        string trackingMode = _searchFamilyTargetEvacuee != null ? "リアルタイム追跡" : "予測位置";
+        Debug.Log($"[Evacuee] {gameObject.name}: SEARCH_FAMILY行動を選択 - {target.relation} {target.name} を探しに {destination} に向かいます ({trackingMode}) "
                   + $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
 
         return true;
@@ -916,10 +1076,15 @@ public class Evacuee : MonoBehaviour {
         _consecutiveContactCount++;
         if (_consecutiveContactCount >= MAX_CONSECUTIVE_CONTACT)
         {
-            // 強制的にEVACUATEに切り替え
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 連続CONTACTが上限({MAX_CONSECUTIVE_CONTACT}回)に達しました。EVACUATEに切り替えます。");
+            Debug.Log($"[Evacuee] {gameObject.name}: 連続CONTACTが上限({MAX_CONSECUTIVE_CONTACT}回)に達しました。LLMに次の行動を決定させます。");
             _consecutiveContactCount = 0;
-            return ExecuteEvacuateAction(response);
+            _contactCooldown = true; // 次の意思決定でCONTACTを除外
+            // LLMに次の行動を決定させる（CONTACTを除外した選択肢で）
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                RequestLLMDecision();
+            }
+            return true; // 現在の行動は終了、LLMが次を決定
         }
 
         string targetKey = response.contact_target;
@@ -967,19 +1132,49 @@ public class Evacuee : MonoBehaviour {
     }
 
     /// <summary>
-    /// 家族への連絡を開始し、相手からの返信を待機（非同期）
+    /// 家族への連絡を開始し、相手からの返信を待機（非同期）- マルチターン会話対応
     /// </summary>
     private async Task InitiateFamilyContactAsync(FamilyMember target, LLMEvacDecisionResponse response)
     {
+        await InitiateFamilyContactAsync(target, $"大丈夫？今どこにいる？避難できそう？");
+    }
+
+    /// <summary>
+    /// 家族への連絡を開始し、相手からの返信を待機（非同期）- マルチターン会話対応
+    /// </summary>
+    private async Task InitiateFamilyContactAsync(FamilyMember target, string message)
+    {
         try
         {
+            // セッション初期化（新規連絡の場合）
+            if (_conversationSession == null || _conversationSession.partner_id != target.agent_id.ToString())
+            {
+                _conversationSession = new LLM.ConversationSessionContext
+                {
+                    partner_id = target.agent_id.ToString(),
+                    partner_name = target.name,
+                    turn_count = 1,
+                    current_topic = "family_contact",
+                    partner_wants_to_continue = true,
+                    session_start_time = _env?.CurrentTimeSec ?? Time.time,
+                    is_family_contact = true
+                };
+            }
+            else
+            {
+                _conversationSession.turn_count++;
+            }
+
+            // メッセージ送信前のラグ（シミュレーション時間で3秒 - 連絡開始時間を表現）
+            await WaitSimulationTimeAsync(CONTACT_MESSAGE_LAG_SEC);
+
             // 連絡リクエストを作成
             var contactRequest = new LLM.FamilyContactRequest
             {
                 sender_id = EvacueeId,
                 sender_name = PersonaName,
                 sender_relation = GetMyRelationTo(target), // 相手から見た自分の続柄
-                message = $"大丈夫？今どこにいる？避難できそう？",
+                message = message,
                 sender_action = CurrentAction.ToString(),
                 sender_target = CurrentTargetShelterId,
                 sender_location = GetCurrentLocationDescription()
@@ -1000,13 +1195,22 @@ public class Evacuee : MonoBehaviour {
                     _conversationResponseTCS = new TaskCompletionSource<LLM.ConversationResponse>();
                     familyEvacuee.OnFamilyContactReceived(contactRequest, this);
 
-                    // タイムアウト付きで応答を待機（10秒）
-                    var timeoutTask = Task.Delay(10000);
-                    var completedTask = await Task.WhenAny(_conversationResponseTCS.Task, timeoutTask);
+                    // シミュレーション時間ベースのタイムアウト待機
+                    float startTime = _env != null ? _env.CurrentTimeSec : Time.time;
 
-                    if (completedTask == timeoutTask)
+                    while (!_conversationResponseTCS.Task.IsCompleted)
                     {
-                        Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族連絡応答タイムアウト - デフォルト応答を使用");
+                        await Task.Yield();
+                        float currentTime = _env != null ? _env.CurrentTimeSec : Time.time;
+                        if (currentTime - startTime >= CONTACT_TIMEOUT_SEC)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (!_conversationResponseTCS.Task.IsCompleted)
+                    {
+                        Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族連絡応答タイムアウト（シミュレーション時間{CONTACT_TIMEOUT_SEC}秒） - デフォルト応答を使用");
                         contactResponse = new LLM.FamilyContactResponse
                         {
                             responder_id = target.agent_id.ToString(),
@@ -1014,7 +1218,8 @@ public class Evacuee : MonoBehaviour {
                             response_message = "ごめん、今バタバタしてて。無事だから心配しないで。",
                             current_status = "無事",
                             current_location = "不明",
-                            planned_action = ""
+                            planned_action = "",
+                            want_to_continue = false
                         };
                     }
                     else
@@ -1028,7 +1233,8 @@ public class Evacuee : MonoBehaviour {
                             response_message = convResponse.response_message,
                             current_status = "不明",
                             current_location = "",
-                            planned_action = ""
+                            planned_action = "",
+                            want_to_continue = convResponse.want_to_continue
                         };
                     }
                 }
@@ -1048,18 +1254,32 @@ public class Evacuee : MonoBehaviour {
             // 返信内容を保存
             _lastContactMessage = contactResponse.response_message;
 
-            Debug.Log($"[Evacuee] {gameObject.name}: 家族 {target.name} からの返信: 「{contactResponse.response_message}」\n" +
+            Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡ターン{_conversationSession.turn_count}完了 - {target.name}からの返信: 「{contactResponse.response_message}」(継続希望: {contactResponse.want_to_continue})\n" +
                       $"  状況: {contactResponse.current_status}, 場所: {contactResponse.current_location}, 予定: {contactResponse.planned_action}");
 
-            // 次の意思決定のためにLLMを呼び出し
-            if (UseLLMDecision && DecisionClient != null)
+            // マルチターン継続判定
+            if (contactResponse.want_to_continue && _conversationSession.turn_count < MAX_CONVERSATION_TURNS)
             {
-                RequestLLMDecision();
+                // 相手が継続希望 → 自分も継続するか判断
+                _conversationSession.partner_wants_to_continue = true;
+                await ContinueFamilyContactAsync(target, contactResponse.response_message);
+            }
+            else
+            {
+                // 連絡終了（相手が終了希望 or ターン上限）
+                EndConversationSession();
+
+                // 次の意思決定のためにLLMを呼び出し
+                if (UseLLMDecision && DecisionClient != null)
+                {
+                    RequestLLMDecision();
+                }
             }
         }
         catch (Exception ex)
         {
             Debug.LogError($"[Evacuee] {gameObject.name}: 家族連絡中にエラー: {ex.Message}");
+            EndConversationSession();
 
             // エラー時もデフォルトの返信を設定して続行
             _lastContactMessage = $"{target.name}からの返信: 「連絡が取れませんでした...」";
@@ -1072,6 +1292,49 @@ public class Evacuee : MonoBehaviour {
         finally
         {
             _conversationResponseTCS = null;
+        }
+    }
+
+    /// <summary>
+    /// 家族連絡を継続する（自分のターンで次のメッセージを生成）
+    /// </summary>
+    private async Task ContinueFamilyContactAsync(FamilyMember target, string partnerLastMessage)
+    {
+        try
+        {
+            // 自分が継続したいか判断（LLMで生成）
+            var continuationResponse = await RequestConversationContinuationAsync(partnerLastMessage);
+
+            if (!continuationResponse.want_to_continue)
+            {
+                // 自分は終了したい → 会話終了
+                Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡を終了します - 「{continuationResponse.message}」");
+                EndConversationSession();
+
+                // 次の意思決定のためにLLMを呼び出し
+                if (UseLLMDecision && DecisionClient != null)
+                {
+                    RequestLLMDecision();
+                }
+                return;
+            }
+
+            // 継続 → 次のメッセージを送信
+            _conversationSession.turn_count++;
+            Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡継続 - ターン{_conversationSession.turn_count}: 「{continuationResponse.message}」");
+
+            // 再帰的にInitiateFamilyContactAsyncを呼び出し（セッションは維持）
+            await InitiateFamilyContactAsync(target, continuationResponse.message);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Evacuee] {gameObject.name}: 家族連絡継続中にエラー: {ex.Message}");
+            EndConversationSession();
+
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                RequestLLMDecision();
+            }
         }
     }
 
@@ -1089,7 +1352,8 @@ public class Evacuee : MonoBehaviour {
                 response_message = "無事だよ。今は自宅付近にいる。様子を見ている。",
                 current_status = "無事",
                 current_location = "自宅付近",
-                planned_action = "様子を見て避難する"
+                planned_action = "様子を見て避難する",
+                want_to_continue = false
             };
         }
 
@@ -1115,7 +1379,8 @@ public class Evacuee : MonoBehaviour {
             response_message = llmResponse.response_message,
             current_status = llmResponse.current_status,
             current_location = llmResponse.current_location,
-            planned_action = llmResponse.planned_action
+            planned_action = llmResponse.planned_action,
+            want_to_continue = llmResponse.want_to_continue
         };
     }
 
@@ -1161,7 +1426,8 @@ public class Evacuee : MonoBehaviour {
     private string GetCurrentLocationDescription()
     {
         // TODO: 周辺の建物情報などを使って詳細な位置説明を生成
-        if (Target != null)
+        // UnityのオブジェクトはC#のnull条件演算子と異なる挙動をするため、明示的にnullチェック
+        if (Target != null && Target)
         {
             return $"{Target.name}付近";
         }
@@ -1206,6 +1472,46 @@ public class Evacuee : MonoBehaviour {
     {
         Debug.Log($"[Evacuee] {gameObject.name}: 家族 {request.sender_name} からメール受信: 「{request.message}」");
 
+        // 応答拒否判定: TALK中は即座に拒否応答を返す
+        if (CurrentAction == LLM.ActionType.TALK || _isRespondingToConversation)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 現在会話中のため家族連絡に簡易応答を返します");
+            sender.OnFamilyContactResponseReceived(new LLM.ConversationResponse
+            {
+                responder_id = EvacueeId,
+                responder_name = PersonaName,
+                response_message = "ごめん、今話し中。後で連絡する。",
+                willing_to_share = true
+            });
+            return;
+        }
+
+        // 応答拒否判定: CONTACT中は即座に拒否応答を返す
+        if (CurrentAction == LLM.ActionType.CONTACT || _isRespondingToFamilyContact)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 現在電話中のため家族連絡に簡易応答を返します");
+            sender.OnFamilyContactResponseReceived(new LLM.ConversationResponse
+            {
+                responder_id = EvacueeId,
+                responder_name = PersonaName,
+                response_message = "ごめん、今電話中。すぐ折り返す。",
+                willing_to_share = true
+            });
+            return;
+        }
+
+        // 連絡前の状態を保存
+        _actionBeforeFamilyContact = CurrentAction;
+        _targetShelterBeforeFamilyContact = CurrentTargetShelterId;
+
+        // 応答者も立ち止まる
+        _isRespondingToFamilyContact = true;
+        if (NavAgent != null)
+        {
+            NavAgent.isStopped = true;
+            NavAgent.ResetPath();
+        }
+
         // LLMに応答生成をリクエスト
         _ = RequestFamilyContactResponseAsync(request, sender);
     }
@@ -1239,8 +1545,8 @@ public class Evacuee : MonoBehaviour {
                     },
                     environment = BuildEnvironmentPayload(),
                     incoming_contact = request,
-                    current_action = CurrentAction.ToString(),
-                    current_target = CurrentTargetShelterId,
+                    current_action = _actionBeforeFamilyContact.ToString(), // 連絡前の行動を送信
+                    current_target = _targetShelterBeforeFamilyContact,
                     family_relationship = $"{request.sender_name}の{request.sender_relation}の家族"
                 };
 
@@ -1266,6 +1572,9 @@ public class Evacuee : MonoBehaviour {
                 };
             }
 
+            // 応答送信前のラグ（シミュレーション時間で3秒）
+            await WaitSimulationTimeAsync(CONTACT_MESSAGE_LAG_SEC);
+
             // 送信者に応答を返す
             sender.OnFamilyContactResponseReceived(response);
         }
@@ -1282,6 +1591,28 @@ public class Evacuee : MonoBehaviour {
                 willing_to_share = true
             });
         }
+        finally
+        {
+            // 連絡終了後の処理
+            _isRespondingToFamilyContact = false;
+
+            // LLMに次の行動を決定させる（連絡の結果を踏まえて行動が変わる可能性あり）
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡終了後、次の行動を決定します");
+                RequestLLMDecision();
+            }
+            else
+            {
+                // LLMが無効な場合は以前の行動を再開
+                Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡終了後、以前の行動({_actionBeforeFamilyContact})を再開します");
+                CurrentAction = _actionBeforeFamilyContact;
+                if (NavAgent != null)
+                {
+                    NavAgent.isStopped = false;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -1297,49 +1628,46 @@ public class Evacuee : MonoBehaviour {
     /// </summary>
     private bool ExecuteFollowAction(LLMEvacDecisionResponse response)
     {
-        if (string.IsNullOrEmpty(response.target_evacuee_id))
-        {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: FOLLOW行動においてtarget_evacuee_idが確認できません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
-        }
-
         // 対象の避難者を検索
         _followTarget = null;
-        
-        // まず、EnvManagerのEvacueesリストから検索
-        if (_env != null && _env.Evacuees != null)
+
+        if (!string.IsNullOrEmpty(response.target_evacuee_id))
         {
-            foreach (var evacueeObj in _env.Evacuees)
+            // Step 1: 数字かどうかを判定
+            bool isNumericId = int.TryParse(response.target_evacuee_id, out _);
+
+            if (isNumericId)
             {
-                if (evacueeObj == null || evacueeObj == this.gameObject) continue;
-                
-                var evacuee = evacueeObj.GetComponent<Evacuee>();
-                if (evacuee != null)
+                // 数字の場合: IDで検索
+                _followTarget = FindEvacueeById(response.target_evacuee_id);
+            }
+            else
+            {
+                // 数字でない場合: 名前として検索
+                _followTarget = FindEvacueeByName(response.target_evacuee_id);
+                if (_followTarget != null)
                 {
-                    // uniqueIdまたはGameObject名で一致を確認
-                    string evacueeId = !string.IsNullOrEmpty(evacuee._uniqueId) ? evacuee._uniqueId : evacueeObj.name;
-                    if (evacueeId == response.target_evacuee_id || evacueeObj.name == response.target_evacuee_id)
-                    {
-                        _followTarget = evacuee;
-                        break;
-                    }
+                    Debug.Log($"[Evacuee] {gameObject.name}: 名前 '{response.target_evacuee_id}' で避難者を見つけました。");
                 }
             }
         }
 
-        // 見つからなければGameObject.Findで検索（フォールバック）
+        // Step 2: IDでも名前でも見つからない場合、最寄りの避難者にフォールバック
         if (_followTarget == null)
         {
-            GameObject targetObj = GameObject.Find(response.target_evacuee_id);
-            if (targetObj != null)
+            _followTarget = FindNearestEvacuee();
+            if (_followTarget != null)
             {
-                _followTarget = targetObj.GetComponent<Evacuee>();
+                string fallbackId = !string.IsNullOrEmpty(_followTarget._uniqueId) ? _followTarget._uniqueId : _followTarget.gameObject.name;
+                string fallbackName = _followTarget._persona?.name ?? fallbackId;
+                Debug.Log($"[Evacuee] {gameObject.name}: 指定 '{response.target_evacuee_id}' が見つからないため、最寄りの避難者 '{fallbackName}' (ID: {fallbackId}) を追従対象にします。");
             }
         }
 
+        // Step 3: それでも見つからない場合はEVACUATEにフォールバック
         if (_followTarget == null)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 追従対象の避難者 '{response.target_evacuee_id}' が見つかりません。EVACUATEにフォールバックします。");
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 周囲に追従可能な避難者がいません。EVACUATEにフォールバックします。");
             return ExecuteEvacuateAction(response);
         }
 
@@ -1455,14 +1783,35 @@ public class Evacuee : MonoBehaviour {
     }
 
     /// <summary>
-    /// 会話を開始し、相手からの応答を待機（非同期）
+    /// 会話を開始し、相手からの応答を待機（非同期）- マルチターン会話対応
     /// </summary>
     private async Task InitiateConversationAsync(Evacuee target, string topic, string message)
     {
         try
         {
-            _isWaitingForConversationResponse = true;
+            // セッション初期化（新規会話の場合）
+            if (_conversationSession == null || _conversationSession.partner_id != target.EvacueeId)
+            {
+                _conversationSession = new LLM.ConversationSessionContext
+                {
+                    partner_id = target.EvacueeId,
+                    partner_name = target.PersonaName,
+                    turn_count = 1,
+                    current_topic = topic ?? "General",
+                    partner_wants_to_continue = true,
+                    session_start_time = _env?.CurrentTimeSec ?? Time.time,
+                    is_family_contact = false
+                };
+            }
+            else
+            {
+                _conversationSession.turn_count++;
+            }
+
             _conversationResponseTCS = new TaskCompletionSource<LLM.ConversationResponse>();
+
+            // メッセージ送信前のラグ（シミュレーション時間で5秒 - 発話時間を表現）
+            await WaitSimulationTimeAsync(CONVERSATION_MESSAGE_LAG_SEC);
 
             // 相手に会話リクエストを送信
             var request = new LLM.ConversationRequest
@@ -1477,21 +1826,31 @@ public class Evacuee : MonoBehaviour {
 
             target.OnConversationReceived(request);
 
-            // タイムアウト付きで応答を待機（5秒）
-            var timeoutTask = Task.Delay(5000);
-            var completedTask = await Task.WhenAny(_conversationResponseTCS.Task, timeoutTask);
+            // シミュレーション時間ベースのタイムアウト待機
+            float startTime = _env != null ? _env.CurrentTimeSec : Time.time;
+
+            while (!_conversationResponseTCS.Task.IsCompleted)
+            {
+                await Task.Yield();
+                float currentTime = _env != null ? _env.CurrentTimeSec : Time.time;
+                if (currentTime - startTime >= CONVERSATION_TIMEOUT_SEC)
+                {
+                    break;
+                }
+            }
 
             LLM.ConversationResponse response;
-            if (completedTask == timeoutTask)
+            if (!_conversationResponseTCS.Task.IsCompleted)
             {
                 // タイムアウト - デフォルト応答を使用
-                Debug.LogWarning($"[Evacuee] {gameObject.name}: 会話応答タイムアウト - デフォルト応答を使用");
+                Debug.LogWarning($"[Evacuee] {gameObject.name}: 会話応答タイムアウト（シミュレーション時間{CONVERSATION_TIMEOUT_SEC}秒） - デフォルト応答を使用");
                 response = new LLM.ConversationResponse
                 {
                     responder_id = target.EvacueeId,
                     responder_name = target.PersonaName,
                     response_message = "すみません、今は急いでいるので...",
-                    willing_to_share = false
+                    willing_to_share = false,
+                    want_to_continue = false
                 };
             }
             else
@@ -1502,22 +1861,163 @@ public class Evacuee : MonoBehaviour {
             // 会話履歴に追加
             AddConversationToHistory(target.EvacueeId, target.PersonaName, topic, message, response.response_message, true);
 
-            Debug.Log($"[Evacuee] {gameObject.name}: 会話完了 - {target.PersonaName}の返答: 「{response.response_message}」");
+            Debug.Log($"[Evacuee] {gameObject.name}: 会話ターン{_conversationSession.turn_count}完了 - {target.PersonaName}の返答: 「{response.response_message}」(継続希望: {response.want_to_continue})");
 
-            // 次の意思決定のためにLLMを呼び出し
-            if (UseLLMDecision && DecisionClient != null)
+            // マルチターン継続判定
+            if (response.want_to_continue && _conversationSession.turn_count < MAX_CONVERSATION_TURNS)
             {
-                RequestLLMDecision();
+                // 相手が継続希望 → 自分も継続するか判断
+                _conversationSession.partner_wants_to_continue = true;
+                await ContinueConversationAsync(target, topic, response.response_message);
+            }
+            else
+            {
+                // 会話終了（相手が終了希望 or ターン上限）
+                EndConversationSession();
+
+                // 次の意思決定のためにLLMを呼び出し
+                if (UseLLMDecision && DecisionClient != null)
+                {
+                    RequestLLMDecision();
+                }
             }
         }
         catch (Exception ex)
         {
             Debug.LogError($"[Evacuee] {gameObject.name}: 会話中にエラー: {ex.Message}");
+            EndConversationSession();
         }
         finally
         {
-            _isWaitingForConversationResponse = false;
             _conversationResponseTCS = null;
+        }
+    }
+
+    /// <summary>
+    /// 会話を継続する（自分のターンで次のメッセージを生成）
+    /// </summary>
+    private async Task ContinueConversationAsync(Evacuee target, string topic, string partnerLastMessage)
+    {
+        try
+        {
+            // 自分が継続したいか判断（LLMで生成）
+            var continuationResponse = await RequestConversationContinuationAsync(partnerLastMessage);
+
+            if (!continuationResponse.want_to_continue)
+            {
+                // 自分は終了したい → 終了メッセージを送って会話終了
+                Debug.Log($"[Evacuee] {gameObject.name}: 会話を終了します - 「{continuationResponse.message}」");
+
+                // 最後のメッセージを送信（終了の挨拶等）
+                _conversationSession.turn_count++;
+                await WaitSimulationTimeAsync(CONVERSATION_MESSAGE_LAG_SEC);
+
+                var finalRequest = new LLM.ConversationRequest
+                {
+                    initiator_id = EvacueeId,
+                    initiator_name = PersonaName,
+                    topic = topic ?? "General",
+                    message = continuationResponse.message,
+                    initiator_action = CurrentAction.ToString(),
+                    initiator_target = CurrentTargetShelterId
+                };
+
+                // 終了メッセージを相手に通知（応答は待たない）
+                target.OnFinalConversationMessageReceived(finalRequest);
+
+                // 会話履歴に追加
+                AddConversationToHistory(target.EvacueeId, target.PersonaName, topic, continuationResponse.message, "(会話終了)", true);
+
+                EndConversationSession();
+
+                // 次の意思決定のためにLLMを呼び出し
+                if (UseLLMDecision && DecisionClient != null)
+                {
+                    RequestLLMDecision();
+                }
+                return;
+            }
+
+            // 継続 → 次のメッセージを送信
+            _conversationSession.turn_count++;
+            Debug.Log($"[Evacuee] {gameObject.name}: 会話継続 - ターン{_conversationSession.turn_count}: 「{continuationResponse.message}」");
+
+            // 再帰的にInitiateConversationAsyncを呼び出し（セッションは維持）
+            await InitiateConversationAsync(target, topic, continuationResponse.message);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Evacuee] {gameObject.name}: 会話継続中にエラー: {ex.Message}");
+            EndConversationSession();
+
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                RequestLLMDecision();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 会話継続判断をLLMにリクエスト
+    /// </summary>
+    private async Task<LLM.LLMConversationContinuationResponse> RequestConversationContinuationAsync(string partnerLastMessage)
+    {
+        if (DecisionClient == null)
+        {
+            // LLMが利用できない場合はデフォルトで終了
+            return new LLM.LLMConversationContinuationResponse
+            {
+                want_to_continue = false,
+                message = "じゃあ、気をつけて。",
+                reasoning = "LLM unavailable"
+            };
+        }
+
+        var request = new LLM.LLMConversationContinuationRequest
+        {
+            request_id = $"cont-{Guid.NewGuid():N}",
+            request_type = "conversation_continuation",
+            persona = BuildPersonaPayload(),
+            session = _conversationSession,
+            partner_last_message = partnerLastMessage
+        };
+
+        return await DecisionClient.RequestConversationContinuationAsync(request);
+    }
+
+    /// <summary>
+    /// 会話セッションを終了
+    /// </summary>
+    private void EndConversationSession()
+    {
+        _conversationSession = null;
+    }
+
+    /// <summary>
+    /// 会話終了メッセージを受信（応答は返さない）
+    /// </summary>
+    public void OnFinalConversationMessageReceived(LLM.ConversationRequest request)
+    {
+        Debug.Log($"[Evacuee] {gameObject.name}: {request.initiator_name}からの会話終了メッセージ: 「{request.message}」");
+
+        // 自分側のセッションも終了
+        EndConversationSession();
+
+        // 応答状態をリセット
+        if (_isRespondingToConversation)
+        {
+            _isRespondingToConversation = false;
+            // 移動再開
+            if (NavAgent != null)
+            {
+                NavAgent.isStopped = false;
+            }
+
+            // 次の意思決定
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                RequestLLMDecision();
+            }
         }
     }
 
@@ -1527,6 +2027,56 @@ public class Evacuee : MonoBehaviour {
     public void OnConversationReceived(LLM.ConversationRequest request)
     {
         Debug.Log($"[Evacuee] {gameObject.name}: {request.initiator_name}から話しかけられました: 「{request.message}」");
+
+        // 応答拒否判定: TALK中は即座に拒否応答を返す
+        if (CurrentAction == LLM.ActionType.TALK || _isRespondingToConversation)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 現在会話中のため拒否応答を返します");
+            var initiator = FindEvacueeById(request.initiator_id);
+            if (initiator != null)
+            {
+                initiator.OnConversationResponseReceived(new LLM.ConversationResponse
+                {
+                    responder_id = EvacueeId,
+                    responder_name = PersonaName,
+                    response_message = "すみません、今ちょっと話し中で...",
+                    willing_to_share = false,
+                    want_to_continue = false
+                });
+            }
+            return;
+        }
+
+        // 応答拒否判定: CONTACT中は即座に拒否応答を返す
+        if (CurrentAction == LLM.ActionType.CONTACT || _isRespondingToFamilyContact)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 現在電話中のため拒否応答を返します");
+            var initiator = FindEvacueeById(request.initiator_id);
+            if (initiator != null)
+            {
+                initiator.OnConversationResponseReceived(new LLM.ConversationResponse
+                {
+                    responder_id = EvacueeId,
+                    responder_name = PersonaName,
+                    response_message = "すみません、今電話中で...",
+                    willing_to_share = false,
+                    want_to_continue = false
+                });
+            }
+            return;
+        }
+
+        // 会話前の状態を保存
+        _actionBeforeConversation = CurrentAction;
+        _targetShelterBeforeConversation = CurrentTargetShelterId;
+
+        // 応答者も立ち止まる
+        _isRespondingToConversation = true;
+        if (NavAgent != null)
+        {
+            NavAgent.isStopped = true;
+            NavAgent.ResetPath();
+        }
 
         // LLMに応答生成をリクエスト
         _ = RequestConversationResponseAsync(request);
@@ -1551,8 +2101,8 @@ public class Evacuee : MonoBehaviour {
                     persona = BuildPersonaPayload(),
                     environment = BuildEnvironmentPayload(),
                     incoming_conversation = request,
-                    current_action = CurrentAction.ToString(),
-                    current_target = CurrentTargetShelterId
+                    current_action = _actionBeforeConversation.ToString(), // 会話前の行動を送信
+                    current_target = _targetShelterBeforeConversation
                 };
 
                 var llmResponse = await DecisionClient.RequestConversationResponseAsync(llmRequest);
@@ -1564,7 +2114,8 @@ public class Evacuee : MonoBehaviour {
                         responder_id = EvacueeId,
                         responder_name = PersonaName,
                         response_message = llmResponse.response_message,
-                        willing_to_share = llmResponse.willing_to_share
+                        willing_to_share = llmResponse.willing_to_share,
+                        want_to_continue = llmResponse.want_to_continue
                     };
                 }
                 else
@@ -1578,6 +2129,9 @@ public class Evacuee : MonoBehaviour {
                 // LLMが無効な場合はデフォルト応答
                 response = GenerateDefaultConversationResponse(request);
             }
+
+            // 応答送信前のラグ（シミュレーション時間で5秒）
+            await WaitSimulationTimeAsync(CONVERSATION_MESSAGE_LAG_SEC);
 
             // 話しかけてきたエージェントに応答を送信
             var initiator = FindEvacueeById(request.initiator_id);
@@ -1599,6 +2153,28 @@ public class Evacuee : MonoBehaviour {
             if (initiator != null)
             {
                 initiator.OnConversationResponseReceived(GenerateDefaultConversationResponse(request));
+            }
+        }
+        finally
+        {
+            // 会話終了後の処理
+            _isRespondingToConversation = false;
+
+            // LLMに次の行動を決定させる（会話の結果を踏まえて行動が変わる可能性あり）
+            if (UseLLMDecision && DecisionClient != null)
+            {
+                Debug.Log($"[Evacuee] {gameObject.name}: 会話終了後、次の行動を決定します");
+                RequestLLMDecision();
+            }
+            else
+            {
+                // LLMが無効な場合は以前の行動を再開
+                Debug.Log($"[Evacuee] {gameObject.name}: 会話終了後、以前の行動({_actionBeforeConversation})を再開します");
+                CurrentAction = _actionBeforeConversation;
+                if (NavAgent != null)
+                {
+                    NavAgent.isStopped = false;
+                }
             }
         }
     }
@@ -1657,7 +2233,8 @@ public class Evacuee : MonoBehaviour {
             responder_id = EvacueeId,
             responder_name = PersonaName,
             response_message = responseMessage,
-            willing_to_share = willingToShare
+            willing_to_share = willingToShare,
+            want_to_continue = false  // デフォルトでは会話を終了
         };
     }
 
@@ -1811,39 +2388,6 @@ public class Evacuee : MonoBehaviour {
     }
 
     /// <summary>
-    /// IDから避難者を検索
-    /// </summary>
-    private Evacuee FindEvacueeById(string targetId)
-    {
-        if (_env == null || _env.Evacuees == null || string.IsNullOrEmpty(targetId))
-        {
-            return null;
-        }
-
-        foreach (var evacueeObj in _env.Evacuees)
-        {
-            if (evacueeObj == null || !evacueeObj.activeSelf)
-            {
-                continue;
-            }
-
-            var evacuee = evacueeObj.GetComponent<Evacuee>();
-            if (evacuee == null)
-            {
-                continue;
-            }
-
-            // IDで一致を確認
-            if (evacuee._uniqueId == targetId || evacueeObj.name == targetId)
-            {
-                return evacuee;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
     /// FOLLOW行動の更新処理（追従対象の位置を追跡）
     /// 注意: 行動変更の検知は追従対象からの通知で行うため、ここでは位置追跡のみ
     /// </summary>
@@ -1970,6 +2514,146 @@ public class Evacuee : MonoBehaviour {
             UnregisterFromFollowTarget(); // 追従解除
             CurrentAction = LLM.ActionType.EVACUATE;
             Debug.Log($"[Evacuee] {gameObject.name}: 追従対象が避難所に到達しました。同じ避難所に向かいます。");
+        }
+    }
+
+    /// <summary>
+    /// SEARCH_FAMILY行動の更新処理（シーン内家族の座標を定期的に更新）
+    /// </summary>
+    private void UpdateSearchFamilyAction()
+    {
+        // 探索対象が無効になった場合
+        if (_searchFamilyTargetEvacuee == null || !_searchFamilyTargetEvacuee.gameObject.activeSelf)
+        {
+            Debug.Log($"[Evacuee] {gameObject.name}: 探索対象の家族がシーンから消えました。予測位置に切り替えます。");
+            _searchFamilyTargetEvacuee = null;
+
+            // 予測位置にフォールバック
+            if (_searchFamilyTarget != null)
+            {
+                Vector3 fallbackPosition = _searchFamilyTarget.search_position != Vector3.zero
+                    ? _searchFamilyTarget.search_position
+                    : _searchFamilyTarget.spawn_position;
+
+                if (fallbackPosition != Vector3.zero && NavAgent != null)
+                {
+                    NavAgent.SetDestination(fallbackPosition);
+                }
+            }
+            return;
+        }
+
+        // 定期的に座標を更新
+        float currentTime = Time.time;
+        if (currentTime - _lastSearchFamilyCheck >= SEARCH_FAMILY_CHECK_INTERVAL)
+        {
+            _lastSearchFamilyCheck = currentTime;
+
+            Vector3 targetPos = _searchFamilyTargetEvacuee.transform.position;
+            float distance = Vector3.Distance(transform.position, targetPos);
+
+            // 合流判定: 10m以内なら合流処理
+            if (distance <= FAMILY_REUNION_DISTANCE)
+            {
+                HandleFamilyReunion();
+                return;
+            }
+
+            if (NavAgent != null && !NavAgent.isStopped)
+            {
+                NavAgent.SetDestination(targetPos);
+            }
+
+            Debug.Log($"[Evacuee] {gameObject.name}: SEARCH_FAMILY座標更新 - {_searchFamilyTarget?.name}の現在位置 {targetPos} (距離: {distance:F1}m)");
+        }
+    }
+
+    /// <summary>
+    /// 家族との合流処理 - 探索者が家族をFOLLOWする連帯行動を開始
+    /// </summary>
+    private void HandleFamilyReunion()
+    {
+        string familyName = _searchFamilyTarget?.name ?? "不明";
+        int familyAgentId = _searchFamilyTarget?.agent_id ?? -1;
+        Debug.Log($"[Evacuee] {gameObject.name}: 家族 {familyName} と合流しました（距離10m以内）。FOLLOWに切り替えます。");
+
+        // ★ 双方の合流フラグを設定
+        // 1. 自分の家族データで相手を「合流済み」にマーク
+        if (_searchFamilyTarget != null)
+        {
+            _searchFamilyTarget.is_reunited = true;
+        }
+
+        // 2. 相手の家族データで自分を「合流済み」にマーク
+        MarkReunitedOnOtherSide(_searchFamilyTargetEvacuee);
+
+        // 探索者が家族をFOLLOWする
+        _followTarget = _searchFamilyTargetEvacuee;
+        _followTarget.RegisterFollower(this);
+
+        _lastFollowCheck = Time.time;
+        _followTargetLastAction = _followTarget.CurrentAction;
+
+        // 行動をFOLLOWに変更
+        CurrentAction = LLM.ActionType.FOLLOW;
+
+        // 探索状態をクリア
+        _searchFamilyTarget = null;
+        _searchFamilyTargetEvacuee = null;
+
+        // 相手の行動に合わせた初期処理
+        if (_followTargetLastAction == LLM.ActionType.EVACUATE && _followTarget.Target != null)
+        {
+            Target = _followTarget.Target;
+            if (NavAgent != null)
+            {
+                NavAgent.isStopped = false;
+                NavAgent.SetDestination(Target.transform.position);
+            }
+        }
+        else
+        {
+            // 相手の位置を追従
+            if (NavAgent != null)
+            {
+                NavAgent.isStopped = false;
+                NavAgent.SetDestination(_followTarget.transform.position);
+            }
+        }
+
+        // メトリクス記録
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.FOLLOW, null, $"家族({familyName})と合流したため連帯行動を開始", 1.0f);
+    }
+
+    /// <summary>
+    /// 相手側の家族データで自分を「合流済み」にマーク
+    /// </summary>
+    private void MarkReunitedOnOtherSide(Evacuee otherEvacuee)
+    {
+        if (otherEvacuee == null) return;
+
+        // 自分のagent_idを取得
+        int myAgentId = -1;
+        if (!string.IsNullOrEmpty(_uniqueId) && int.TryParse(_uniqueId, out int parsedId))
+        {
+            myAgentId = parsedId;
+        }
+        if (myAgentId <= 0) return;
+
+        // 相手の家族データを取得
+        var otherFamilyData = otherEvacuee.GetFamilyData();
+        if (otherFamilyData == null || otherFamilyData.members == null) return;
+
+        // 相手の家族リストから自分を探して合流済みにマーク
+        foreach (var member in otherFamilyData.members)
+        {
+            if (member.agent_id == myAgentId)
+            {
+                member.is_reunited = true;
+                Debug.Log($"[Evacuee] {otherEvacuee.gameObject.name}: 家族 {member.name} との合流を認識しました");
+                break;
+            }
         }
     }
 
@@ -2133,8 +2817,20 @@ public class Evacuee : MonoBehaviour {
     {
         if (string.IsNullOrEmpty(response.selected_shelter_id))
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: EVACUATE行動においてselected_shelter_idが確認できません。");
-            return false;
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: EVACUATE行動においてselected_shelter_idが確認できません。最寄りの避難所にフォールバックします。");
+
+            // 最寄りの避難所を選択
+            var nearestShelter = FindNearestShelter();
+            if (nearestShelter != null)
+            {
+                response.selected_shelter_id = GetShelterDisplayName(nearestShelter);
+                Debug.Log($"[Evacuee] {gameObject.name}: 最寄りの避難所 '{response.selected_shelter_id}' を選択しました。");
+            }
+            else
+            {
+                Debug.LogError($"[Evacuee] {gameObject.name}: 避難所が見つかりません。");
+                return false;
+            }
         }
 
         GameObject selectedShelter = null;
@@ -2346,6 +3042,9 @@ public class Evacuee : MonoBehaviour {
             
             CalculateNavMeshDistance(transform.position, targetPos, out distanceMeters, out walkingTimeMinutes);
             
+            // 避難所の海抜を取得
+            float elevationMeters = shelter != null ? shelter.GetElevation() : 0f;
+
             shelterPayloads.Add(new ShelterCandidatePayload
             {
                 id = shelterObj.name,
@@ -2357,7 +3056,7 @@ public class Evacuee : MonoBehaviour {
                 distance_meters = distanceMeters,
                 walking_time_minutes = walkingTimeMinutes,
                 destination_type = "shelter",
-                elevation_meters = 0f
+                elevation_meters = elevationMeters
             });
         }
 
@@ -2466,10 +3165,10 @@ public class Evacuee : MonoBehaviour {
 
         // 環境コンテキストを取得
         EnvironmentalContextPayload envPayload = BuildEnvironmentalContextPayload();
-        
+
         // 家族情報を取得
         FamilyMemberPayload[] familyPayloads = BuildFamilyPayload();
-        
+
         // 周辺避難者情報を取得（詳細情報と統計情報）
         int nearbyEvacueesCount = 0;
         float nearbyEvacueesDensity = 0f;
@@ -2483,11 +3182,48 @@ public class Evacuee : MonoBehaviour {
             envStatePayload = disasterEventManager.GetEnvironmentStatePayload();
         }
 
+        // 利用可能なアクションを構築（条件に基づいて動的に設定）
+        var availableActions = BuildAvailableActions(familyPayloads, nearbyEvacuees);
+
         // 実験IDを取得（EnvManagerのrecordIDから統一的に生成）
         // 形式: yyyy_MM_dd-HH_mm_ss → yyyyMMdd_HHmmss
         string experimentId = !string.IsNullOrEmpty(_env?.recordID)
             ? _env.recordID.Replace("_", "").Replace("-", "_")
             : DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+        // 実験2-2: 認知バイアス条件を取得
+        string biasCondition = "none";
+        bool overrideBias = false;
+        if (ExperimentConfig.Instance != null)
+        {
+            overrideBias = ExperimentConfig.ShouldOverrideBias();
+            if (overrideBias)
+            {
+                biasCondition = ExperimentConfig.GetBiasCondition() switch
+                {
+                    ExperimentConfig.BiasCondition.NormalcyBias => "normalcy_bias",
+                    ExperimentConfig.BiasCondition.ConformityBias => "conformity_bias",
+                    ExperimentConfig.BiasCondition.Combined => "combined",
+                    _ => "none"
+                };
+            }
+        }
+
+        // 実験3: 行政情報を構築
+        string informationStrategyName = "standard";
+        AdministrativeGuidancePayload adminGuidance = null;
+        if (ExperimentConfig.Instance != null)
+        {
+            informationStrategyName = ExperimentConfig.GetInformationStrategy() switch
+            {
+                ExperimentConfig.InformationStrategy.Standard => "standard",
+                ExperimentConfig.InformationStrategy.Urgent => "urgent",
+                ExperimentConfig.InformationStrategy.Detailed => "detailed",
+                ExperimentConfig.InformationStrategy.DetailedUrgent => "detailed_urgent",
+                _ => "standard"
+            };
+            adminGuidance = BuildAdministrativeGuidancePayload();
+        }
 
         return new LLMEvacDecisionRequest
         {
@@ -2520,7 +3256,173 @@ public class Evacuee : MonoBehaviour {
             current_mid_term_plan = _currentMidTermPlan,   // 現在の中期計画（更新判断用）
             conversation_history = BuildConversationHistoryPayload(),  // 会話履歴（TALK行動用）
             action_history = BuildActionHistoryPayload(),  // 行動履歴（短期記憶）
-            environment_state = envStatePayload  // 環境状態（災害フェーズ等）
+            environment_state = envStatePayload,  // 環境状態（災害フェーズ等）
+            available_actions = availableActions,  // 利用可能なアクション一覧
+            // 実験2-2: 認知バイアス条件
+            bias_condition = biasCondition,
+            override_persona_bias = overrideBias,
+            // 実験3: 情報提供戦略
+            information_strategy = informationStrategyName,
+            administrative_guidance = adminGuidance
+        };
+    }
+
+    /// <summary>
+    /// 利用可能なアクション一覧を構築（条件に基づいて動的に設定）
+    /// </summary>
+    private string[] BuildAvailableActions(FamilyMemberPayload[] familyPayloads, NearbyEvacueePayload[] nearbyEvacuees)
+    {
+        var actions = new List<string>();
+
+        // 基本アクション（常に利用可能）
+        actions.Add("EVACUATE");
+        actions.Add("STAY");
+
+        // 家族関連アクション（家族がいる場合のみ）
+        bool hasFamily = familyPayloads != null && familyPayloads.Length > 0;
+        if (hasFamily)
+        {
+            actions.Add("SEARCH_FAMILY");
+
+            // CONTACT: スマホを持っていて、連絡可能な家族がいる場合（クールダウン中は除外）
+            bool canContact = HasSmartphone && familyPayloads.Any(f => f.has_phone) && !_contactCooldown;
+            if (canContact)
+            {
+                actions.Add("CONTACT");
+            }
+        }
+
+        // FOLLOW: 周辺に他の避難者がいる場合
+        bool hasNearbyEvacuees = nearbyEvacuees != null && nearbyEvacuees.Length > 0;
+        if (hasNearbyEvacuees)
+        {
+            actions.Add("FOLLOW");
+        }
+
+        // TALK: 周辺に他の避難者がいる場合
+        if (hasNearbyEvacuees)
+        {
+            actions.Add("TALK");
+        }
+
+        return actions.ToArray();
+    }
+
+    /// <summary>
+    /// 行政からの情報提供ガイダンスを構築（実験3用）
+    /// ExperimentConfigの情報提供戦略に基づいて、避難所の推奨・非推奨を決定
+    /// </summary>
+    private AdministrativeGuidancePayload BuildAdministrativeGuidancePayload()
+    {
+        if (ExperimentConfig.Instance == null)
+        {
+            return null;
+        }
+
+        var strategy = ExperimentConfig.GetInformationStrategy();
+        float tsunamiHeight = ExperimentConfig.GetTsunamiHeight();
+        float safeElevation = tsunamiHeight * 2f; // 安全ライン = 津波高さ × 2
+
+        // 情報提供戦略に応じたパラメータ設定
+        string strategyName = strategy switch
+        {
+            ExperimentConfig.InformationStrategy.Standard => "standard",
+            ExperimentConfig.InformationStrategy.Urgent => "urgent",
+            ExperimentConfig.InformationStrategy.Detailed => "detailed",
+            ExperimentConfig.InformationStrategy.DetailedUrgent => "detailed_urgent",
+            _ => "standard"
+        };
+
+        bool isDetailed = ExperimentConfig.IsDetailedStrategy();
+        bool isUrgent = ExperimentConfig.IsUrgentStrategy();
+
+        string urgencyLevel = isUrgent ? "critical" : "normal";
+
+        // 推奨・非推奨避難所の分類（詳細情報提供の場合のみ）
+        var recommendedShelters = new List<string>();
+        var unsafeShelters = new List<string>();
+
+        if (isDetailed && _env != null)
+        {
+            // 避難所を海抜に基づいて分類
+            if (_env.Shelters != null)
+            {
+                foreach (var shelterObj in _env.Shelters)
+                {
+                    if (shelterObj == null) continue;
+                    var shelter = shelterObj.GetComponent<Shelter>();
+                    if (shelter == null) continue;
+
+                    float elevation = shelter.GetElevation();
+                    string displayName = !string.IsNullOrEmpty(shelter.displayName)
+                        ? shelter.displayName
+                        : shelterObj.name;
+
+                    if (elevation >= safeElevation)
+                    {
+                        recommendedShelters.Add($"{displayName}（海抜{elevation:F0}m）");
+                    }
+                    else
+                    {
+                        unsafeShelters.Add($"{displayName}（海抜{elevation:F0}m - 想定津波高を下回る可能性）");
+                    }
+                }
+            }
+
+            // 津波避難地域も確認
+            if (_env.TsunamiEvacuationAreas != null)
+            {
+                foreach (var areaObj in _env.TsunamiEvacuationAreas)
+                {
+                    if (areaObj == null) continue;
+                    var area = areaObj.GetComponent<TsunamiEvacuationArea>();
+                    if (area == null) continue;
+
+                    float elevation = area.elevationMeters;
+                    string displayName = !string.IsNullOrEmpty(area.displayName)
+                        ? area.displayName
+                        : areaObj.name;
+
+                    if (elevation >= safeElevation)
+                    {
+                        recommendedShelters.Add($"{displayName}（海抜{elevation:F0}m）");
+                    }
+                }
+            }
+        }
+
+        // 避難ガイダンス文の生成
+        string evacuationGuidance = strategy switch
+        {
+            ExperimentConfig.InformationStrategy.Standard =>
+                "大津波警報が発令されています。指定避難所へ避難してください。",
+            ExperimentConfig.InformationStrategy.Urgent =>
+                "【緊急】津波が来ます！今すぐ高台へ逃げてください！指定避難所を目指してください！",
+            ExperimentConfig.InformationStrategy.Detailed =>
+                $"津波予想高さ{tsunamiHeight}mに対し、海抜{safeElevation:F0}m以上の避難所を推奨します。" +
+                (recommendedShelters.Count > 0 ? $"推奨避難先: {string.Join("、", recommendedShelters)}" : ""),
+            ExperimentConfig.InformationStrategy.DetailedUrgent =>
+                $"【緊急警告】想定を超える津波の恐れ！海抜{safeElevation:F0}m以上へ今すぐ避難！" +
+                (recommendedShelters.Count > 0 ? $" 推奨: {string.Join("、", recommendedShelters)}" : ""),
+            _ => "避難してください。"
+        };
+
+        // 追加警告メッセージ（切迫感が高い場合）
+        string additionalWarning = isUrgent
+            ? "東日本大震災を思い出してください。想定を過信せず、より高い場所を目指してください。"
+            : null;
+
+        return new AdministrativeGuidancePayload
+        {
+            information_strategy = strategyName,
+            initial_tsunami_height = 3f,  // 初報の予想値
+            updated_tsunami_height = tsunamiHeight,  // 更新後の予想値
+            exceeds_assumption = tsunamiHeight > 5f,  // ハザードマップ想定を超えるか
+            urgency_level = urgencyLevel,
+            evacuation_guidance = evacuationGuidance,
+            recommended_shelters = recommendedShelters.ToArray(),
+            unsafe_shelters = unsafeShelters.ToArray(),
+            additional_warning = additionalWarning
         };
     }
 
@@ -2638,7 +3540,8 @@ public class Evacuee : MonoBehaviour {
                 search_position = new Vector3Payload(member.search_position),
                 distance_meters = distance,
                 has_phone = member.has_phone,
-                exists_in_scene = member.exists_in_scene
+                exists_in_scene = member.exists_in_scene,
+                is_reunited = member.is_reunited
             });
         }
         
@@ -3030,6 +3933,117 @@ public class Evacuee : MonoBehaviour {
             Debug.LogWarning($"[Evacuee] NavMesh経路計算が失敗しました。直線距離を使用します（以降この警告は表示されません）");
             _navMeshWarningShown = true;
         }
+    }
+
+    /// <summary>
+    /// 最寄りの避難所を検索
+    /// </summary>
+    private GameObject FindNearestShelter()
+    {
+        if (_env == null || _env.Shelters == null || _env.Shelters.Count == 0)
+            return null;
+
+        GameObject nearest = null;
+        float nearestDistance = float.MaxValue;
+        Vector3 currentPos = transform.position;
+
+        foreach (var shelterObj in _env.Shelters)
+        {
+            if (shelterObj == null) continue;
+
+            float distance = Vector3.Distance(currentPos, shelterObj.transform.position);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = shelterObj;
+            }
+        }
+
+        return nearest;
+    }
+
+    /// <summary>
+    /// 最寄りの避難者を検索（FOLLOW/TALKフォールバック用）
+    /// </summary>
+    private Evacuee FindNearestEvacuee()
+    {
+        if (_env == null || _env.Evacuees == null || _env.Evacuees.Count == 0)
+            return null;
+
+        Evacuee nearest = null;
+        float nearestDistance = float.MaxValue;
+        Vector3 currentPos = transform.position;
+
+        foreach (var evacueeObj in _env.Evacuees)
+        {
+            if (evacueeObj == null || evacueeObj == this.gameObject || !evacueeObj.activeSelf)
+                continue;
+
+            var evacuee = evacueeObj.GetComponent<Evacuee>();
+            if (evacuee == null)
+                continue;
+
+            float distance = Vector3.Distance(currentPos, evacueeObj.transform.position);
+
+            // FOLLOW検索範囲内（30m）のみ対象
+            if (distance <= FOLLOW_SEARCH_RADIUS && distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = evacuee;
+            }
+        }
+
+        return nearest;
+    }
+
+    /// <summary>
+    /// IDで避難者を検索（FOLLOW/TALK用）
+    /// EnvManagerのインデックスを使用した O(1) 検索
+    /// </summary>
+    private Evacuee FindEvacueeById(string targetId)
+    {
+        if (_env == null || string.IsNullOrEmpty(targetId))
+            return null;
+
+        var found = _env.GetEvacueeById(targetId);
+        // 自分自身を除外
+        return (found != null && found != this) ? found : null;
+    }
+
+    /// <summary>
+    /// 名前で避難者を検索（FOLLOW/TALK用、部分一致対応）
+    /// EnvManagerのインデックスを使用
+    /// </summary>
+    private Evacuee FindEvacueeByName(string targetName)
+    {
+        if (_env == null || string.IsNullOrEmpty(targetName))
+            return null;
+
+        var found = _env.GetEvacueeByNamePartial(targetName);
+        // 自分自身を除外
+        return (found != null && found != this) ? found : null;
+    }
+
+    /// <summary>
+    /// 避難所の表示名を取得（displayName優先、なければname）
+    /// </summary>
+    private string GetShelterDisplayName(GameObject shelterObj)
+    {
+        if (shelterObj == null) return "";
+
+        var shelterComp = shelterObj.GetComponent<Shelter>();
+        if (shelterComp != null && !string.IsNullOrEmpty(shelterComp.displayName))
+        {
+            return shelterComp.displayName;
+        }
+
+        var areaComp = shelterObj.GetComponent<TsunamiEvacuationArea>();
+        if (areaComp != null && !string.IsNullOrEmpty(areaComp.displayName))
+        {
+            return areaComp.displayName;
+        }
+
+        return shelterObj.name;
     }
 
 }

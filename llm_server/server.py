@@ -175,20 +175,43 @@ def _get_capacity_description(current_capacity: int, max_capacity: int) -> str:
         return "ほぼ満員"
 
 
-def _get_shelter_features(shelter_name: str) -> list[str]:
-    """シナリオコンテキストから避難所の特徴情報を取得する"""
+def _get_shelter_info_from_context(shelter_name: str) -> Optional[Dict[str, Any]]:
+    """シナリオコンテキストから避難所情報を取得する（指定避難所と津波避難場所の両方を検索）"""
     scenario_context = load_scenario_context()
     if not scenario_context:
-        return []
+        return None
 
     evac_rules = scenario_context.get("evacuation_rules", {})
-    designated_shelters = evac_rules.get("designated_shelters", [])
 
+    # 指定避難所を検索
+    designated_shelters = evac_rules.get("designated_shelters", [])
     for shelter in designated_shelters:
         if shelter.get("name") == shelter_name:
-            return shelter.get("features", [])
+            return shelter
 
+    # 津波避難場所を検索
+    tsunami_areas = evac_rules.get("tsunami_evacuation_areas", [])
+    for area in tsunami_areas:
+        if area.get("name") == shelter_name:
+            return area
+
+    return None
+
+
+def _get_shelter_features(shelter_name: str) -> list[str]:
+    """シナリオコンテキストから避難所の特徴情報を取得する"""
+    shelter_info = _get_shelter_info_from_context(shelter_name)
+    if shelter_info:
+        return shelter_info.get("features", [])
     return []
+
+
+def _get_shelter_elevation_from_context(shelter_name: str) -> Optional[float]:
+    """シナリオコンテキストから避難所の海抜情報を取得する（JSONを優先）"""
+    shelter_info = _get_shelter_info_from_context(shelter_name)
+    if shelter_info:
+        return shelter_info.get("elevation_m")
+    return None
 
 
 def build_system_prompt() -> str:
@@ -219,14 +242,16 @@ def build_system_prompt() -> str:
     lines.append("「正しい避難行動」ではなく「その人らしい行動」を選択してください。")
     lines.append("")
 
-    # 行動選択肢
-    lines.append("【行動選択肢】")
-    lines.append("1. EVACUATE - 避難所へ移動")
-    lines.append("2. STAY - その場で待機")
-    lines.append("3. SEARCH_FAMILY - 家族を探しに行く")
-    lines.append("4. CONTACT - 家族へ連絡（メール等）")
-    lines.append("5. FOLLOW - 周囲の避難者について行く")
-    lines.append("6. TALK - 周辺の避難者と会話")
+    # 行動選択肢（available_actionsがある場合は動的に生成）
+    # NOTE: available_actionsはbuild_user_promptで処理するため、ここでは全アクションを表示
+    # 実際の利用可能アクションはユーザープロンプト側で明示される
+    lines.append("【行動選択肢の説明】")
+    lines.append("- EVACUATE: 避難所へ移動")
+    lines.append("- STAY: その場で待機")
+    lines.append("- SEARCH_FAMILY: 家族を探しに行く（家族がいる場合のみ）")
+    lines.append("- CONTACT: 家族へ連絡（スマホと連絡可能な家族がいる場合のみ）")
+    lines.append("- FOLLOW: 周囲の避難者について行く（周囲に人がいる場合のみ）")
+    lines.append("- TALK: 周辺の避難者と会話（周囲に人がいる場合のみ）")
     lines.append("")
 
     # 出力形式
@@ -245,11 +270,37 @@ def build_system_prompt() -> str:
     lines.append("FOLLOWの例:")
     lines.append('{"action_type": "FOLLOW", "target_evacuee_id": "14", "long_term_goal": "...", "mid_term_plan": "...", "reasoning": "...", "confidence": 0.4}')
     lines.append("")
+    lines.append("TALKの例:")
+    lines.append('{"action_type": "TALK", "talk_target_id": "7", "talk_topic": "ShelterInfo", "talk_message": "すみません、避難所はどこですか？", "long_term_goal": "...", "mid_term_plan": "...", "reasoning": "...", "confidence": 0.5}')
+    lines.append("")
     lines.append("【移動速度】desired_speed: ゆっくり/普通/急ぎ足/走る")
     lines.append("")
-    lines.append("【注意】selected_shelter_idは表示されている避難所名を正確に指定してください。")
+    lines.append("【注意】")
+    lines.append("- selected_shelter_idは表示されている避難所名を正確に指定してください。")
+    lines.append("- target_evacuee_id/talk_target_idは「周辺の避難者」に表示されているIDを正確に指定してください（数字のみ）。")
+    lines.append("- 利用可能な行動のみ選択してください（後述の「利用可能な行動」を確認）。")
 
     return "\n".join(lines)
+
+
+def _get_normalcy_bias_prompt() -> str:
+    """正常性バイアスのプロンプト"""
+    return """あなたは「正常性バイアス」の影響を強く受けています：
+- 過去の災害経験から「今回も大丈夫だろう」と考えます
+- 警報が出ても「誤報」「大げさ」と楽観視します
+- 周囲が避難し始めても、自分だけは大丈夫だと信じます
+- まず状況を見極めようとし、すぐには避難しません
+- 「慌てる方が危険」と考え、落ち着いて様子を見ます"""
+
+
+def _get_conformity_bias_prompt() -> str:
+    """同調バイアスのプロンプト"""
+    return """あなたは「同調バイアス」の影響を強く受けています：
+- 周囲の人の行動を見て自分の行動を決めます
+- 一人で判断するより、みんなと同じ行動が安心です
+- 周囲が避難すれば避難し、待機すれば自分も待機します
+- 集団から外れた行動をとることに強い不安を感じます
+- 「みんながやっているから正しい」と考えます"""
 
 
 def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]) -> str:
@@ -335,6 +386,26 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
         lines.append("")
         lines.append(persona.get("system_prompt_context", ""))
+        lines.append("")
+
+    # 実験2-2: 認知バイアス条件によるプロンプト注入
+    bias_condition = payload.get("bias_condition", "none")
+    override_bias = payload.get("override_persona_bias", False)
+
+    if override_bias and bias_condition != "none":
+        lines.append("【実験条件による心理的傾向】")
+
+        if bias_condition == "normalcy_bias":
+            lines.append(_get_normalcy_bias_prompt())
+        elif bias_condition == "conformity_bias":
+            lines.append(_get_conformity_bias_prompt())
+        elif bias_condition == "combined":
+            lines.append(_get_normalcy_bias_prompt())
+            lines.append("")
+            lines.append(_get_conformity_bias_prompt())
+
+        lines.append("")
+        lines.append("上記の心理的傾向を踏まえて、あなたらしい行動を選択してください。")
         lines.append("")
 
     lines.append("【状況】")
@@ -552,19 +623,47 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
     if family_members and len(family_members) > 0:
         lines.append("")
         lines.append("【あなたの家族情報】")
-        for member in family_members:
+
+        # シーン内・シーン外で分類
+        in_scene_members = [m for m in family_members if m.get("exists_in_scene", False)]
+        out_of_scene_members = [m for m in family_members if not m.get("exists_in_scene", False)]
+
+        for member in in_scene_members:
             name = member.get("name", "不明")
             relation = member.get("relation", "不明")
             location = member.get("likely_location", "不明")
             distance = member.get("distance_meters", 0)
             has_phone = member.get("has_phone", False)
+            is_reunited = member.get("is_reunited", False)
 
             contact_status = "連絡可能" if has_phone else "連絡手段なし"
-            member_info = f"- {relation}: {name}（{location}にいる可能性、距離: 約{distance:.0f}m、{contact_status}）"
+            reunion_status = "★合流済み★" if is_reunited else f"{location}にいる可能性"
+            member_info = f"- {relation}: {name}（{reunion_status}、距離: 約{distance:.0f}m、{contact_status}）"
             lines.append(member_info)
 
+        # シーン外の家族は別枠で表示（SEARCH_FAMILYの対象外、CONTACTはサーバー経由で可能）
+        if out_of_scene_members:
+            lines.append("")
+            lines.append("【この地域外にいる家族】（探索の対象外、連絡は可能）")
+            for member in out_of_scene_members:
+                name = member.get("name", "不明")
+                relation = member.get("relation", "不明")
+                location = member.get("likely_location", "不明")
+                has_phone = member.get("has_phone", False)
+                contact_status = "連絡可能" if has_phone else "連絡手段なし"
+                member_info = f"- {relation}: {name}（{location}付近、{contact_status}）"
+                lines.append(member_info)
+
+        # 合流済みの家族がいるかチェック（シーン内のみ）
+        reunited_members = [m for m in in_scene_members if m.get("is_reunited", False)]
+        unreunited_in_scene = [m for m in in_scene_members if not m.get("is_reunited", False)]
+
         lines.append("")
-        lines.append("※ 家族の安全も考慮して行動を選択してください。")
+        if reunited_members:
+            reunited_names = "、".join([m.get("name", "不明") for m in reunited_members])
+            lines.append(f"※ {reunited_names}とは既に合流しています。一緒に行動してください。")
+        if unreunited_in_scene or out_of_scene_members:
+            lines.append("※ まだ合流していない家族の安全も考慮して行動を選択してください。")
 
     # 直近の家族とのやり取り（メールの返信など）があれば追加
     last_contact_message = payload.get("last_contact_message")
@@ -746,10 +845,7 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
         lines.append("")
         lines.append(
-            "※ 避難所の場所が分からない場合や、周囲の人の動きに従いたい場合は、FOLLOW行動を選択できます。"
-        )
-        lines.append(
-            "※ 周囲の避難者に話しかけて情報を得たい場合は、TALK行動を選択できます。"
+            "※ FOLLOW/TALKを選択する場合は、上記のID（数字）をtarget_evacuee_id/talk_target_idに指定してください。"
         )
 
     # 防災行政無線の放送情報を追加
@@ -762,6 +858,58 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
         lines.append(last_broadcast_message)
         lines.append("")
         lines.append("※ この放送内容を踏まえて行動を判断してください。")
+
+    # 実験3: 行政からの情報提供（情報提供戦略に基づく）
+    information_strategy = payload.get("information_strategy", "standard")
+    administrative_guidance = payload.get("administrative_guidance")
+    if administrative_guidance:
+        lines.append("")
+        lines.append("【行政からの追加情報】")
+
+        # 避難ガイダンスを表示
+        evacuation_guidance = administrative_guidance.get("evacuation_guidance", "")
+        if evacuation_guidance:
+            lines.append(evacuation_guidance)
+
+        # 詳細情報（具体性が高い場合）
+        if information_strategy in ["detailed", "detailed_urgent"]:
+            # 津波高さ情報
+            initial_height = administrative_guidance.get("initial_tsunami_height", 0)
+            updated_height = administrative_guidance.get("updated_tsunami_height", 0)
+            exceeds_assumption = administrative_guidance.get("exceeds_assumption", False)
+
+            if updated_height > initial_height:
+                lines.append("")
+                lines.append(f"【津波高さ情報の更新】")
+                lines.append(f"当初予想: {initial_height}m → 最新予想: {updated_height}m")
+                if exceeds_assumption:
+                    lines.append("※ ハザードマップの想定を超える可能性があります。")
+
+            # 推奨避難所
+            recommended_shelters = administrative_guidance.get("recommended_shelters", [])
+            if recommended_shelters:
+                lines.append("")
+                lines.append("《推奨される避難先》")
+                for shelter in recommended_shelters[:5]:  # 上位5件
+                    lines.append(f"・{shelter}")
+
+            # 不安全な避難所
+            unsafe_shelters = administrative_guidance.get("unsafe_shelters", [])
+            if unsafe_shelters:
+                lines.append("")
+                lines.append("《高さが不十分な可能性のある避難所》")
+                for shelter in unsafe_shelters[:3]:  # 上位3件
+                    lines.append(f"・{shelter}")
+
+        # 追加警告（切迫感が高い場合）
+        additional_warning = administrative_guidance.get("additional_warning")
+        if additional_warning:
+            lines.append("")
+            lines.append(f"【重要な警告】")
+            lines.append(additional_warning)
+
+        lines.append("")
+        lines.append("※ 行政からの情報を踏まえて、避難先を慎重に選択してください。")
 
     # Jアラート（スマホの緊急速報）情報を追加
     has_received_j_alert = payload.get("has_received_j_alert", False)
@@ -1010,7 +1158,9 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             display_name = shelter.get("display_name", shelter.get("id", "不明"))
             distance_m = shelter.get("distance_meters", 0)
             walking_time = shelter.get("walking_time_minutes", 0)
-            elevation_meters = shelter.get("elevation_meters", 0)
+            # JSONから海抜情報を優先的に取得、なければUnity側の値を使用
+            elevation_from_json = _get_shelter_elevation_from_context(display_name)
+            elevation_meters = elevation_from_json if elevation_from_json is not None else shelter.get("elevation_meters", 0)
 
             distance_desc = _get_distance_description(distance_m, walking_time)
             features = _get_shelter_features(display_name)
@@ -1019,6 +1169,9 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             characteristics = [distance_desc]
             if elevation_meters >= 20:
                 characteristics.append(_get_elevation_description(elevation_meters))
+            elif elevation_meters > 0 and elevation_meters < 20:
+                # 低海抜の場合は警告として表示
+                characteristics.append(f"海抜{elevation_meters:.1f}m（低い）")
             if features:
                 characteristics.append(features[0])  # 最も重要な特徴1つのみ
 
@@ -1032,7 +1185,9 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             display_name = shelter.get("display_name", shelter.get("id", "不明"))
             distance_m = shelter.get("distance_meters", 0)
             walking_time = shelter.get("walking_time_minutes", 0)
-            elevation_meters = shelter.get("elevation_meters", 0)
+            # JSONから海抜情報を優先的に取得、なければUnity側の値を使用
+            elevation_from_json = _get_shelter_elevation_from_context(display_name)
+            elevation_meters = elevation_from_json if elevation_from_json is not None else shelter.get("elevation_meters", 0)
 
             distance_desc = _get_distance_description(distance_m, walking_time)
             features = _get_shelter_features(display_name)
@@ -1041,6 +1196,9 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             characteristics = [distance_desc]
             if elevation_meters >= 20:
                 characteristics.append(_get_elevation_description(elevation_meters))
+            elif elevation_meters > 0 and elevation_meters < 20:
+                # 低海抜の場合は警告として表示
+                characteristics.append(f"海抜{elevation_meters:.1f}m（低い）")
             if features:
                 characteristics.append(features[0])  # 最も重要な特徴1つのみ
 
@@ -1056,6 +1214,25 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
                 lines.append(f"※ {speed_desc}")
             elif speed_multiplier > 1.0:
                 lines.append(f"※ {speed_desc}")
+
+    # 利用可能なアクション（available_actions）を明示
+    available_actions = payload.get("available_actions", [])
+    if available_actions and len(available_actions) > 0:
+        lines.append("")
+        lines.append("【現在利用可能な行動】")
+
+        action_descriptions = {
+            "EVACUATE": "避難所へ移動",
+            "STAY": "その場で待機",
+            "SEARCH_FAMILY": "家族を探しに行く",
+            "CONTACT": "家族へ連絡（メール等）",
+            "FOLLOW": "周囲の避難者について行く",
+            "TALK": "周辺の避難者と会話",
+        }
+
+        for action in available_actions:
+            desc = action_descriptions.get(action, action)
+            lines.append(f"- {action}: {desc}")
 
     return "\n".join(lines)
 
@@ -1627,6 +1804,16 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
     lines.append(f"話題: {topic_desc}")
     lines.append("")
 
+    # ターン情報を追加（マルチターン会話対応）
+    turn_count = payload.get("turn_count", 1)
+    if turn_count > 1:
+        lines.append(f"これは相手との会話の{turn_count}回目のやり取りです。")
+        lines.append("")
+
+    if turn_count >= 7:
+        lines.append("会話が長くなっています。区切りの良いところで終わりにしても構いません。")
+        lines.append("")
+
     # 指示
     lines.append("あなたの立場で、この人にどう返答しますか？")
     lines.append("自分の知っている情報を適切に共有してください。")
@@ -1636,6 +1823,7 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
     lines.append('{')
     lines.append('  "response_message": "返答内容（口語的な日本語）",')
     lines.append('  "willing_to_share": true または false（情報を共有する意思があるか）,')
+    lines.append('  "want_to_continue": true または false（会話を続けたいか。falseの場合は返答内容を締めの言葉にしてください）,')
     lines.append('  "reasoning": "この返答をした理由"')
     lines.append('}')
 
@@ -1655,6 +1843,7 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
             "request_id": request_id,
             "response_message": "すみません、今は急いでいるので...",
             "willing_to_share": False,
+            "want_to_continue": False,
             "reasoning": "LLM unavailable - default response",
         }
 
@@ -1667,6 +1856,7 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
                 "request_id": request_id,
                 "response_message": "すみません、今は急いでいるので...",
                 "willing_to_share": False,
+                "want_to_continue": False,
                 "reasoning": "LLM call failed - default response",
             }
 
@@ -1676,6 +1866,7 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
             "request_id": request_id,
             "response_message": response.get("response_message", "..."),
             "willing_to_share": response.get("willing_to_share", True),
+            "want_to_continue": response.get("want_to_continue", False),
             "reasoning": response.get("reasoning", ""),
         }
 
@@ -1685,6 +1876,7 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
             "request_id": request_id,
             "response_message": "すみません、今は急いでいるので...",
             "willing_to_share": False,
+            "want_to_continue": False,
             "reasoning": f"Exception: {exc}",
         }
 
@@ -1755,6 +1947,16 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
         lines.append(f"相手の行動: {sender_action_desc}")
     lines.append("")
 
+    # ターン情報を追加（マルチターン会話対応）
+    turn_count = payload.get("turn_count", 1)
+    if turn_count > 1:
+        lines.append(f"これは家族との連絡の{turn_count}回目のやり取りです。")
+        lines.append("")
+
+    if turn_count >= 7:
+        lines.append("やり取りが長くなっています。区切りの良いところで終わりにしても構いません。")
+        lines.append("")
+
     # 指示
     lines.append("あなたはこの家族にメールで返信します。")
     lines.append("以下の点を含めて、自然な返信を作成してください：")
@@ -1768,6 +1970,7 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
     lines.append('  "current_status": "無事/軽傷/重傷など現在の状況",')
     lines.append('  "current_location": "現在位置の説明",')
     lines.append('  "planned_action": "今後の行動予定",')
+    lines.append('  "want_to_continue": true または false（やり取りを続けたいか。falseの場合は返信内容を締めの言葉にしてください）,')
     lines.append('  "reasoning": "この返信をした理由"')
     lines.append("}")
 
@@ -1789,6 +1992,7 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "current_status": "無事",
             "current_location": "自宅付近",
             "planned_action": "様子を見て避難する",
+            "want_to_continue": False,
             "reasoning": "LLM unavailable - default response",
         }
 
@@ -1803,6 +2007,7 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
                 "current_status": "無事",
                 "current_location": "自宅付近",
                 "planned_action": "様子を見て避難する",
+                "want_to_continue": False,
                 "reasoning": "LLM call failed - default response",
             }
 
@@ -1814,6 +2019,7 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "current_status": response.get("current_status", "不明"),
             "current_location": response.get("current_location", "不明"),
             "planned_action": response.get("planned_action", ""),
+            "want_to_continue": response.get("want_to_continue", False),
             "reasoning": response.get("reasoning", ""),
         }
 
@@ -1825,6 +2031,109 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "current_status": "無事",
             "current_location": "自宅付近",
             "planned_action": "様子を見て避難する",
+            "want_to_continue": False,
+            "reasoning": f"Exception: {exc}",
+        }
+
+
+def build_conversation_continuation_prompt(payload: Dict[str, Any]) -> str:
+    """
+    会話継続判断用のプロンプトを構築する。
+    自分が会話を続けるかどうか、続ける場合は次の発言を生成する。
+    """
+    lines = []
+
+    persona = payload.get("persona", {})
+    session = payload.get("session", {})
+    partner_last_message = payload.get("partner_last_message", "")
+
+    lines.append("あなたは避難者です。他の避難者と会話中です。")
+    lines.append("")
+    lines.append("【あなたの情報】")
+    lines.append(f"名前: {persona.get('name', '不明')}")
+    lines.append(f"役割: {persona.get('role', '不明')}")
+    lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+    lines.append("")
+
+    lines.append("【会話の状況】")
+    lines.append(f"相手: {session.get('partner_name', '不明')}")
+
+    topic = session.get("current_topic", "General")
+    topic_desc = {
+        "ShelterInfo": "避難所情報",
+        "CurrentSituation": "現状確認",
+        "ActionAdvice": "行動相談",
+        "SafetyConfirm": "安全確認",
+        "General": "一般",
+    }.get(topic, topic)
+    lines.append(f"話題: {topic_desc}")
+
+    turn_count = session.get("turn_count", 1)
+    lines.append(f"これまでのやり取り: {turn_count}回")
+    lines.append(f"相手の最後の発言: 「{partner_last_message}」")
+    lines.append("")
+
+    if turn_count >= 7:
+        lines.append("会話が長くなっています。区切りの良いところで終わりにしても構いません。")
+        lines.append("")
+
+    lines.append("会話を続けますか？")
+    lines.append("続ける場合は次の発言を、終わる場合は締めの言葉を考えてください。")
+    lines.append("（避難中なので、長話は避けた方が良いかもしれません）")
+    lines.append("")
+    lines.append("【重要】以下のJSON形式で回答してください:")
+    lines.append("{")
+    lines.append('  "want_to_continue": true または false,')
+    lines.append('  "message": "次の発言（続ける場合）または締めの言葉（終わる場合）",')
+    lines.append('  "reasoning": "判断理由"')
+    lines.append("}")
+
+    return "\n".join(lines)
+
+
+async def process_conversation_continuation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    会話継続判断リクエストを処理する。
+    自分が会話を続けるか判断し、続ける場合は次のメッセージを生成する。
+    """
+    request_id = payload.get("request_id", f"cont-{random.randint(0, 1_000_000)}")
+
+    if OPENAI_CLIENT is None:
+        # LLMが利用できない場合はデフォルト応答（会話終了）
+        return {
+            "request_id": request_id,
+            "want_to_continue": False,
+            "message": "すみません、急いでいるのでこの辺で...",
+            "reasoning": "LLM unavailable - default response",
+        }
+
+    prompt = build_conversation_continuation_prompt(payload)
+
+    try:
+        content = await _call_openai_with_retry(prompt)
+        if content is None:
+            return {
+                "request_id": request_id,
+                "want_to_continue": False,
+                "message": "すみません、急いでいるのでこの辺で...",
+                "reasoning": "LLM call failed - default response",
+            }
+
+        response = _safe_load_json(content)
+
+        return {
+            "request_id": request_id,
+            "want_to_continue": response.get("want_to_continue", False),
+            "message": response.get("message", "..."),
+            "reasoning": response.get("reasoning", ""),
+        }
+
+    except Exception as exc:
+        print(f"[LLM SERVER] 会話継続判断で例外: {exc}")
+        return {
+            "request_id": request_id,
+            "want_to_continue": False,
+            "message": "すみません、急いでいるのでこの辺で...",
             "reasoning": f"Exception: {exc}",
         }
 
@@ -1848,6 +2157,9 @@ async def _handle_single_message(
         elif request_type == "family_contact_response":
             # 家族連絡応答生成リクエスト
             response = await process_family_contact_response(payload)
+        elif request_type == "conversation_continuation":
+            # 会話継続判断リクエスト
+            response = await process_conversation_continuation(payload)
         else:
             # 通常の避難意思決定リクエスト
             response = await process_payload(payload)

@@ -5,25 +5,30 @@ using UnityEngine.AI;
 using LLM;
 
 /// <summary>
-/// 簡易ルールベースエージェントの意思決定を行うクラス（Level 1）
+/// ルールベースエージェントの意思決定を行うクラス（Level 2）
 /// 実験1でLLMエージェントとの比較に使用
 ///
-/// Level 1のルール:
-/// - 行動タイプは EVACUATE と STAY のみ
-/// - 津波警報受信 OR 震度6以上 → EVACUATE
-/// - 震度5以下 AND 警報未受信 → STAY（一定時間後に再評価）
+/// Level 2のルール:
+/// - 行動タイプは EVACUATE, STAY, SEARCH_FAMILY, CONTACT
+/// - 津波警報（Jアラート/行政無線/消防団）受信 → EVACUATE
+/// - 地震のみでは動かない（津波警報時のみ避難）
+/// - シーン内に未合流の家族がいる場合 → SEARCH_FAMILY
+/// - シーン外の家族に未連絡の場合 → CONTACT（1回限り）
 /// </summary>
 public class RuleBasedDecisionMaker : MonoBehaviour
 {
     [Header("Rule Parameters")]
     [Tooltip("待機から避難に切り替える最大時間（秒）")]
-    public float MaxStayDuration = 60f;
+    public float MaxStayDuration = 600f;
 
-    [Tooltip("危険と判定する震度の閾値")]
+    [Tooltip("危険と判定する震度の閾値（現在未使用：津波警報のみで判定）")]
     public int DangerousSeismicIntensity = 6;
 
     [Tooltip("ルール再評価の間隔（秒）")]
     public float ReevaluationInterval = 10f;
+
+    [Tooltip("家族探索の距離閾値（メートル）")]
+    public float SearchFamilyDistanceThreshold = 500f;
 
     private Evacuee _evacuee;
     private EnvManager _envManager;
@@ -34,6 +39,10 @@ public class RuleBasedDecisionMaker : MonoBehaviour
     private bool _hasReceivedJAlert = false;
     private bool _hasHeardFireTruck = false;
 
+    // Level 2: 家族対応用フィールド
+    private FamilyData _familyData;
+    private bool _hasContactedFamily = false;
+
     /// <summary>
     /// 初期化
     /// </summary>
@@ -42,6 +51,14 @@ public class RuleBasedDecisionMaker : MonoBehaviour
         _evacuee = evacuee;
         _envManager = envManager;
         _navAgent = navAgent;
+    }
+
+    /// <summary>
+    /// 拡張初期化（Level 2: 家族情報を受け取る）
+    /// </summary>
+    public void InitializeExtended(FamilyData familyData)
+    {
+        _familyData = familyData;
     }
 
     /// <summary>
@@ -69,10 +86,20 @@ public class RuleBasedDecisionMaker : MonoBehaviour
     }
 
     /// <summary>
-    /// ルールベースで行動を決定
+    /// ルールベースで行動を決定（Level 1: 後方互換性のため維持）
     /// </summary>
     /// <returns>決定された行動タイプと目標避難所</returns>
     public (ActionType action, GameObject targetShelter, string reasoning) MakeDecision()
+    {
+        var (action, shelter, reasoning, _) = MakeDecisionExtended();
+        return (action, shelter, reasoning);
+    }
+
+    /// <summary>
+    /// ルールベースで行動を決定（Level 2: 家族対応を含む）
+    /// </summary>
+    /// <returns>決定された行動タイプ、目標避難所、理由、家族対象</returns>
+    public (ActionType action, GameObject targetShelter, string reasoning, FamilyMember familyTarget) MakeDecisionExtended()
     {
         float currentTime = _envManager != null ? _envManager.CurrentTimeSec : Time.time;
 
@@ -80,22 +107,35 @@ public class RuleBasedDecisionMaker : MonoBehaviour
         if (currentTime - _lastEvaluationTime < ReevaluationInterval && _lastEvaluationTime > 0)
         {
             // 前回と同じ行動を継続
-            return (_evacuee.CurrentAction, _evacuee.Target, "前回の判断を継続");
+            return (_evacuee.CurrentAction, _evacuee.Target, "前回の判断を継続", null);
         }
         _lastEvaluationTime = currentTime;
 
-        // 震度を取得
-        int seismicIntensity = GetSeismicIntensity();
-
-        // ルール1: 高危険度の場合は即座に避難
-        if (seismicIntensity >= DangerousSeismicIntensity || _hasReceivedJAlert || _hasHeardBroadcast || _hasHeardFireTruck)
+        // 優先度1: 津波警報時のみ緊急避難（地震だけでは動かない）
+        if (_hasReceivedJAlert || _hasHeardBroadcast || _hasHeardFireTruck)
         {
-            var (shelter, distance) = FindNearestShelter();
-            string reason = BuildEvacuateReason(seismicIntensity);
-            return (ActionType.EVACUATE, shelter, reason);
+            var (shelter, _) = FindNearestShelter();
+            string reason = BuildEvacuateReason();
+            return (ActionType.EVACUATE, shelter, reason, null);
         }
 
-        // ルール2: 低危険度の場合は待機
+        // 優先度2: 家族対応（津波警報がない場合）
+        // SEARCH_FAMILY: シーン内の未合流家族を探す
+        if (ShouldSearchFamily(out var searchTarget))
+        {
+            return (ActionType.SEARCH_FAMILY, null,
+                $"{searchTarget.relation}（{searchTarget.name}）を探しに行く", searchTarget);
+        }
+
+        // CONTACT: シーン外の家族に連絡（1回限り）
+        if (ShouldContact(out var contactTarget))
+        {
+            _hasContactedFamily = true;
+            return (ActionType.CONTACT, null,
+                $"{contactTarget.relation}（{contactTarget.name}）に連絡を取る", contactTarget);
+        }
+
+        // 優先度3: 待機（津波警報なし・家族対応なし）
         if (_stayStartTime < 0)
         {
             _stayStartTime = currentTime;
@@ -103,15 +143,68 @@ public class RuleBasedDecisionMaker : MonoBehaviour
 
         float stayDuration = currentTime - _stayStartTime;
 
-        // ルール3: 待機時間が上限を超えた場合は避難
+        // 待機時間上限を超えた場合のみ避難（安全のため）
         if (stayDuration >= MaxStayDuration)
         {
-            var (shelter, distance) = FindNearestShelter();
-            return (ActionType.EVACUATE, shelter, $"待機時間が{MaxStayDuration}秒を超えたため避難を開始");
+            var (shelter, _) = FindNearestShelter();
+            return (ActionType.EVACUATE, shelter, $"待機時間が{MaxStayDuration}秒を超過したため避難", null);
         }
 
         // 待機を継続
-        return (ActionType.STAY, null, $"震度{seismicIntensity}、警報未受信のため様子見（経過{stayDuration:F0}秒）");
+        return (ActionType.STAY, null, $"津波警報未受信のため様子見（経過{stayDuration:F0}秒）", null);
+    }
+
+    /// <summary>
+    /// SEARCH_FAMILYを実行すべきか判定
+    /// 条件: シーン内に未合流の家族がいて、距離閾値以内
+    /// </summary>
+    private bool ShouldSearchFamily(out FamilyMember target)
+    {
+        target = null;
+        if (_familyData == null || _familyData.members == null) return false;
+
+        var unreunitedFamily = _familyData.members
+            .Where(m => m.exists_in_scene && m.agent_id > 0 && !m.is_reunited)
+            .ToList();
+
+        if (unreunitedFamily.Count == 0) return false;
+
+        Vector3 pos = _evacuee.transform.position;
+
+        // 距離閾値以内、子供を優先
+        target = unreunitedFamily
+            .Where(m => Vector3.Distance(pos, m.search_position) < SearchFamilyDistanceThreshold)
+            .OrderBy(m => IsChild(m.relation) ? 0 : 1)
+            .FirstOrDefault();
+
+        return target != null;
+    }
+
+    /// <summary>
+    /// 子供かどうかを判定
+    /// </summary>
+    private bool IsChild(string relation)
+    {
+        if (string.IsNullOrEmpty(relation)) return false;
+        return relation.Contains("息子") || relation.Contains("娘") ||
+               relation.Contains("子供") || relation.Contains("子ども");
+    }
+
+    /// <summary>
+    /// CONTACTを実行すべきか判定
+    /// 条件: シーン外の家族がいて、まだ連絡を取っていない
+    /// </summary>
+    private bool ShouldContact(out FamilyMember target)
+    {
+        target = null;
+        if (_hasContactedFamily) return false;  // 1回限り
+        if (_familyData == null || _familyData.members == null) return false;
+
+        target = _familyData.members
+            .Where(m => !m.exists_in_scene && m.has_phone)
+            .FirstOrDefault();
+
+        return target != null;
     }
 
     /// <summary>
@@ -173,16 +266,11 @@ public class RuleBasedDecisionMaker : MonoBehaviour
     }
 
     /// <summary>
-    /// 避難理由の文字列を生成
+    /// 避難理由の文字列を生成（津波警報のみで判定）
     /// </summary>
-    private string BuildEvacuateReason(int seismicIntensity)
+    private string BuildEvacuateReason()
     {
         var reasons = new List<string>();
-
-        if (seismicIntensity >= DangerousSeismicIntensity)
-        {
-            reasons.Add($"震度{seismicIntensity}の強い揺れを感知");
-        }
 
         if (_hasReceivedJAlert)
         {
@@ -199,6 +287,11 @@ public class RuleBasedDecisionMaker : MonoBehaviour
             reasons.Add("消防団の呼びかけを聞いた");
         }
 
+        if (reasons.Count == 0)
+        {
+            return "避難を開始";
+        }
+
         return string.Join("、", reasons) + "ため避難を開始";
     }
 
@@ -212,5 +305,6 @@ public class RuleBasedDecisionMaker : MonoBehaviour
         _hasHeardBroadcast = false;
         _hasReceivedJAlert = false;
         _hasHeardFireTruck = false;
+        _hasContactedFamily = false;  // Level 2: 連絡状態もリセット
     }
 }

@@ -187,6 +187,7 @@ namespace LLM
         public float distance_meters;    // 所有者からの距離
         public bool has_phone;           // 連絡手段の有無
         public bool exists_in_scene;     // シーン内に実在するか
+        public bool is_reunited;         // 合流済みかどうか
     }
 
     /// <summary>
@@ -254,6 +255,7 @@ namespace LLM
         public string responder_name;     // 返答者の名前
         public string response_message;   // 返答内容
         public bool willing_to_share;     // 情報共有の意思
+        public bool want_to_continue;     // 会話継続意思
     }
 
     /// <summary>
@@ -293,6 +295,7 @@ namespace LLM
         public string request_id;
         public string response_message;   // 生成された返答
         public bool willing_to_share;     // 情報共有の意思
+        public bool want_to_continue;     // 会話継続意思
         public string reasoning;          // 返答理由
     }
 
@@ -323,6 +326,7 @@ namespace LLM
         public string current_status;     // 現在の状況（無事、怪我など）
         public string current_location;   // 現在位置の説明
         public string planned_action;     // 今後の行動予定
+        public bool want_to_continue;     // 会話継続意思
     }
 
     /// <summary>
@@ -352,7 +356,48 @@ namespace LLM
         public string current_status;     // 現在の状況
         public string current_location;   // 現在位置
         public string planned_action;     // 今後の行動
+        public bool want_to_continue;     // 会話継続意思
         public string reasoning;          // 返答理由
+    }
+
+    /// <summary>
+    /// 会話セッションコンテキスト（マルチターン会話の状態管理）
+    /// </summary>
+    [Serializable]
+    public class ConversationSessionContext
+    {
+        public string partner_id;                 // 会話相手のID
+        public string partner_name;               // 会話相手の名前
+        public int turn_count;                    // 現在のターン数
+        public string current_topic;              // 現在の話題
+        public bool partner_wants_to_continue;    // 相手の継続意思
+        public float session_start_time;          // セッション開始時刻
+        public bool is_family_contact;            // 家族連絡かどうか
+    }
+
+    /// <summary>
+    /// LLMへの会話継続判断リクエスト
+    /// </summary>
+    [Serializable]
+    public class LLMConversationContinuationRequest
+    {
+        public string request_id;
+        public string request_type;               // "conversation_continuation"
+        public PersonaPayload persona;
+        public ConversationSessionContext session;
+        public string partner_last_message;       // 相手の最後の発言
+    }
+
+    /// <summary>
+    /// LLMからの会話継続判断レスポンス
+    /// </summary>
+    [Serializable]
+    public class LLMConversationContinuationResponse
+    {
+        public string request_id;
+        public bool want_to_continue;             // 会話を継続したいか
+        public string message;                    // 継続なら次の発言、終了なら締めの言葉
+        public string reasoning;                  // 判断理由
     }
 
     /// <summary>
@@ -439,6 +484,7 @@ namespace LLM
         public LongTermGoalPayload current_long_term_goal;  // 現在の長期目標（更新判断用）
         public MidTermPlanPayload current_mid_term_plan;   // 現在の中期計画（更新判断用）
         public ConversationHistoryPayload conversation_history;  // 会話履歴（TALK行動用）
+        public string[] available_actions;                // 利用可能なアクション一覧（条件に基づいて動的に設定）
 
         // 災害シナリオシステム用の拡張フィールド
         public PerceptionStatePayload perception_state;    // 知覚状態（聴覚情報等）
@@ -446,6 +492,14 @@ namespace LLM
 
         // 短期記憶（行動履歴）
         public ActionHistoryPayload action_history;        // 行動履歴（圧縮・要約用）
+
+        // 実験2-2: 認知バイアス条件
+        public string bias_condition;                      // バイアス条件: "none", "normalcy_bias", "conformity_bias", "combined"
+        public bool override_persona_bias;                 // ペルソナのmental_stateをオーバーライドするか
+
+        // 実験3: 情報提供戦略
+        public string information_strategy;                // 情報提供戦略: "standard", "urgent", "detailed", "detailed_urgent"
+        public AdministrativeGuidancePayload administrative_guidance;  // 行政からの追加情報
     }
 
     [Serializable]
@@ -490,6 +544,23 @@ namespace LLM
     internal class ResponseEnvelope
     {
         public string request_id;
+    }
+
+    /// <summary>
+    /// 行政からの追加情報ペイロード（実験3: 情報提供戦略用）
+    /// </summary>
+    [Serializable]
+    public class AdministrativeGuidancePayload
+    {
+        public string information_strategy;           // 情報提供戦略: "standard", "urgent", "detailed", "detailed_urgent"
+        public float initial_tsunami_height;          // 当初の津波予想高さ（m）
+        public float updated_tsunami_height;          // 更新後の津波予想高さ（m）
+        public bool exceeds_assumption;               // 想定を超えているか
+        public string urgency_level;                  // 緊急度: "normal", "high", "critical"
+        public string evacuation_guidance;            // 避難先に関するガイダンス
+        public string[] recommended_shelters;         // 推奨避難所リスト（海抜情報付き）
+        public string[] unsafe_shelters;              // 高さが不十分な可能性のある避難所
+        public string additional_warning;             // 追加の警告メッセージ
     }
 
     /// <summary>

@@ -51,63 +51,176 @@
     ],
     "designated_shelters": [
       {
+        "name": "望洋荘",
+        "type": "secondary",
+        "elevation_m": 25,
+        "capacity": 231,
+        "features": ["RC造", "福祉避難所として機能", "要配慮者優先"],
+        "access_notes": "高台の特別養護老人ホーム。高齢者・障害者とその介助者向け"
+      },
+      {
+        "name": "薄磯団地",
+        "type": "primary",
+        "elevation_m": 20,
+        "capacity": 307,
+        "features": ["RC造", "津波避難ビル", "垂直避難可能", "屋上開放"],
+        "access_notes": "復興公営住宅。海岸近くでも上層階への垂直避難で安全確保"
+      },
+      {
+        "name": "健登師記念会館",
+        "type": "secondary",
+        "elevation_m": 6.1,
+        "capacity": 25,
+        "features": ["公民館", "生活避難所向け"],
+        "access_notes": "海抜6.1mと低い。大津波警報時は不適。津波警報解除後の生活避難所向け"
+      },
+      {
         "name": "豊間中学校",
         "type": "primary",
         "elevation_m": 30,
-        "capacity": 400,
-        "features": ["体育館利用可能", "広い校庭", "高台"],
-        "access_notes": "標高が高く津波避難に適している"
+        "capacity": 500,
+        "features": ["RC造", "津波避難ビル", "体育館", "広い校庭", "ヘリポート可"],
+        "access_notes": "震災後に高台移転。広域防災拠点として機能"
+      },
+      {
+        "name": "豊間団地",
+        "type": "primary",
+        "elevation_m": 25,
+        "capacity": 683,
+        "features": ["RC造", "津波避難ビル", "地区最大の収容力"],
+        "access_notes": "豊間地区最大の避難施設。夜間の逃げ遅れ時に有効"
+      },
+      {
+        "name": "沼ノ内団地",
+        "type": "primary",
+        "elevation_m": 20,
+        "capacity": 153,
+        "features": ["RC造", "津波避難ビル", "垂直避難可能"],
+        "access_notes": "沼ノ内地区の垂直避難の核"
+      },
+      {
+        "name": "江名公民館",
+        "type": "secondary",
+        "elevation_m": 15,
+        "capacity": 100,
+        "features": ["公民館", "物資集積拠点"],
+        "access_notes": "発災直後より復旧期の拠点向け。津波警報中は高台優先"
       },
       {
         "name": "江名小学校",
         "type": "primary",
         "elevation_m": 25,
         "capacity": 500,
-        "features": ["耐震構造", "広い校庭"],
-        "access_notes": "江名地区の主要避難所"
-      },
-      {
-        "name": "江名公民館",
-        "type": "secondary",
-        "elevation_m": 20,
-        "capacity": 200,
-        "features": ["バリアフリー対応"],
-        "access_notes": "江名地区の高齢者向け避難所"
-      },
-      {
-        "name": "健登師記念会館",
-        "type": "secondary",
-        "elevation_m": 22,
-        "capacity": 150,
-        "features": ["堅牢な建物"],
-        "access_notes": "薄磯地区からのアクセスが良い"
-      },
-      {
-        "name": "望洋荘",
-        "type": "secondary",
-        "elevation_m": 28,
-        "capacity": 100,
-        "features": ["高台に位置"],
-        "access_notes": "海岸から離れた高台にある施設"
-      },
-      {
-        "name": "諏訪神社",
-        "type": "secondary",
-        "elevation_m": 35,
-        "capacity": 100,
-        "features": ["高台", "古くからの避難場所"],
-        "access_notes": "地元で古くから津波避難場所として知られている"
+        "features": ["RC造", "体育館", "広い校庭", "貯水槽あり"],
+        "access_notes": "江名地区の主要避難拠点。断水時も生活用水確保可能"
       }
     ],
     "tsunami_evacuation_areas": [
       {
+        "name": "諏訪神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 30,
+        "capacity": 60,
+        "features": ["高台", "地盤が良好", "液状化リスク低"],
+        "access_notes": "地元で古くから津波避難場所として知られている"
+      },
+      {
+        "name": "八幡神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 33,
+        "features": ["高台", "一次避難場所"],
+        "access_notes": "近隣住民の一次避難場所。警報解除後は拠点避難所へ移動"
+      },
+      {
+        "name": "八坂神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 11,
+        "features": ["急峻な高台", "極小規模"],
+        "access_notes": "逃げ遅れた高齢者のための最後の砦。健常者は豊間公園へ"
+      },
+      {
+        "name": "豊間公園",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 30,
+        "capacity": 20500,
+        "features": ["広大な高台公園", "収容制限なし", "ヘリポート可", "車中泊スペース"],
+        "access_notes": "豊間地区の最終防衛ライン。第一に目指すべき避難場所"
+      },
+      {
+        "name": "金倉稲荷神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 22.8,
+        "capacity": 44,
+        "features": ["高台", "L2津波にも安全"],
+        "access_notes": "薄磯南作地区の安否確認拠点"
+      },
+      {
+        "name": "薄井神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 85,
+        "features": ["高台", "石段で堅固"],
+        "access_notes": "薄磯三反田地区の鎮守。パニック抑制効果も期待"
+      },
+      {
+        "name": "沼ノ内弁財天",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 200,
+        "features": ["高台", "視界良好"],
+        "access_notes": "沼ノ内地区の主力避難場所"
+      },
+      {
         "name": "中田山",
         "type": "tsunami_evacuation_area",
-        "elevation_m": 40,
-        "features": ["高台", "広いエリア", "収容制限なし"],
-        "access_notes": "最も標高が高い津波避難地域"
+        "elevation_m": 35,
+        "capacity": 1000,
+        "features": ["自然地形", "建物倒壊リスクなし", "サバイバルルート"],
+        "access_notes": "照明・雨風をしのぐ設備なし。懐中電灯・雨具必携"
+      },
+      {
+        "name": "江名幼稚園",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 50,
+        "features": ["高台", "平坦な園庭"],
+        "access_notes": "日中は園児優先。夜間・休日は地域住民に開放"
+      },
+      {
+        "name": "小泉工業",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 27.6,
+        "capacity": 30,
+        "features": ["民間事業所", "最高レベルの海抜"],
+        "access_notes": "L2津波でも安全。従業員と近隣数世帯向け"
       }
     ],
+    "shelter_categories": {
+      "vertical_evacuation": ["薄磯団地", "豊間団地", "沼ノ内団地", "豊間中学校", "江名小学校"],
+      "welfare_shelter": ["望洋荘"],
+      "terrain_evacuation": ["諏訪神社", "八幡神社", "八坂神社", "豊間公園", "金倉稲荷神社", "薄井神社", "沼ノ内弁財天", "中田山"],
+      "life_support_shelter": ["健登師記念会館", "江名公民館"]
+    },
+    "evacuation_phases": {
+      "immediate_0_30min": {
+        "description": "発災直後（0〜30分）：高さを稼ぐ",
+        "recommended": ["豊間公園", "中田山", "小泉工業", "諏訪神社"]
+      },
+      "tsunami_30min_6h": {
+        "description": "津波到達〜浸水期：RC造で待機",
+        "recommended": ["豊間団地", "薄磯団地", "豊間中学校"]
+      },
+      "rescue_6h_days": {
+        "description": "救助・復旧期：広域避難所",
+        "recommended": ["豊間中学校", "豊間公園", "江名小学校"]
+      },
+      "recovery_days_months": {
+        "description": "生活再建期：拠点避難所",
+        "recommended": ["望洋荘", "健登師記念会館", "江名公民館"]
+      }
+    },
     "time_limits": {
       "tsunami_arrival_estimate": "地震発生から約30分",
       "recommended_evacuation_start": "揺れが収まったら直ちに避難開始",

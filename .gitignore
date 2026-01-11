@@ -187,6 +187,7 @@ mono_crash.*
 *.sln.DotSettings
 
 Paper.md
+避難場所調査.md
 
 # ML-Agents additional files
 results/*/run_logs/

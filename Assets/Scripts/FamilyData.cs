@@ -23,6 +23,9 @@ public class FamilyMember
     public string likely_location; // 想定される場所の説明（"自宅", "小学校"など）
     public Vector3 search_position; // 探索する座標
     public float distance_meters;   // 所有者からの距離（計算時に設定）
+
+    // 合流状態
+    public bool is_reunited;       // 合流済みかどうか
 }
 
 /// <summary>
@@ -253,6 +256,7 @@ public static class FamilyManager
 
         if (_familiesCache != null && _familiesCache.TryGetValue(agentId, out var family))
         {
+            // 一人暮らしの場合はmembersが空になるのは正常なので警告を出さない
             return family;
         }
 
@@ -263,10 +267,19 @@ public static class FamilyManager
             if (familyData != null)
             {
                 _familiesCache[agentId] = familyData;
+                if (familyData.members == null || familyData.members.Count == 0)
+                {
+                    Debug.LogWarning($"[FamilyManager] Agent {agentId}: 動的生成した家族データのメンバーが空です");
+                }
                 return familyData;
+            }
+            else
+            {
+                Debug.LogWarning($"[FamilyManager] Agent {agentId}: 家族データの動的生成に失敗しました（FamilyGroupManagerに登録なし？）");
             }
         }
 
+        Debug.LogWarning($"[FamilyManager] Agent {agentId}: 家族データが見つかりません（キャッシュにもFamilyGroupManagerにも存在しない）");
         return null;
     }
 
