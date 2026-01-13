@@ -1,5 +1,117 @@
 # 変更点とその意図
 
+- NavMeshAgent操作のデバッグログを追加
+  - `Evacuee.cs`: `SafeSetDestination()`に詳細ログを追加（目的地座標、ターゲット名、失敗理由、呼び出し元メソッド名）
+  - `Evacuee.cs`: `SafeStopAgent()`に詳細ログを追加（停止/再開の状態変化、失敗理由、呼び出し元メソッド名）
+  - `Evacuee.cs`: 経路計算確認用コルーチン`CheckPathAfterSetDestination()`を追加（`hasPath`、`pathStatus`、`remainingDistance`を1フレーム後に確認）
+  - 意図: EVACUATEを選択しているのに移動しない問題の原因を特定するため。目的地設定の成否、経路計算の成否、isStopped状態の変化を追跡可能にする
+
+- 実験3（情報提供戦略の検証）の結果に基づき、Paper.mdとTable.mdを更新
+  - Paper.md: 「情報提供戦略の検証」セクションを実験結果に基づいて全面改訂
+  - Table.md: 表20〜27を追加（実験条件設計、情報条件別の基本指標・行動選択・避難開始時刻・認知特性別避難完了率・社会的相互作用・避難先選択分布・主要知見まとめ）
+  - 意図: 実験3（条件A〜D: 情報の具体性×切迫感の2×2デザイン）のログデータに基づく定量的分析結果を論文に反映するため
+  - 主要知見: 切迫感を高めた条件Bが最も高い避難完了率（81%）を達成、具体性のみを高めた条件Cは避難完了率が低下（73%）、正常性バイアス者には切迫感のある表現が効果的
+
+- 実験2（人間行動モデリングの検証）の結果に基づき、Paper.mdとTable.mdを更新
+  - Paper.md: 「人間行動モデリングの検証」セクションを追加し、同一ペルソナ4回試行の結果と考察を記述
+  - Table.md: 表11〜19を追加（試行間での基本指標比較、行動選択分布、認知特性別分析等）
+  - 意図: 実験2のログデータに基づく定量的分析結果を論文に反映するため
+
+- 避難完了記録のタイミングを修正し、evacuated_agentsとevacuation_rateの不整合を解消
+  - `Shelter.cs`: OnTriggerEnterから`RecordEvacuationToMetrics`の呼び出しを削除
+  - `TsunamiEvacuationArea.cs`: 同様に`RecordEvacuationToMetrics`の呼び出しを削除
+  - `Evacuee.cs`: `RecordEvacuationToMetrics`メソッドを追加し、`Evacuation()`と`EvacuationToArea()`で避難が実際に成功した時点（`SetActive(false)`の直前）で記録
+  - 意図: 以前はShelter/TsunamiEvacuationAreaで`currentCapacity > 0`チェック後に記録し、Evacueeで再度チェックして非アクティブ化していたため、同一フレームで複数エージェントが到達した際にレースコンディションが発生し、記録数と非アクティブ化数が不一致になっていた。記録処理をEvacueeの避難成功時点に一元化することで、`evacuatedAgents`と`EvacuationRate`（非アクティブ化数から計算）が常に一致するようになった
+
+- 実験1（基本性能の検証）の結果に基づき、Paper.mdの「結果と考察」セクションを更新
+  - 実験1-A（エージェント駆動型）と実験1-B（ルールベース）の比較結果を記述
+  - 避難完了率77% vs 44%、認知特性別の避難行動差異、社会的相互作用の発生状況を報告
+  - 意図: 実験データに基づく具体的な数値と分析を論文に反映するため
+  - 注: summary.csvのevacuated_agentsとevacuation_rateに不整合があったため、agents.csvから正確な数値を取得
+- Table.mdを新規作成し、実験結果の表を10個作成
+  - 表1: 避難シミュレーション基本指標の比較
+  - 表2: 行動選択の分布
+  - 表3: 避難開始時刻の分析
+  - 表4: 社会的相互作用の発生状況
+  - 表5: 待機行動の分析
+  - 表6-7: 避難先の選択分布（エージェント駆動型/ルールベース）
+  - 表8-9: 認知特性別の避難完了率・平均避難時間比較
+  - 表10: 実験1の主要知見まとめ
+  - 意図: 実験結果を定量的に整理し、論文で参照可能な形式にするため
+
+- LLMがavailable_actions外のアクションを選択する問題を改善
+  - `server.py`: 【選択可能な行動】セクションに「※この中から必ず1つ選んでください」を追加
+  - `server.py`: 選択できないアクションを明示表示（「以下は現在選択できません」）
+  - `Evacuee.cs`: フォールバック先をEVACUATE→STAYに変更（SEARCH_FAMILY, CONTACT, FOLLOW, TALK）
+  - 意図: LLMが条件を満たさないアクションを選択した場合、即座に避難開始するのではなく一旦待機させ、次のLLM判断で適切なアクションを選ばせるため
+- NavMeshAgentのResetPath呼び出し時のエラーを修正
+  - `Evacuee.cs`: `SafeResetPath()`メソッドを追加し、NavMesh上にいない場合はResetPathを呼び出さないようガードを追加
+  - `Evacuee.cs`: 全10箇所の`NavAgent.ResetPath()`呼び出しを`SafeResetPath()`に置き換え
+  - 意図: 「ResetPath can only be called on an active agent that has been placed on a NavMesh」エラーを防止するため
+- 家族情報を100人分に拡張
+  - `families.csv`: agent_id 1〜100の100人分に家族情報を設定
+  - 単身者40人、家族あり60人の構成
+  - 続柄: 配偶者（妻27人、夫19人）、子供20人、親（母12人、父9人）
+  - 意図: 実験で家族探索行動（SEARCH_FAMILY, CONTACT）を十分に検証できるようサンプルサイズを確保するため
+- AllExperimentsバッチ実験で重複条件を共通ベースラインとして統合
+  - `ExperimentConfig.cs`: GenerateConditions()メソッドを修正
+  - AllExperiments選択時、Exp1-A/Exp2-1/Exp3-A（LLM+None+Standard）を「Baseline-LLM」として1つに統合
+  - 条件数を10条件から8条件に削減（重複2条件を排除）
+  - 個別実験プリセット（Experiment1/2/3）は従来どおりの条件を維持
+  - 意図: 同一条件の重複実行を排除し、実験時間を20%削減するため
+- 【地域情報】を【状況】セクションの冒頭に統合
+  - `server.py`: 【状況】セクション冒頭に地域名、特徴、標高範囲を追加
+  - `server.py`: C-1の【地域情報】セクションを削除
+  - `prompt.md`: 上記の変更を反映
+  - 意図: 状況説明の冒頭で「どこにいるか」を伝えることで、LLMの状況理解を向上させるため
+- プロンプトの冗長な表現を整理してトークン数を削減
+  - `server.py`: 【現在の災害状況】と【現在の災害フェーズ】を1つのセクションに統合
+  - `server.py`: システムプロンプトから【行動選択肢の説明】を削除（ユーザープロンプトの【選択可能な行動】と重複）
+  - `server.py`: 必須フィールド説明の重複を削除（【重要】セクションに一本化）
+  - `server.py`: 各セクションの冗長な※注釈を削除（「※ この放送内容を踏まえて行動を判断してください」等）
+  - `server.py`: 【重要：選択可能な行動】をシンプル化（区切り線と「以下は現在選択できません」を削除）
+  - `prompt.md`: 上記の変更を反映
+  - 意図: プロンプトのトークン数を削減し、LLMの処理効率を向上させるため
+- long_term_goal/mid_term_planがLLM出力に含まれない問題を修正
+  - `server.py`: `build_system_prompt()`の出力形式セクションを改善
+  - 全アクションタイプ（STAY, SEARCH_FAMILY, FOLLOW, TALK, CONTACT）の出力例に具体的なlong_term_goal/mid_term_planの値を追加（以前は`"..."`という省略形だった）
+  - 「【重要】long_term_goal と mid_term_plan は必須フィールドです」という明示的な指示を追加
+  - CONTACTアクションの出力例を新規追加
+  - `prompt.md`: システムプロンプトのドキュメントを更新
+  - 意図: LLMが`"..."`を「省略可能」と解釈し、これらのフィールドを出力しない問題を解消するため
+- USERプロンプトのセクション順序を論理的なグループに再編成
+  - `server.py`: `build_user_prompt()`関数内の28セクションを6つの論理グループ（A〜F）に整理
+  - A. あなた自身に関する情報（WHO）: ペルソナ、状態、心理的傾向、移動能力
+  - B. 災害に関する情報（WHAT）: 状況、災害状況、フェーズ、各種警報・放送、音声情報
+  - C. 場所に関する情報（WHERE）: 地域情報、現在位置、場所の様子、危険区域、建物情報
+  - D. 家族に関する情報（FAMILY）: 家族情報、シーン外家族、家族からの返信
+  - E. 記憶・履歴（MEMORY）: 長期目標、中期計画、行動履歴、会話履歴、長期記憶
+  - F. 行動選択肢（OPTIONS）: 周辺避難者、避難所、津波避難場所、選択可能な行動
+  - `prompt.md`: 新しいセクション順序を反映してドキュメントを更新
+  - 意図: LLMが情報を理解しやすい順序に並び替え、関連情報をグループ化することで意思決定の質を向上させるため
+- NavMeshAgent関連エラーを完全に解消するためのSafe Wrapperパターンを導入
+  - `Evacuee.cs`: SafeSetDestination()メソッドを追加（NavAgent状態チェック後にSetDestination実行）
+  - `Evacuee.cs`: SafeStopAgent()メソッドを追加（NavAgent状態チェック後にisStopped設定）
+  - `Evacuee.cs`: 全19箇所のNavAgent.SetDestination()呼び出しをSafeSetDestination()に置換
+  - `Evacuee.cs`: 全7箇所のNavAgent.isStopped設定をSafeStopAgent()に置換
+  - チェック項目: NavAgent != null, gameObject.activeSelf, NavAgent.enabled, NavAgent.isOnNavMesh
+  - 意図: 「Resume/SetDestination can only be called on an active agent」エラーを完全に防止し、非同期処理後やGameObject非アクティブ化後の状態変化にも対応するため
+- システムアーキテクチャドキュメント（Architecture.md）を新規作成
+  - Unity/C#コンポーネント、Python LLMサーバー、通信プロトコル、データフローの詳細を体系的に整理
+  - 13のコアコンポーネント（Evacuee, ShelterEnvManager, LLMDecisionClient等）の役割と相互関係を図解
+  - 実験設計（3種類の実験）、社会的相互作用メカニズム、階層的意思決定フレームワークを文書化
+  - 意図: プロジェクト全体の理解促進と新規開発者のオンボーディング効率化のため
+- CONTACT上限到達後にLLMリクエストが実行されない問題を修正
+  - `Evacuee.cs`: ExecuteContactAction()でCONTACT上限到達時に`_isRequestingLLMDecision`フラグをリセットしてからRequestLLMDecision()を呼び出すように修正
+  - 意図: ApplyLLMDecision→ExecuteContactAction経由で呼び出された場合、_isRequestingLLMDecisionがtrueのままでRequestLLMDecisionが即座にリターンしてしまい、次の行動が決定されない問題を解決するため
+- LLMプロンプトで利用可能アクションの制約を強化
+  - `server.py`: build_user_prompt()で「選択可能な行動」セクションを強調表示（区切り線追加）
+  - `server.py`: 「これ以外の行動を選択するとエラーになります」という警告を追加
+  - `server.py`: 利用不可のアクションを明示的に表示（「以下は現在選択できません」）
+  - 意図: LLMが利用可能アクション以外（例：家族がいない場合のSEARCH_FAMILY）を選択してしまう問題を防ぐため
+- スポーン時にNavMesh上の最寄り位置に補正するように修正
+  - `ShelterEnvManager.cs`: SpawnEvacuee()でNavMesh.SamplePositionを使用して座標を補正
+  - 意図: 建物座標がNavMeshからずれている場合に発生する「Resume/SetDestination can only be called on an active agent that has been placed on a NavMesh」エラーを防ぐため
 - 避難場所情報を18施設に拡充し、LLMへの情報提供を改善
   - `scenario_context.json`: 指定避難所を6施設→8施設に拡充（薄磯団地、豊間団地、沼ノ内団地を追加）
   - `scenario_context.json`: 津波避難場所を1施設→10施設に拡充（諏訪神社、八幡神社、八坂神社、豊間公園、金倉稲荷神社、薄井神社、沼ノ内弁財天、江名幼稚園、小泉工業を追加）
@@ -129,3 +241,43 @@
   - 課題1（ルールベースエージェント）を実装済みとしてマーク
   - 実装状況サマリーを最新化（ルールベース、ExperimentConfig、SEARCH_FAMILYを実装済みに）
   - 意図: ドキュメントと実装の整合性を保つため
+- FOLLOW行動の相互フォロー問題と物理的停滞問題を修正
+  - `Evacuee.cs`: `WouldCreateFollowCycle()`メソッドを追加し、A→B→Aのような循環FOLLOWを検出・防止
+  - `Evacuee.cs`: `FindNearestNonCyclicFollowTarget()`メソッドを追加し、循環しない追従対象を自動検索
+  - `Evacuee.cs`: `ExecuteFollowAction()`に循環チェックを追加し、循環発生時は別の対象を探すかEVACUATEにフォールバック
+  - `Evacuee.cs`: NavMeshAgentの`avoidancePriority`を活用した優先度ベースの衝突回避を実装（リーダー=20、フォロワー=80）
+  - `Evacuee.cs`: `Start()`にNavMeshAgent初期設定を追加（stoppingDistance=0.5、HighQualityObstacleAvoidance、avoidancePriority=50）
+  - `Evacuee.cs`: `_followDistance`を2mから5mに拡大し、密集による物理的停滞を軽減
+  - `Evacuee.cs`: `OnDrawGizmos()`でFOLLOW関係を水色の矢印で可視化（デバッグ用）
+  - `Connection.md`: FOLLOW行動の循環検出、優先度ベースの衝突回避、可視化機能についてドキュメントを追加
+  - 意図: 二人組の相互FOLLOW（どちらもリーダーがいない状態で停滞）と、複数人が同一対象を追従する際のNavMeshAgent干渉による物理的停滞を解消するため
+- FOLLOW循環対象を周辺避難者リストから事前に除外
+  - `Evacuee.cs`: `GetNearbyEvacuees()`で`WouldCreateFollowCycle()`を呼び出し、循環が発生する相手をリストから除外
+  - `Connection.md`: 周辺避難者検出の説明に「循環FOLLOW対象の除外」セクションを追加
+  - 意図: LLMが循環対象を選択→フォールバック連鎖という問題を解消し、そもそも循環対象を選択肢に含めないことで自然な行動選択を実現
+- EvacueeのGameObject名をID・ペルソナ名で識別可能に変更
+  - `Evacuee.cs`: `SetEvacueeId()`でGameObject名を`Evacuee_{ID}_{ペルソナ名}`形式に更新
+  - 意図: HierarchyでどのGameObjectがどのIDの避難者か一目で確認できるようにし、デバッグ・動作確認を容易にするため
+- FOLLOW/TALKのログ出力に対象者のID・名前を追加
+  - `Evacuee.cs`: FOLLOWログ（4箇所）で`{_followTarget.PersonaName}(ID:{response.target_evacuee_id})`形式に変更
+  - `Evacuee.cs`: TALKログ（2箇所）で`{talkTarget.PersonaName}(ID:{talkTarget.EvacueeId})`形式に変更
+  - 意図: ログからどの避難者がどの避難者を対象に行動しているかを一目で確認できるようにするため
+- 場所タイプ別避難率の出力機能を追加
+  - `SimulationMetrics.cs`: `EpisodeSummary`に`evacuationRateToShelter`（避難所への避難完了率）、`evacuationRateToArea`（津波避難地域への避難完了率）、`evacuationCountByLocation`（場所別避難完了人数）を追加
+  - `SimulationMetrics.cs`: `GetShelterNames()`と`GetAreaNames()`ヘルパーメソッドを追加し、避難所と津波避難地域を区別
+  - `SimulationMetrics.cs`: `GenerateEpisodeSummary()`で避難完了レコードから場所タイプ別のカウントと避難率を計算
+  - `SimulationMetrics.cs`: `SaveEpisodeSummary()`でCSV出力に`evacuation_rate_to_shelter`、`evacuation_rate_to_area`、場所別避難完了人数セクションを追加
+  - 意図: 避難所（指定避難所）と津波避難地域（神社・公園等）への避難完了を区別して分析できるようにするため
+- agents.csvでevacuation_completed=Falseになる問題を修正
+  - `Shelter.cs`: `RecordEvacuationToMetrics()`でagentIdを`evacuee.EvacueeId`から取得するように変更
+  - `TsunamiEvacuationArea.cs`: 同様にagentIdを`evacuee.EvacueeId`から取得するように変更
+  - 意図: `SimulationMetrics`の`_agentMetrics`辞書のキー（EvacueeId）と避難完了記録時のagentIdが不一致だったため、evacuation_completedがtrueに更新されなかった問題を解消
+- 避難訓練知識をプロンプトから分離し、将来の実験用に保存
+  - `scenario_context.json`: `evacuation_rules`内の避難原則・時間制限・危険箇所を`evacuation_training_knowledge`に移動
+  - `server.py`: プロンプト構築から「避難の一般ルールと避難所」「注意すべきエリア」セクションを削除
+  - 意図: 避難訓練を受けた住民とそうでない住民を区別したシミュレーションを将来的に行うため。現在は全員が避難訓練を受けていない一般市民として行動
+- バッチ実験で実験2以降に移行した際にスポーン位置が見つからなくなる問題を修正
+  - `SpawnLocationManager.cs`: `ResetInstance()`と`ForceReinitialize()`メソッドを追加
+  - `ExperimentConfig.cs`: `OnConditionComplete()`で`SpawnLocationManager.ResetInstance()`を呼び出すように修正
+  - `ShelterEnvManager.cs`: `OnEpisodeBegin()`で`SpawnLocationManager.ForceReinitialize()`を呼び出すように修正
+  - 意図: シングルトンの`_buildingsByCategory`が古いまま残り、実験条件遷移時にスポーン位置が取得できなくなる問題を解消するため

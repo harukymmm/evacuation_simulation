@@ -106,7 +106,7 @@ public class Evacuee : MonoBehaviour {
     [Tooltip("LLMの再呼び出し間隔（秒）")]
     public float LLMDecisionInterval = 120f;
     [Tooltip("最小リクエスト間隔（秒）- 連続リクエストを防ぐ")]
-    public float MinRequestInterval = 5f;
+    public float MinRequestInterval = 1f;
     private CancellationTokenSource _llmCts;
     private bool _isRequestingLLMDecision;
     private float _lastLLMDecisionTime = 0f;
@@ -140,7 +140,7 @@ public class Evacuee : MonoBehaviour {
     [Header("Follow Action")]
     private Evacuee _followTarget;           // 追従対象の避難者
     private LLM.ActionType _followTargetLastAction; // 追従対象の前回の行動（行動変更検知用）
-    private float _followDistance = 2f;      // 追従距離（メートル）
+    private float _followDistance = 5f;      // 追従距離（メートル）- 密集防止のため拡大
     private float _followCheckInterval = 1f; // 追従チェック間隔（秒）
     private float _lastFollowCheck = 0f;     // 最後に追従チェックした時刻
     private const float FOLLOW_SEARCH_RADIUS = 30f; // 周辺避難者検索半径（メートル）
@@ -237,6 +237,10 @@ public class Evacuee : MonoBehaviour {
 
         // 家族データを読み込んで設定
         _familyData = FamilyManager.GetFamily(id);
+
+        // GameObject名を更新してHierarchyで識別可能にする
+        string personaName = _persona?.name ?? "Unknown";
+        gameObject.name = $"Evacuee_{_uniqueId}_{personaName}";
     }
     
     /// <summary>
@@ -449,6 +453,14 @@ public class Evacuee : MonoBehaviour {
         {
             NavAgent.speed = DefaultSpeed * _persona.speed_multiplier;
         }
+
+        // NavMeshAgent衝突回避設定の改善
+        if (NavAgent != null)
+        {
+            NavAgent.stoppingDistance = 0.5f;  // 停止距離を設ける
+            NavAgent.obstacleAvoidanceType = UnityEngine.AI.ObstacleAvoidanceType.HighQualityObstacleAvoidance;
+            NavAgent.avoidancePriority = 50;   // 初期値は中間
+        }
     }
 
     private void OnDestroy()
@@ -548,22 +560,16 @@ public class Evacuee : MonoBehaviour {
                     if (targetShelter != null)
                     {
                         Target = targetShelter;
-                        if (NavAgent != null)
-                        {
-                            NavAgent.isStopped = false;
-                            NavAgent.SetDestination(Target.transform.position);
-                        }
+                        SafeStopAgent(false);
+                        SafeSetDestination(Target.transform.position);
                         Debug.Log($"[RuleBased] {gameObject.name}: EVACUATE - {targetShelter.name}に向かいます ({reasoning})");
                     }
                     break;
 
                 case LLM.ActionType.STAY:
                     _stayPosition = transform.position;
-                    if (NavAgent != null)
-                    {
-                        NavAgent.isStopped = true;
-                        NavAgent.ResetPath();
-                    }
+                    SafeStopAgent(true);
+                    SafeResetPath();
                     Debug.Log($"[RuleBased] {gameObject.name}: STAY - 待機します ({reasoning})");
                     break;
 
@@ -596,11 +602,8 @@ public class Evacuee : MonoBehaviour {
             ? _searchFamilyTargetEvacuee.transform.position
             : target.search_position;
 
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = false;
-            NavAgent.SetDestination(destination);
-        }
+        SafeStopAgent(false);
+        SafeSetDestination(destination);
 
         string trackingMode = _searchFamilyTargetEvacuee != null ? "リアルタイム追跡" : "予測位置";
         Debug.Log($"[RuleBased] {gameObject.name}: SEARCH_FAMILY - {target.relation} {target.name} を探しに向かいます ({trackingMode}) ({reasoning})");
@@ -617,11 +620,8 @@ public class Evacuee : MonoBehaviour {
         Debug.Log($"[RuleBased] {gameObject.name}: CONTACT - {target.relation} {target.name} に連絡を取りました ({reasoning})");
 
         // 立ち止まって連絡
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // CONTACT完了後はルール再評価で次の行動が決まる
         // （_hasContactedFamily=trueになっているので、次はEVACUATEかSTAYが選ばれる）
@@ -695,6 +695,8 @@ public class Evacuee : MonoBehaviour {
         // キャパシティーがある場合、避難処理を行う
         if(shelter.currentCapacity > 0) {
             shelter.NowAccCount++;
+            // 避難成功時にSimulationMetricsに記録
+            RecordEvacuationToMetrics(shelter.displayName, shelter.gameObject.name);
             gameObject.SetActive(false);
         } else { //キャパシティがいっぱいの場合、次の避難所を探す
             excludeShelters.Add(shelter.uuid);
@@ -707,7 +709,7 @@ public class Evacuee : MonoBehaviour {
                 List<GameObject> shelters = SearchShelters(excludeShelters);
                 if(shelters.Count > 0) {
                     Target = shelters[0]; //最短距離のタワーを目標に設定
-                    NavAgent.SetDestination(Target.transform.position);
+                    SafeSetDestination(Target.transform.position);
                     ResetMovementSpeed();
                 }
             }
@@ -727,9 +729,31 @@ public class Evacuee : MonoBehaviour {
 
         // 津波避難地域は収容制限がないため、常に避難完了
         Debug.Log($"[Evacuee] {gameObject.name}: 津波避難地域 {area.displayName} に到達しました！");
+        // 避難成功時にSimulationMetricsに記録
+        RecordEvacuationToMetrics(area.displayName, area.gameObject.name);
         gameObject.SetActive(false);
 
         isEvacuating = false;
+    }
+
+    /// <summary>
+    /// SimulationMetricsに避難完了を記録
+    /// 避難が実際に成功した時点（SetActive(false)の直前）で呼び出す
+    /// </summary>
+    /// <param name="locationDisplayName">避難先の表示名</param>
+    /// <param name="locationGameObjectName">避難先のGameObject名（フォールバック用）</param>
+    private void RecordEvacuationToMetrics(string locationDisplayName, string locationGameObjectName)
+    {
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        if (metrics != null && _env != null)
+        {
+            string agentId = EvacueeId ?? gameObject.name;
+            float evacuationTime = _env.CurrentTimeSec;
+            string locationName = !string.IsNullOrEmpty(locationDisplayName) ? locationDisplayName : locationGameObjectName;
+            string agentType = UseLLMDecision ? "LLM" : "RuleBased";
+
+            metrics.RecordEvacuation(agentId, evacuationTime, locationName, agentType);
+        }
     }
 
     private void RequestLLMDecision()
@@ -739,22 +763,31 @@ public class Evacuee : MonoBehaviour {
         {
             return;
         }
-        
-        // ★ 最小リクエスト間隔のチェック
+
+        // 非同期で実行（最小リクエスト間隔の待機を含む）
+        _ = RequestLLMDecisionAsync();
+    }
+
+    /// <summary>
+    /// LLM意思決定リクエストを非同期で実行（最小リクエスト間隔を待機）
+    /// </summary>
+    private async Task RequestLLMDecisionAsync()
+    {
+        // ★ 最小リクエスト間隔のチェックと待機
         float currentTime = _env != null ? _env.CurrentTimeSec : Time.time;
         float elapsedSinceLastRequest = currentTime - _lastRequestTime;
-        
+
         if (_lastRequestTime > 0f && elapsedSinceLastRequest < MinRequestInterval)
         {
-            // 間隔が短すぎる場合は拒否
-            Debug.Log($"[Evacuee] {gameObject.name}: 最小リクエスト間隔({MinRequestInterval}秒)を満たしていません。"
-                      + $"前回から{elapsedSinceLastRequest:F2}秒経過（必要: {MinRequestInterval}秒）。リクエストをスキップします。");
-            return;
+            float waitTime = MinRequestInterval - elapsedSinceLastRequest;
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 最小リクエスト間隔({MinRequestInterval}秒)を満たしていません。"
+                      + $"前回から{elapsedSinceLastRequest:F2}秒経過。{waitTime:F2}秒待機します。");
+            await WaitSimulationTimeAsync(waitTime);
         }
-        
+
         // リクエストを許可
-        _lastRequestTime = currentTime;  // リクエスト時刻を記録
-        _ = DecideAndMoveAsync();
+        _lastRequestTime = _env != null ? _env.CurrentTimeSec : Time.time;
+        await DecideAndMoveAsync();
     }
 
     /// <summary>
@@ -960,11 +993,8 @@ public class Evacuee : MonoBehaviour {
         _stayPosition = transform.position;
 
         // NavMeshAgentを停止
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // メトリクス記録
         var metrics = FindFirstObjectByType<SimulationMetrics>();
@@ -984,16 +1014,16 @@ public class Evacuee : MonoBehaviour {
     {
         if (_familyData == null || _familyData.members == null || _familyData.members.Count == 0)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族情報がないためSEARCH_FAMILYを実行できません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族情報がないためSEARCH_FAMILYを実行できません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // シーン内に存在する家族のみを対象とする
         var searchableMembers = _familyData.members.Where(m => m.exists_in_scene && m.agent_id > 0).ToList();
         if (searchableMembers.Count == 0)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: シーン内に探索可能な家族がいないためSEARCH_FAMILYを実行できません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: シーン内に探索可能な家族がいないためSEARCH_FAMILYを実行できません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         string targetKey = response.target_family_member;
@@ -1037,16 +1067,13 @@ public class Evacuee : MonoBehaviour {
         else
         {
             // Evacueeが見つからない場合はフォールバック
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族 {target.name} (agent_id={target.agent_id}) のEvacueeが見つかりません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族 {target.name} (agent_id={target.agent_id}) のEvacueeが見つかりません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // NavMeshAgentで探索地点へ移動
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = false;
-            NavAgent.SetDestination(destination);
-        }
+        SafeStopAgent(false);
+        SafeSetDestination(destination);
 
         // メトリクス記録
         var metrics = FindFirstObjectByType<SimulationMetrics>();
@@ -1068,8 +1095,8 @@ public class Evacuee : MonoBehaviour {
     {
         if (_familyData == null || _familyData.members == null || _familyData.members.Count == 0)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族情報がないためCONTACTを実行できません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 家族情報がないためCONTACTを実行できません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // ★ 無限ループ防止: 連続CONTACT制限
@@ -1080,8 +1107,11 @@ public class Evacuee : MonoBehaviour {
             _consecutiveContactCount = 0;
             _contactCooldown = true; // 次の意思決定でCONTACTを除外
             // LLMに次の行動を決定させる（CONTACTを除外した選択肢で）
+            // 注意: この時点では_isRequestingLLMDecisionがtrueのため、
+            // フラグをリセットしてから呼び出す必要がある
             if (UseLLMDecision && DecisionClient != null)
             {
+                _isRequestingLLMDecision = false; // フラグをリセットして新しいリクエストを許可
                 RequestLLMDecision();
             }
             return true; // 現在の行動は終了、LLMが次を決定
@@ -1112,11 +1142,8 @@ public class Evacuee : MonoBehaviour {
         _lastContactTarget = target.name;
 
         // 連絡中は一旦立ち止まるイメージにする
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // メトリクス記録
         var metrics = FindFirstObjectByType<SimulationMetrics>();
@@ -1506,11 +1533,8 @@ public class Evacuee : MonoBehaviour {
 
         // 応答者も立ち止まる
         _isRespondingToFamilyContact = true;
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // LLMに応答生成をリクエスト
         _ = RequestFamilyContactResponseAsync(request, sender);
@@ -1607,10 +1631,7 @@ public class Evacuee : MonoBehaviour {
                 // LLMが無効な場合は以前の行動を再開
                 Debug.Log($"[Evacuee] {gameObject.name}: 家族連絡終了後、以前の行動({_actionBeforeFamilyContact})を再開します");
                 CurrentAction = _actionBeforeFamilyContact;
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = false;
-                }
+                SafeStopAgent(false);
             }
         }
     }
@@ -1650,29 +1671,42 @@ public class Evacuee : MonoBehaviour {
                     Debug.Log($"[Evacuee] {gameObject.name}: 名前 '{response.target_evacuee_id}' で避難者を見つけました。");
                 }
             }
+
+            // 循環チェック: 相互FOLLOWを防止
+            if (_followTarget != null && WouldCreateFollowCycle(_followTarget))
+            {
+                Debug.LogWarning($"[Evacuee] {gameObject.name}: {response.target_evacuee_id} をフォローすると循環が発生するため、別の対象を探します。");
+                _followTarget = null;
+            }
         }
 
-        // Step 2: IDでも名前でも見つからない場合、最寄りの避難者にフォールバック
+        // Step 2: IDでも名前でも見つからない、または循環が発生する場合、循環しない最寄りの避難者にフォールバック
         if (_followTarget == null)
         {
-            _followTarget = FindNearestEvacuee();
+            _followTarget = FindNearestNonCyclicFollowTarget();
             if (_followTarget != null)
             {
                 string fallbackId = !string.IsNullOrEmpty(_followTarget._uniqueId) ? _followTarget._uniqueId : _followTarget.gameObject.name;
                 string fallbackName = _followTarget._persona?.name ?? fallbackId;
-                Debug.Log($"[Evacuee] {gameObject.name}: 指定 '{response.target_evacuee_id}' が見つからないため、最寄りの避難者 '{fallbackName}' (ID: {fallbackId}) を追従対象にします。");
+                Debug.Log($"[Evacuee] {gameObject.name}: 指定 '{response.target_evacuee_id}' が見つからない/循環するため、最寄りの避難者 '{fallbackName}' (ID: {fallbackId}) を追従対象にします。");
             }
         }
 
-        // Step 3: それでも見つからない場合はEVACUATEにフォールバック
+        // Step 3: それでも見つからない場合はSTAYにフォールバック
         if (_followTarget == null)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 周囲に追従可能な避難者がいません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 有効な追従対象がいません（循環防止のため）。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // 追従開始：追従対象に自分をFOLLOWERとして登録
         _followTarget.RegisterFollower(this);
+
+        // 追従者はNavMesh優先度を低く設定（リーダーに避けさせない）
+        if (NavAgent != null)
+        {
+            NavAgent.avoidancePriority = 80; // 高い値 = 低優先度（自分が避ける）
+        }
         
         // 追従開始
         _lastFollowCheck = Time.time;
@@ -1685,22 +1719,16 @@ public class Evacuee : MonoBehaviour {
             if (_followTarget.Target != null)
             {
                 Target = _followTarget.Target;
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = false;
-                    NavAgent.SetDestination(Target.transform.position);
-                }
-                Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {response.target_evacuee_id}について行きます（相手は避難所に向かっているため、同じ避難所を目指します）");
+                SafeStopAgent(false);
+                SafeSetDestination(Target.transform.position);
+                Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {_followTarget.PersonaName}(ID:{response.target_evacuee_id})について行きます（相手は避難所に向かっているため、同じ避難所を目指します）");
             }
             else
             {
                 // 相手の目標が設定されていない場合は位置を追従
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = false;
-                    NavAgent.SetDestination(_followTarget.transform.position);
-                }
-                Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {response.target_evacuee_id}について行きます（相手の位置を追従）");
+                SafeStopAgent(false);
+                SafeSetDestination(_followTarget.transform.position);
+                Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {_followTarget.PersonaName}(ID:{response.target_evacuee_id})について行きます（相手の位置を追従）");
             }
         }
         else if (_followTargetLastAction == LLM.ActionType.STAY)
@@ -1708,22 +1736,16 @@ public class Evacuee : MonoBehaviour {
             // 相手がSTAYだった場合 → 同じようにSTAYする
             CurrentAction = LLM.ActionType.STAY;
             _stayPosition = transform.position;
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = true;
-                NavAgent.ResetPath();
-            }
-            Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {response.target_evacuee_id}について行きます（相手は待機中なので、同じく待機します）");
+            SafeStopAgent(true);
+            SafeResetPath();
+            Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {_followTarget.PersonaName}(ID:{response.target_evacuee_id})について行きます（相手は待機中なので、同じく待機します）");
         }
         else
         {
             // その他の行動（SEARCH_FAMILY, CONTACT, FOLLOW）の場合は位置を追従
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = false;
-                NavAgent.SetDestination(_followTarget.transform.position);
-            }
-            Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {response.target_evacuee_id}について行きます " +
+            SafeStopAgent(false);
+            SafeSetDestination(_followTarget.transform.position);
+            Debug.Log($"[Evacuee] {gameObject.name}: FOLLOW行動を選択 - {_followTarget.PersonaName}(ID:{response.target_evacuee_id})について行きます " +
                       $"(reason='{response.reasoning}', confidence={response.confidence:F2})");
         }
 
@@ -1741,39 +1763,36 @@ public class Evacuee : MonoBehaviour {
     {
         if (string.IsNullOrEmpty(response.talk_target_id))
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: TALK行動においてtalk_target_idが確認できません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: TALK行動においてtalk_target_idが確認できません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // ★ 無限ループ防止: 連続TALK制限
         _consecutiveTalkCount++;
         if (_consecutiveTalkCount >= MAX_CONSECUTIVE_TALK)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: 連続TALKが上限({MAX_CONSECUTIVE_TALK}回)に達しました。EVACUATEに切り替えます。");
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: 連続TALKが上限({MAX_CONSECUTIVE_TALK}回)に達しました。STAYに切り替えます。");
             _consecutiveTalkCount = 0;
-            return ExecuteEvacuateAction(response);
+            return ExecuteStayAction(response);
         }
 
         // 対象の避難者を検索
         Evacuee talkTarget = FindEvacueeById(response.talk_target_id);
         if (talkTarget == null)
         {
-            Debug.LogWarning($"[Evacuee] {gameObject.name}: TALK対象 {response.talk_target_id} が見つかりません。EVACUATEにフォールバックします。");
-            return ExecuteEvacuateAction(response);
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: TALK対象 {response.talk_target_id} が見つかりません。STAYにフォールバックします。");
+            return ExecuteStayAction(response);
         }
 
         // 会話中は立ち止まる
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // メトリクス記録
         var metrics = FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.TALK, null, response.reasoning, response.confidence);
 
-        Debug.Log($"[Evacuee] {gameObject.name}: TALK行動を選択 - {talkTarget.PersonaName}に話しかけます " +
+        Debug.Log($"[Evacuee] {gameObject.name}: TALK行動を選択 - {talkTarget.PersonaName}(ID:{talkTarget.EvacueeId})に話しかけます " +
                   $"(topic='{response.talk_topic}', message='{response.talk_message}', reason='{response.reasoning}')");
 
         // 非同期で会話を開始
@@ -1861,7 +1880,7 @@ public class Evacuee : MonoBehaviour {
             // 会話履歴に追加
             AddConversationToHistory(target.EvacueeId, target.PersonaName, topic, message, response.response_message, true);
 
-            Debug.Log($"[Evacuee] {gameObject.name}: 会話ターン{_conversationSession.turn_count}完了 - {target.PersonaName}の返答: 「{response.response_message}」(継続希望: {response.want_to_continue})");
+            Debug.Log($"[Evacuee] {gameObject.name}: 会話ターン{_conversationSession.turn_count}完了 - {target.PersonaName}(ID:{target.EvacueeId})の返答: 「{response.response_message}」(継続希望: {response.want_to_continue})");
 
             // マルチターン継続判定
             if (response.want_to_continue && _conversationSession.turn_count < MAX_CONVERSATION_TURNS)
@@ -2008,10 +2027,7 @@ public class Evacuee : MonoBehaviour {
         {
             _isRespondingToConversation = false;
             // 移動再開
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = false;
-            }
+            SafeStopAgent(false);
 
             // 次の意思決定
             if (UseLLMDecision && DecisionClient != null)
@@ -2072,11 +2088,8 @@ public class Evacuee : MonoBehaviour {
 
         // 応答者も立ち止まる
         _isRespondingToConversation = true;
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = true;
-            NavAgent.ResetPath();
-        }
+        SafeStopAgent(true);
+        SafeResetPath();
 
         // LLMに応答生成をリクエスト
         _ = RequestConversationResponseAsync(request);
@@ -2171,10 +2184,7 @@ public class Evacuee : MonoBehaviour {
                 // LLMが無効な場合は以前の行動を再開
                 Debug.Log($"[Evacuee] {gameObject.name}: 会話終了後、以前の行動({_actionBeforeConversation})を再開します");
                 CurrentAction = _actionBeforeConversation;
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = false;
-                }
+                SafeStopAgent(false);
             }
         }
     }
@@ -2431,35 +2441,23 @@ public class Evacuee : MonoBehaviour {
 
                     if (distance > _followDistance * 2)
                     {
-                        if (NavAgent != null && !NavAgent.isStopped)
-                        {
-                            NavAgent.SetDestination(targetPos);
-                        }
+                        SafeSetDestination(targetPos);
                     }
                     else if (distance < _followDistance)
                     {
-                        if (NavAgent != null)
-                        {
-                            NavAgent.isStopped = true;
-                        }
+                        SafeStopAgent(true);
                     }
                     else
                     {
-                        if (NavAgent != null)
-                        {
-                            NavAgent.isStopped = false;
-                            NavAgent.SetDestination(targetPos);
-                        }
+                        SafeStopAgent(false);
+                        SafeSetDestination(targetPos);
                     }
                 }
                 else
                 {
                     // 相手の目標が設定されていない場合は位置を追従
                     Vector3 targetPos = _followTarget.transform.position;
-                    if (NavAgent != null && !NavAgent.isStopped)
-                    {
-                        NavAgent.SetDestination(targetPos);
-                    }
+                    SafeSetDestination(targetPos);
                 }
             }
             else if (currentTargetAction == LLM.ActionType.STAY)
@@ -2470,11 +2468,8 @@ public class Evacuee : MonoBehaviour {
                     CurrentAction = LLM.ActionType.STAY;
                     _stayPosition = transform.position;
                 }
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = true;
-                    NavAgent.ResetPath();
-                }
+                SafeStopAgent(true);
+                SafeResetPath();
             }
             else
             {
@@ -2484,25 +2479,16 @@ public class Evacuee : MonoBehaviour {
 
                 if (distance > _followDistance * 2)
                 {
-                    if (NavAgent != null && !NavAgent.isStopped)
-                    {
-                        NavAgent.SetDestination(targetPos);
-                    }
+                    SafeSetDestination(targetPos);
                 }
                 else if (distance < _followDistance)
                 {
-                    if (NavAgent != null)
-                    {
-                        NavAgent.isStopped = true;
-                    }
+                    SafeStopAgent(true);
                 }
                 else
                 {
-                    if (NavAgent != null)
-                    {
-                        NavAgent.isStopped = false;
-                        NavAgent.SetDestination(targetPos);
-                    }
+                    SafeStopAgent(false);
+                    SafeSetDestination(targetPos);
                 }
             }
         }
@@ -2535,9 +2521,9 @@ public class Evacuee : MonoBehaviour {
                     ? _searchFamilyTarget.search_position
                     : _searchFamilyTarget.spawn_position;
 
-                if (fallbackPosition != Vector3.zero && NavAgent != null)
+                if (fallbackPosition != Vector3.zero)
                 {
-                    NavAgent.SetDestination(fallbackPosition);
+                    SafeSetDestination(fallbackPosition);
                 }
             }
             return;
@@ -2559,10 +2545,7 @@ public class Evacuee : MonoBehaviour {
                 return;
             }
 
-            if (NavAgent != null && !NavAgent.isStopped)
-            {
-                NavAgent.SetDestination(targetPos);
-            }
+            SafeSetDestination(targetPos);
 
             Debug.Log($"[Evacuee] {gameObject.name}: SEARCH_FAMILY座標更新 - {_searchFamilyTarget?.name}の現在位置 {targetPos} (距離: {distance:F1}m)");
         }
@@ -2605,20 +2588,14 @@ public class Evacuee : MonoBehaviour {
         if (_followTargetLastAction == LLM.ActionType.EVACUATE && _followTarget.Target != null)
         {
             Target = _followTarget.Target;
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = false;
-                NavAgent.SetDestination(Target.transform.position);
-            }
+            SafeStopAgent(false);
+            SafeSetDestination(Target.transform.position);
         }
         else
         {
             // 相手の位置を追従
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = false;
-                NavAgent.SetDestination(_followTarget.transform.position);
-            }
+            SafeStopAgent(false);
+            SafeSetDestination(_followTarget.transform.position);
         }
 
         // メトリクス記録
@@ -2663,11 +2640,17 @@ public class Evacuee : MonoBehaviour {
     public void RegisterFollower(Evacuee follower)
     {
         if (follower == null) return;
-        
+
         if (!_followers.Contains(follower))
         {
             _followers.Add(follower);
             Debug.Log($"[Evacuee] {gameObject.name}: {follower.gameObject.name}がFOLLOWERとして登録されました（現在{_followers.Count}人）");
+
+            // リーダーは高優先度に設定（フォロワーに避けさせる）
+            if (NavAgent != null && _followers.Count == 1)
+            {
+                NavAgent.avoidancePriority = 20; // 低い値 = 高優先度（他が避ける）
+            }
         }
     }
 
@@ -2677,10 +2660,16 @@ public class Evacuee : MonoBehaviour {
     public void UnregisterFollower(Evacuee follower)
     {
         if (follower == null) return;
-        
+
         if (_followers.Remove(follower))
         {
             Debug.Log($"[Evacuee] {gameObject.name}: {follower.gameObject.name}がFOLLOWERから削除されました（現在{_followers.Count}人）");
+
+            // フォロワーがいなくなったら通常優先度に戻す
+            if (NavAgent != null && _followers.Count == 0)
+            {
+                NavAgent.avoidancePriority = 50; // 通常優先度
+            }
         }
     }
 
@@ -2694,6 +2683,61 @@ public class Evacuee : MonoBehaviour {
             _followTarget.UnregisterFollower(this);
             _followTarget = null;
         }
+    }
+
+    /// <summary>
+    /// FOLLOW連鎖に循環がないかチェック
+    /// A→B→A や A→B→C→A のような循環を検出
+    /// </summary>
+    private bool WouldCreateFollowCycle(Evacuee target)
+    {
+        if (target == null) return false;
+
+        HashSet<Evacuee> visited = new HashSet<Evacuee> { this };
+        Evacuee current = target;
+
+        while (current != null)
+        {
+            if (visited.Contains(current))
+                return true; // 循環検出
+
+            visited.Add(current);
+
+            // 相手がFOLLOW中でなければ連鎖終了
+            if (current.CurrentAction != LLM.ActionType.FOLLOW)
+                break;
+
+            current = current._followTarget;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 循環を発生させない最寄りの追従対象を検索
+    /// </summary>
+    private Evacuee FindNearestNonCyclicFollowTarget()
+    {
+        var nearby = Physics.OverlapSphere(transform.position, FOLLOW_SEARCH_RADIUS);
+        Evacuee nearest = null;
+        float nearestDistance = float.MaxValue;
+
+        foreach (var col in nearby)
+        {
+            var evacuee = col.GetComponent<Evacuee>();
+            if (evacuee == null || evacuee == this) continue;
+            if (!evacuee.gameObject.activeSelf) continue;
+            if (WouldCreateFollowCycle(evacuee)) continue; // 循環チェック
+
+            float distance = Vector3.Distance(transform.position, evacuee.transform.position);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = evacuee;
+            }
+        }
+
+        return nearest;
     }
 
     /// <summary>
@@ -2787,11 +2831,8 @@ public class Evacuee : MonoBehaviour {
             {
                 Target = _followTarget.Target;
                 CurrentAction = LLM.ActionType.EVACUATE;
-                if (NavAgent != null)
-                {
-                    NavAgent.isStopped = false;
-                    NavAgent.SetDestination(Target.transform.position);
-                }
+                SafeStopAgent(false);
+                SafeSetDestination(Target.transform.position);
                 Debug.Log($"[Evacuee] {gameObject.name}: 追従対象がEVACUATEに変更したため、同じ避難所を目指します。");
             }
         }
@@ -2800,11 +2841,8 @@ public class Evacuee : MonoBehaviour {
             // 相手がSTAY → 同じようにSTAYする
             CurrentAction = LLM.ActionType.STAY;
             _stayPosition = transform.position;
-            if (NavAgent != null)
-            {
-                NavAgent.isStopped = true;
-                NavAgent.ResetPath();
-            }
+            SafeStopAgent(true);
+            SafeResetPath();
             Debug.Log($"[Evacuee] {gameObject.name}: 追従対象がSTAYに変更したため、同じく待機します。");
         }
         // その他の行動（SEARCH_FAMILY, CONTACT, FOLLOW）の場合は位置を追従し続ける
@@ -2945,13 +2983,10 @@ public class Evacuee : MonoBehaviour {
 
         var point = selectedShelter.transform.childCount > 0 ? selectedShelter.transform.GetChild(0).gameObject : selectedShelter;
         Target = point;
-        
+
         // NavMeshAgentを再開（STAY状態から遷移した場合）
-        if (NavAgent != null)
-        {
-            NavAgent.isStopped = false;
-            NavAgent.SetDestination(Target.transform.position);
-        }
+        SafeStopAgent(false);
+        SafeSetDestination(Target.transform.position);
         
         ApplySpeedFromLLMResponse(response.desired_speed);
         
@@ -3279,13 +3314,19 @@ public class Evacuee : MonoBehaviour {
         actions.Add("STAY");
 
         // 家族関連アクション（家族がいる場合のみ）
-        bool hasFamily = familyPayloads != null && familyPayloads.Length > 0;
+        bool hasFamily = _familyData != null && _familyData.members != null && _familyData.members.Count > 0;
         if (hasFamily)
         {
-            actions.Add("SEARCH_FAMILY");
+            // SEARCH_FAMILY: シーン内に存在する家族がいる場合のみ（シーン外家族は座標取得不可）
+            // ExecuteSearchFamilyActionと同じ条件: exists_in_scene && agent_id > 0
+            bool hasInSceneFamily = _familyData.members.Any(m => m.exists_in_scene && m.agent_id > 0);
+            if (hasInSceneFamily)
+            {
+                actions.Add("SEARCH_FAMILY");
+            }
 
             // CONTACT: スマホを持っていて、連絡可能な家族がいる場合（クールダウン中は除外）
-            bool canContact = HasSmartphone && familyPayloads.Any(f => f.has_phone) && !_contactCooldown;
+            bool canContact = HasSmartphone && _familyData.members.Any(m => m.has_phone) && !_contactCooldown;
             if (canContact)
             {
                 actions.Add("CONTACT");
@@ -3464,6 +3505,13 @@ public class Evacuee : MonoBehaviour {
             {
                 totalCount++; // 総人数をカウント
 
+                // この人をフォローすると循環が発生する場合はリストから除外（相互FOLLOW防止）
+                // 混雑度計算には含めるが、FOLLOW/TALK対象としては表示しない
+                if (WouldCreateFollowCycle(evacuee))
+                {
+                    continue;
+                }
+
                 // 目標避難所のIDを取得
                 string targetShelterId = null;
                 if (evacuee.Target != null)
@@ -3638,9 +3686,9 @@ public class Evacuee : MonoBehaviour {
         if(towers.Count > 0) {
             Target = towers[0]; //最短距離のタワーを目標に設定
             Vector3 destination = Target.transform.position;
-            NavAgent.SetDestination(destination);
+            SafeSetDestination(destination);
             ResetMovementSpeed();
-            Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent.name}, speed={NavAgent.speed:F2}");
+            Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent?.name}, speed={NavAgent?.speed:F2}");
         }
     }
 
@@ -4045,5 +4093,201 @@ public class Evacuee : MonoBehaviour {
 
         return shelterObj.name;
     }
+
+    #region NavMeshAgent Safe Wrappers
+
+    /// <summary>
+    /// NavMeshAgentの状態を確認してから安全にSetDestinationを呼び出す
+    /// </summary>
+    /// <returns>SetDestinationが成功したかどうか</returns>
+    private bool SafeSetDestination(Vector3 destination, [System.Runtime.CompilerServices.CallerMemberName] string callerName = "")
+    {
+        string agentName = gameObject?.name ?? "Unknown";
+        string destStr = $"({destination.x:F2}, {destination.y:F2}, {destination.z:F2})";
+        string targetName = Target != null ? Target.name : "null";
+
+        if (NavAgent == null)
+        {
+            Debug.LogWarning($"[SafeSetDestination] {agentName}: FAILED - NavAgent is null. " +
+                           $"Destination={destStr}, Target={targetName}, Caller={callerName}");
+            return false;
+        }
+
+        if (!gameObject.activeSelf)
+        {
+            Debug.LogWarning($"[SafeSetDestination] {agentName}: FAILED - GameObject is inactive. " +
+                           $"Destination={destStr}, Target={targetName}, Caller={callerName}");
+            return false;
+        }
+
+        if (!NavAgent.enabled)
+        {
+            Debug.LogWarning($"[SafeSetDestination] {agentName}: FAILED - NavAgent is disabled. " +
+                           $"Destination={destStr}, Target={targetName}, Caller={callerName}");
+            return false;
+        }
+
+        if (!NavAgent.isOnNavMesh)
+        {
+            Vector3 agentPos = transform.position;
+            Debug.LogWarning($"[SafeSetDestination] {agentName}: FAILED - Agent is NOT on NavMesh. " +
+                           $"AgentPos=({agentPos.x:F2}, {agentPos.y:F2}, {agentPos.z:F2}), " +
+                           $"Destination={destStr}, Target={targetName}, Caller={callerName}");
+            return false;
+        }
+
+        // SetDestinationを実行
+        bool setDestResult = NavAgent.SetDestination(destination);
+
+        // 経路計算の結果を確認（1フレーム後に確定するが、即時チェックも有用）
+        StartCoroutine(CheckPathAfterSetDestination(agentName, destination, targetName, callerName));
+
+        if (!setDestResult)
+        {
+            Debug.LogWarning($"[SafeSetDestination] {agentName}: SetDestination returned FALSE. " +
+                           $"Destination={destStr}, Target={targetName}, Caller={callerName}");
+        }
+        else
+        {
+            Debug.Log($"[SafeSetDestination] {agentName}: SUCCESS - Destination set. " +
+                     $"Destination={destStr}, Target={targetName}, isStopped={NavAgent.isStopped}, Caller={callerName}");
+        }
+
+        return setDestResult;
+    }
+
+    /// <summary>
+    /// SetDestination後に経路が正しく計算されたかを確認するコルーチン
+    /// </summary>
+    private System.Collections.IEnumerator CheckPathAfterSetDestination(string agentName, Vector3 destination, string targetName, string callerName)
+    {
+        // 1フレーム待機して経路計算を待つ
+        yield return null;
+
+        if (NavAgent == null || !gameObject.activeSelf) yield break;
+
+        string destStr = $"({destination.x:F2}, {destination.y:F2}, {destination.z:F2})";
+
+        // pathPendingがtrueの場合はさらに待機
+        int waitFrames = 0;
+        while (NavAgent.pathPending && waitFrames < 10)
+        {
+            yield return null;
+            waitFrames++;
+        }
+
+        if (!NavAgent.hasPath)
+        {
+            Debug.LogError($"[SafeSetDestination] {agentName}: PATH NOT FOUND after {waitFrames + 1} frames! " +
+                          $"Destination={destStr}, Target={targetName}, " +
+                          $"pathStatus={NavAgent.pathStatus}, isStopped={NavAgent.isStopped}, " +
+                          $"velocity=({NavAgent.velocity.x:F2}, {NavAgent.velocity.y:F2}, {NavAgent.velocity.z:F2}), " +
+                          $"Caller={callerName}");
+        }
+        else
+        {
+            Debug.Log($"[SafeSetDestination] {agentName}: Path confirmed after {waitFrames + 1} frames. " +
+                     $"remainingDistance={NavAgent.remainingDistance:F2}m, pathStatus={NavAgent.pathStatus}, " +
+                     $"isStopped={NavAgent.isStopped}, Caller={callerName}");
+        }
+    }
+
+    /// <summary>
+    /// NavMeshAgentの状態を確認してから安全にisStopped/Resumeを操作する
+    /// </summary>
+    /// <returns>操作が成功したかどうか</returns>
+    private bool SafeStopAgent(bool stop, [System.Runtime.CompilerServices.CallerMemberName] string callerName = "")
+    {
+        string agentName = gameObject?.name ?? "Unknown";
+        string action = stop ? "STOP" : "RESUME";
+
+        if (NavAgent == null)
+        {
+            Debug.LogWarning($"[SafeStopAgent] {agentName}: FAILED to {action} - NavAgent is null. Caller={callerName}");
+            return false;
+        }
+
+        if (!gameObject.activeSelf)
+        {
+            Debug.LogWarning($"[SafeStopAgent] {agentName}: FAILED to {action} - GameObject is inactive. Caller={callerName}");
+            return false;
+        }
+
+        if (!NavAgent.enabled)
+        {
+            Debug.LogWarning($"[SafeStopAgent] {agentName}: FAILED to {action} - NavAgent is disabled. Caller={callerName}");
+            return false;
+        }
+
+        if (!NavAgent.isOnNavMesh)
+        {
+            Vector3 agentPos = transform.position;
+            Debug.LogWarning($"[SafeStopAgent] {agentName}: FAILED to {action} - Agent is NOT on NavMesh. " +
+                           $"AgentPos=({agentPos.x:F2}, {agentPos.y:F2}, {agentPos.z:F2}), Caller={callerName}");
+            return false;
+        }
+
+        bool previousState = NavAgent.isStopped;
+        NavAgent.isStopped = stop;
+
+        // 状態が変わった場合のみログ出力
+        if (previousState != stop)
+        {
+            Debug.Log($"[SafeStopAgent] {agentName}: {action} SUCCESS - isStopped changed from {previousState} to {stop}. " +
+                     $"hasPath={NavAgent.hasPath}, velocity=({NavAgent.velocity.x:F2}, {NavAgent.velocity.y:F2}, {NavAgent.velocity.z:F2}), " +
+                     $"Caller={callerName}");
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// NavMeshAgentの状態を確認してから安全にResetPathを操作する
+    /// </summary>
+    /// <returns>操作が成功したかどうか</returns>
+    private bool SafeResetPath()
+    {
+        if (NavAgent == null || !gameObject.activeSelf || !NavAgent.enabled || !NavAgent.isOnNavMesh)
+        {
+            return false;
+        }
+
+        NavAgent.ResetPath();
+        return true;
+    }
+
+    #endregion
+
+#if UNITY_EDITOR
+    /// <summary>
+    /// シーンビューでFOLLOW関係を矢印で表示
+    /// </summary>
+    private void OnDrawGizmos()
+    {
+        // FOLLOW中で追従対象がいる場合のみ描画
+        if (CurrentAction != LLM.ActionType.FOLLOW || _followTarget == null)
+            return;
+
+        if (!_followTarget.gameObject.activeSelf)
+            return;
+
+        Vector3 start = transform.position + Vector3.up * 2f; // 少し上に
+        Vector3 end = _followTarget.transform.position + Vector3.up * 2f;
+
+        Gizmos.color = Color.cyan; // FOLLOW関係は水色で表示
+
+        // 線を描画
+        Gizmos.DrawLine(start, end);
+
+        // 矢印の先端を描画
+        Vector3 direction = (end - start).normalized;
+        Vector3 right = Quaternion.Euler(0, 30, 0) * -direction;
+        Vector3 left = Quaternion.Euler(0, -30, 0) * -direction;
+
+        float arrowHeadLength = 1.5f;
+        Gizmos.DrawLine(end, end + right * arrowHeadLength);
+        Gizmos.DrawLine(end, end + left * arrowHeadLength);
+    }
+#endif
 
 }

@@ -40,8 +40,9 @@
       "reliability": "老朽化により一部不鳴動の可能性あり"
     }
   },
-  "evacuation_rules": {
-    "general_principles": [
+  "evacuation_training_knowledge": {
+    "description": "避難訓練を受けた住民が持つ知識。has_evacuation_training=trueの場合のみプロンプトに追加",
+    "principles": [
       "津波警報発表時は直ちに高台へ避難する",
       "海抜20m以上の場所を目指す",
       "車での避難は原則禁止（渋滞を招くため）",
@@ -49,6 +50,11 @@
       "避難開始後は絶対に家に戻らない（忘れ物を取りに戻って命を落とす例が多い）",
       "可能であれば、近くにいる高齢者や体の不自由な方の避難を手伝う"
     ],
+    "time_awareness": {
+      "tsunami_arrival_estimate": "地震発生から約30分",
+      "recommended_evacuation_start": "揺れが収まったら直ちに避難開始",
+      "critical_note": "第1波が小さくても油断しない。第2波・第3波で急激に波高が上がることがある。"
+    },
     "designated_shelters": [
       {
         "name": "望洋荘",
@@ -221,11 +227,24 @@
         "recommended": ["望洋荘", "健登師記念会館", "江名公民館"]
       }
     },
-    "time_limits": {
-      "tsunami_arrival_estimate": "地震発生から約30分",
-      "recommended_evacuation_start": "揺れが収まったら直ちに避難開始",
-      "critical_note": "第1波が小さくても油断しない。第2波・第3波で急激に波高が上がることがある。"
-    }
+    "known_hazards": [
+      {
+        "area": "海岸から500m以内",
+        "risk": "津波到達まで約10分と推定。最優先で避難が必要。"
+      },
+      {
+        "area": "県道382号線（海岸通り）",
+        "risk": "海抜5m以下の低地を通る。津波時は通行危険。"
+      },
+      {
+        "area": "豊間漁港周辺",
+        "risk": "最も危険な区域。発災後は立ち入り禁止。"
+      },
+      {
+        "area": "海抜10m以下の住宅地",
+        "risk": "2011年の津波では浸水した区域。避難対象。"
+      }
+    ]
   },
   "known_hazards": [
     {

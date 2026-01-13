@@ -24,6 +24,36 @@ public class SpawnLocationManager : MonoBehaviour
         }
         _instance = this;
     }
+
+    /// <summary>
+    /// シングルトンインスタンスをリセットし、建物カテゴリを再分類する
+    /// バッチ実験のエピソード遷移時に呼び出す
+    /// </summary>
+    public static void ResetInstance()
+    {
+        if (_instance != null)
+        {
+            _instance._buildingsByCategory = null;
+            Debug.Log("[SpawnLocationManager] インスタンスをリセットしました。次回アクセス時に再初期化されます。");
+        }
+    }
+
+    /// <summary>
+    /// 強制的に建物カテゴリを再分類する
+    /// エピソード開始時に呼び出すことで、古いデータをクリアして再取得する
+    /// </summary>
+    public static void ForceReinitialize()
+    {
+        if (_instance != null)
+        {
+            Debug.Log("[SpawnLocationManager] 強制再初期化を実行します");
+            _instance.CategorizeAllBuildings();
+        }
+        else
+        {
+            Debug.LogWarning("[SpawnLocationManager] インスタンスが存在しないため、再初期化できません");
+        }
+    }
     
     void Start()
     {

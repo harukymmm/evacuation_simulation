@@ -408,11 +408,15 @@ public class EnvManager : MonoBehaviour {
 
     /// <summary>
     /// エピソード開始時の初期化処理
-    /// この関数はエージェントのイベント関数から参照されます 
+    /// この関数はエージェントのイベント関数から参照されます
     /// </summary>
     public void OnEpisodeBegin() {
         EnableEnv = false;
         Dispose();
+
+        // SpawnLocationManagerを強制的に再初期化（バッチ実験のエピソード遷移対策）
+        SpawnLocationManager.ForceReinitialize();
+
         Create();
         
         // AlertManagerをリセット
@@ -542,11 +546,11 @@ public class EnvManager : MonoBehaviour {
     /// <param name="spawnPos"></param>
     private void SpawnEvacuee(Vector3 spawnPos) {
         int agentId = Evacuees.Count + 1;
-        
+
         // 家族情報を取得してスポーン位置を決定
         var familyData = FamilyManager.GetFamily(agentId);
         Vector3 finalSpawnPos = spawnPos;
-        
+
         if (familyData != null && familyData.owner_spawn_category != BuildingCategory.Other)
         {
             // 家族情報に基づいてスポーン位置を取得（School/PreSchoolはタグからフォールバック）
@@ -559,7 +563,7 @@ public class EnvManager : MonoBehaviour {
             {
                 Debug.LogWarning($"[EnvManager] Agent {agentId}: {BuildingCategorizer.GetCategoryDisplayName(familyData.owner_spawn_category)}のスポーン位置が見つかりません");
             }
-            
+
             // 家族メンバーの探索位置を設定（School/PreSchoolはタグからフォールバック）
             foreach (var member in familyData.members)
             {
@@ -576,7 +580,18 @@ public class EnvManager : MonoBehaviour {
                 }
             }
         }
-        
+
+        // NavMesh上の最寄り位置に補正（建物座標がNavMeshからずれている場合の対策）
+        NavMeshHit navHit;
+        if (NavMesh.SamplePosition(finalSpawnPos, out navHit, 50f, NavMesh.AllAreas))
+        {
+            finalSpawnPos = navHit.position;
+        }
+        else
+        {
+            Debug.LogWarning($"[EnvManager] Agent {agentId}: NavMesh上の位置が見つかりません。元の位置 {finalSpawnPos} を使用します。");
+        }
+
         GameObject evacuee = Instantiate(SpawnEvacueePref, finalSpawnPos, Quaternion.identity, transform);
         evacuee.tag = "Evacuee";
         Evacuees.Add(evacuee);

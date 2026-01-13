@@ -282,12 +282,7 @@ public class Shelter : MonoBehaviour{
         if (isEvacuee) {
             Evacuee evacuee = other.GetComponent<Evacuee>();
             if (evacuee != null) {
-                // SimulationMetricsに避難完了を記録（Evacuationが成功する前に記録）
-                if (currentCapacity > 0)
-                {
-                    RecordEvacuationToMetrics(evacuee);
-                }
-
+                // 避難処理を実行（記録はEvacuee.Evacuation内で避難成功時にのみ行う）
                 evacuee.Evacuation(this);
 
                 // 収容率が閾値（5%, 25%, 50%, 75%）を超えた時のみログ出力
@@ -331,7 +326,7 @@ public class Shelter : MonoBehaviour{
         var metrics = FindFirstObjectByType<SimulationMetrics>();
         if (metrics != null && _env != null)
         {
-            string agentId = evacuee.gameObject.name;
+            string agentId = evacuee.EvacueeId ?? evacuee.gameObject.name;
             float evacuationTime = _env.CurrentTimeSec;
             string shelterName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
             string agentType = evacuee.UseLLMDecision ? "LLM" : "RuleBased";

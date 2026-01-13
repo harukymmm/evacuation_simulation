@@ -124,6 +124,10 @@ public class SimulationMetrics : MonoBehaviour
         public int evacuatedAgents;
         public Dictionary<string, float> actionDistribution;
         public Dictionary<string, int> shelterDistribution;
+        // 場所タイプ別避難率
+        public float evacuationRateToShelter;    // 避難所への避難完了率
+        public float evacuationRateToArea;       // 津波避難地域への避難完了率
+        public Dictionary<string, int> evacuationCountByLocation;  // 実際の避難完了場所別カウント
         // 実験3: 生存判定結果
         public float survivalRate;          // 生存率
         public int survivedAgents;          // 生存したエージェント数
@@ -468,6 +472,44 @@ public class SimulationMetrics : MonoBehaviour
     }
 
     /// <summary>
+    /// 全避難所の名前を取得
+    /// </summary>
+    private HashSet<string> GetShelterNames()
+    {
+        var names = new HashSet<string>();
+        if (_envManager.Shelters != null)
+        {
+            foreach (var obj in _envManager.Shelters)
+            {
+                if (obj == null) continue;
+                var shelter = obj.GetComponent<Shelter>();
+                if (shelter != null)
+                    names.Add(!string.IsNullOrEmpty(shelter.displayName) ? shelter.displayName : obj.name);
+            }
+        }
+        return names;
+    }
+
+    /// <summary>
+    /// 全津波避難地域の名前を取得
+    /// </summary>
+    private HashSet<string> GetAreaNames()
+    {
+        var names = new HashSet<string>();
+        if (_envManager.TsunamiEvacuationAreas != null)
+        {
+            foreach (var obj in _envManager.TsunamiEvacuationAreas)
+            {
+                if (obj == null) continue;
+                var area = obj.GetComponent<TsunamiEvacuationArea>();
+                if (area != null)
+                    names.Add(!string.IsNullOrEmpty(area.displayName) ? area.displayName : obj.name);
+            }
+        }
+        return names;
+    }
+
+    /// <summary>
     /// エージェントの行動を記録（Evacueeから呼び出される）
     /// </summary>
     public void RecordAction(string agentId, ActionType actionType, string targetShelter = null,
@@ -673,6 +715,35 @@ public class SimulationMetrics : MonoBehaviour
                 : 0f;
         }
 
+        // 場所タイプ別の避難完了数をカウント
+        var shelterNames = GetShelterNames();
+        var areaNames = GetAreaNames();
+
+        int evacuatedToShelter = 0;
+        int evacuatedToArea = 0;
+        var evacuationCountByLocation = new Dictionary<string, int>();
+
+        foreach (var record in completedRecords)
+        {
+            string location = record.finalShelter;
+            if (string.IsNullOrEmpty(location)) continue;
+
+            // 場所別カウント
+            if (!evacuationCountByLocation.ContainsKey(location))
+                evacuationCountByLocation[location] = 0;
+            evacuationCountByLocation[location]++;
+
+            // タイプ別カウント
+            if (shelterNames.Contains(location))
+                evacuatedToShelter++;
+            else if (areaNames.Contains(location))
+                evacuatedToArea++;
+        }
+
+        int totalAgents = _envManager.Evacuees.Count;
+        float evacuationRateToShelter = totalAgents > 0 ? (float)evacuatedToShelter / totalAgents : 0f;
+        float evacuationRateToArea = totalAgents > 0 ? (float)evacuatedToArea / totalAgents : 0f;
+
         // 実験3: 生存率を計算
         int survivedCount = _agentMetrics.Values.Count(m => m.survived);
         int totalAgentsCount = _agentMetrics.Count;
@@ -702,10 +773,14 @@ public class SimulationMetrics : MonoBehaviour
             averageEvacuationTime = evacuationTimes.Count > 0 ? evacuationTimes.Average() : 0f,
             medianEvacuationTime = evacuationTimes.Count > 0 ? GetMedian(evacuationTimes) : 0f,
             maxEvacuationTime = evacuationTimes.Count > 0 ? evacuationTimes.Max() : 0f,
-            totalAgents = _envManager.Evacuees.Count,
+            totalAgents = totalAgents,
             evacuatedAgents = completedRecords.Count,
             actionDistribution = actionDistribution,
             shelterDistribution = new Dictionary<string, int>(_shelterSelectionCounts),
+            // 場所タイプ別避難率
+            evacuationRateToShelter = evacuationRateToShelter,
+            evacuationRateToArea = evacuationRateToArea,
+            evacuationCountByLocation = evacuationCountByLocation,
             // 実験3: 生存判定結果
             survivalRate = survivalRate,
             survivedAgents = survivedCount,
@@ -817,12 +892,28 @@ public class SimulationMetrics : MonoBehaviour
                 writer.WriteLine($"{kvp.Key},{kvp.Value:F4}");
             }
 
-            // 避難所分布
+            // 避難所分布（EVACUATEアクション選択時）
             writer.WriteLine("");
-            writer.WriteLine("shelter,count");
+            writer.WriteLine("shelter_selection,count");
             foreach (var kvp in summary.shelterDistribution)
             {
                 writer.WriteLine($"{kvp.Key},{kvp.Value}");
+            }
+
+            // 場所タイプ別避難率
+            writer.WriteLine("");
+            writer.WriteLine("evacuation_rate_to_shelter,{0:F4}", summary.evacuationRateToShelter);
+            writer.WriteLine("evacuation_rate_to_area,{0:F4}", summary.evacuationRateToArea);
+
+            // 場所別避難完了人数（実際の避難完了）
+            writer.WriteLine("");
+            writer.WriteLine("evacuation_location,count");
+            if (summary.evacuationCountByLocation != null)
+            {
+                foreach (var kvp in summary.evacuationCountByLocation.OrderByDescending(x => x.Value))
+                {
+                    writer.WriteLine($"{kvp.Key},{kvp.Value}");
+                }
             }
         }
 

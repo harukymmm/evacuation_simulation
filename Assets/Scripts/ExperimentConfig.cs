@@ -671,13 +671,95 @@ public class ExperimentConfig : MonoBehaviour
 
     /// <summary>
     /// プリセットに基づいて条件リストを生成
+    /// AllExperimentsの場合、重複する条件（LLM+None+Standard）は共通ベースラインとして統合
     /// </summary>
     private List<ExperimentCondition> GenerateConditions(BatchExperimentPreset preset)
     {
         var conditions = new List<ExperimentCondition>();
 
+        // AllExperimentsの場合は重複を排除した統合条件を生成
+        if (preset == BatchExperimentPreset.AllExperiments)
+        {
+            // 共通ベースライン条件（Exp1-A, Exp2-1, Exp3-A を統合）
+            // LLM + BiasCondition.None + InformationStrategy.Standard
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Baseline-LLM",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.None,
+                informationStrategy = InformationStrategy.Standard,
+                overrideBias = false
+            });
+
+            // 実験1固有: ルールベースエージェント
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp1-B",
+                agentType = AgentType.RuleBased,
+                biasCondition = BiasCondition.None,
+                informationStrategy = InformationStrategy.Standard,
+                overrideBias = false
+            });
+
+            // 実験2固有: 認知バイアス条件（ベースライン除く3条件）
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp2-2",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.NormalcyBias,
+                informationStrategy = InformationStrategy.Standard,
+                overrideBias = true
+            });
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp2-3",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.ConformityBias,
+                informationStrategy = InformationStrategy.Standard,
+                overrideBias = true
+            });
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp2-4",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.Combined,
+                informationStrategy = InformationStrategy.Standard,
+                overrideBias = true
+            });
+
+            // 実験3固有: 情報提供戦略条件（ベースライン除く3条件）
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp3-B",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.None,
+                informationStrategy = InformationStrategy.Urgent,
+                overrideBias = false
+            });
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp3-C",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.None,
+                informationStrategy = InformationStrategy.Detailed,
+                overrideBias = false
+            });
+            conditions.Add(new ExperimentCondition
+            {
+                conditionId = "Exp3-D",
+                agentType = AgentType.LLM,
+                biasCondition = BiasCondition.None,
+                informationStrategy = InformationStrategy.DetailedUrgent,
+                overrideBias = false
+            });
+
+            return conditions;
+        }
+
+        // 個別実験プリセットの場合は従来どおり
+
         // 実験1: エージェントタイプ比較（LLM vs RuleBased）
-        if (preset == BatchExperimentPreset.Experiment1 || preset == BatchExperimentPreset.AllExperiments)
+        if (preset == BatchExperimentPreset.Experiment1)
         {
             conditions.Add(new ExperimentCondition
             {
@@ -698,7 +780,7 @@ public class ExperimentConfig : MonoBehaviour
         }
 
         // 実験2: 認知バイアスの影響（4条件）
-        if (preset == BatchExperimentPreset.Experiment2 || preset == BatchExperimentPreset.AllExperiments)
+        if (preset == BatchExperimentPreset.Experiment2)
         {
             conditions.Add(new ExperimentCondition
             {
@@ -735,7 +817,7 @@ public class ExperimentConfig : MonoBehaviour
         }
 
         // 実験3: 情報提供戦略の検証（4条件）
-        if (preset == BatchExperimentPreset.Experiment3 || preset == BatchExperimentPreset.AllExperiments)
+        if (preset == BatchExperimentPreset.Experiment3)
         {
             conditions.Add(new ExperimentCondition
             {
@@ -825,6 +907,10 @@ public class ExperimentConfig : MonoBehaviour
             Debug.Log($"[ExperimentConfig] 次の条件: {_batchConditions[_currentConditionIndex].conditionId}");
 
             ResetExperiment();
+
+            // SpawnLocationManagerをリセットして次の条件で正しく再初期化されるようにする
+            SpawnLocationManager.ResetInstance();
+
             ApplyCondition(_batchConditions[_currentConditionIndex]);
             StartExperiment();
 

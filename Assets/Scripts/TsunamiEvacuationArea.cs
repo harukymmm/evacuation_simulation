@@ -120,33 +120,14 @@ public class TsunamiEvacuationArea : MonoBehaviour
             Evacuee evacuee = other.GetComponent<Evacuee>();
             if (evacuee != null)
             {
-                RecordEvacuationToMetrics(evacuee);
+                // 避難処理を実行（記録はEvacuee.EvacuationToArea内で避難成功時にのみ行う）
                 evacuee.EvacuationToArea(this);
+                CurrentOccupancy++;
             }
             else
             {
                 Debug.LogError($"[TsunamiEvacuationArea] Evacuee component not found on {other.name}");
             }
-        }
-    }
-
-    /// <summary>
-    /// SimulationMetricsに避難完了を記録
-    /// </summary>
-    private void RecordEvacuationToMetrics(Evacuee evacuee)
-    {
-        CurrentOccupancy++;
-
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
-        if (metrics != null && _env != null)
-        {
-            string agentId = evacuee.gameObject.name;
-            float evacuationTime = _env.CurrentTimeSec;
-            string areaName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
-            string agentType = evacuee.UseLLMDecision ? "LLM" : "RuleBased";
-
-            metrics.RecordEvacuation(agentId, evacuationTime, areaName, agentType);
-            Debug.Log($"[TsunamiEvacuationArea] {gameObject.name}: 避難完了記録 - Agent: {agentId}, Time: {evacuationTime}s, Type: {agentType}");
         }
     }
 }
