@@ -46,6 +46,7 @@ public struct BatchConditionResult
 /// UnityのInspectorから設定を変更可能
 /// N回の試行後に自動的に実験を終了し、結果をまとめて出力する
 /// </summary>
+[DefaultExecutionOrder(-100)] // 他のスクリプトより先に初期化（Instanceの早期設定）
 public class ExperimentConfig : MonoBehaviour
 {
     /// <summary>
@@ -116,13 +117,41 @@ public class ExperimentConfig : MonoBehaviour
     {
         /// <summary>バッチモード無効（従来どおり単一条件）</summary>
         None,
-        /// <summary>実験1のみ（LLM vs RuleBased、2条件）</summary>
+
+        // === 実験1: エージェントタイプ比較 ===
+        /// <summary>実験1-A: LLMエージェント</summary>
+        Exp1_A_LLM,
+        /// <summary>実験1-B: ルールベースエージェント</summary>
+        Exp1_B_RuleBased,
+        /// <summary>実験1全体（2条件）</summary>
         Experiment1,
-        /// <summary>実験2のみ（認知バイアス4条件）</summary>
+
+        // === 実験2: 認知バイアスの影響 ===
+        /// <summary>実験2-1: ベースライン（既存ペルソナ）</summary>
+        Exp2_1_Baseline,
+        /// <summary>実験2-2: 正常性バイアス</summary>
+        Exp2_2_NormalcyBias,
+        /// <summary>実験2-3: 同調バイアス</summary>
+        Exp2_3_ConformityBias,
+        /// <summary>実験2-4: 複合バイアス</summary>
+        Exp2_4_CombinedBias,
+        /// <summary>実験2全体（4条件）</summary>
         Experiment2,
-        /// <summary>実験3のみ（情報提供戦略4条件）</summary>
+
+        // === 実験3: 情報提供戦略 ===
+        /// <summary>実験3-A: 標準（具体性:低 × 切迫感:低）</summary>
+        Exp3_A_Standard,
+        /// <summary>実験3-B: 切迫感強調（具体性:低 × 切迫感:高）</summary>
+        Exp3_B_Urgent,
+        /// <summary>実験3-C: 詳細情報（具体性:高 × 切迫感:低）</summary>
+        Exp3_C_Detailed,
+        /// <summary>実験3-D: 詳細+切迫感（具体性:高 × 切迫感:高）</summary>
+        Exp3_D_DetailedUrgent,
+        /// <summary>実験3全体（4条件）</summary>
         Experiment3,
-        /// <summary>全実験（10条件）</summary>
+
+        // === 全実験 ===
+        /// <summary>全実験（8条件、重複統合）</summary>
         AllExperiments
     }
 
@@ -310,22 +339,22 @@ public class ExperimentConfig : MonoBehaviour
         _trialResults.Clear();
     }
 
-    private void OnTrialEnd(float evacuationRate)
+    private void OnTrialEnd(float evacuationRate, float elapsedTime)
     {
         if (!_experimentStarted || _experimentCompleted) return;
 
-        // 試行結果を記録
+        // 試行結果を記録（経過時間はイベント発火時にキャプチャされた値を使用）
         var result = new ExperimentTrialResult
         {
             trialIndex = _currentTrialIndex + 1,
             evacuationRate = evacuationRate,
-            elapsedTime = _envManager != null ? _envManager.CurrentTimeSec : 0f,
+            elapsedTime = elapsedTime,
             timestamp = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
         };
         _trialResults.Add(result);
 
         _currentTrialIndex++;
-        Debug.Log($"[ExperimentConfig] 試行 {_currentTrialIndex}/{NumberOfTrials} 完了 - 避難率: {evacuationRate:P1}");
+        Debug.Log($"[ExperimentConfig] 試行 {_currentTrialIndex}/{NumberOfTrials} 完了 - 避難率: {evacuationRate:P1}, 経過時間: {elapsedTime:F1}秒");
 
         if (_currentTrialIndex >= NumberOfTrials)
         {
@@ -677,183 +706,107 @@ public class ExperimentConfig : MonoBehaviour
     {
         var conditions = new List<ExperimentCondition>();
 
-        // AllExperimentsの場合は重複を排除した統合条件を生成
-        if (preset == BatchExperimentPreset.AllExperiments)
+        switch (preset)
         {
-            // 共通ベースライン条件（Exp1-A, Exp2-1, Exp3-A を統合）
-            // LLM + BiasCondition.None + InformationStrategy.Standard
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Baseline-LLM",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = false
-            });
+            // === 実験1: 個別条件 ===
+            case BatchExperimentPreset.Exp1_A_LLM:
+                conditions.Add(CreateCondition("Exp1-A", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                break;
 
-            // 実験1固有: ルールベースエージェント
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp1-B",
-                agentType = AgentType.RuleBased,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = false
-            });
+            case BatchExperimentPreset.Exp1_B_RuleBased:
+                conditions.Add(CreateCondition("Exp1-B", AgentType.RuleBased, BiasCondition.None, InformationStrategy.Standard, false));
+                break;
 
-            // 実験2固有: 認知バイアス条件（ベースライン除く3条件）
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-2",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.NormalcyBias,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-3",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.ConformityBias,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-4",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.Combined,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
+            case BatchExperimentPreset.Experiment1:
+                conditions.Add(CreateCondition("Exp1-A", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                conditions.Add(CreateCondition("Exp1-B", AgentType.RuleBased, BiasCondition.None, InformationStrategy.Standard, false));
+                break;
 
-            // 実験3固有: 情報提供戦略条件（ベースライン除く3条件）
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-B",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Urgent,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-C",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Detailed,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-D",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.DetailedUrgent,
-                overrideBias = false
-            });
+            // === 実験2: 個別条件 ===
+            case BatchExperimentPreset.Exp2_1_Baseline:
+                conditions.Add(CreateCondition("Exp2-1", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                break;
 
-            return conditions;
-        }
+            case BatchExperimentPreset.Exp2_2_NormalcyBias:
+                conditions.Add(CreateCondition("Exp2-2", AgentType.LLM, BiasCondition.NormalcyBias, InformationStrategy.Standard, true));
+                break;
 
-        // 個別実験プリセットの場合は従来どおり
+            case BatchExperimentPreset.Exp2_3_ConformityBias:
+                conditions.Add(CreateCondition("Exp2-3", AgentType.LLM, BiasCondition.ConformityBias, InformationStrategy.Standard, true));
+                break;
 
-        // 実験1: エージェントタイプ比較（LLM vs RuleBased）
-        if (preset == BatchExperimentPreset.Experiment1)
-        {
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp1-A",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp1-B",
-                agentType = AgentType.RuleBased,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = false
-            });
-        }
+            case BatchExperimentPreset.Exp2_4_CombinedBias:
+                conditions.Add(CreateCondition("Exp2-4", AgentType.LLM, BiasCondition.Combined, InformationStrategy.Standard, true));
+                break;
 
-        // 実験2: 認知バイアスの影響（4条件）
-        if (preset == BatchExperimentPreset.Experiment2)
-        {
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-1",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-2",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.NormalcyBias,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-3",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.ConformityBias,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp2-4",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.Combined,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = true
-            });
-        }
+            case BatchExperimentPreset.Experiment2:
+                conditions.Add(CreateCondition("Exp2-1", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                conditions.Add(CreateCondition("Exp2-2", AgentType.LLM, BiasCondition.NormalcyBias, InformationStrategy.Standard, true));
+                conditions.Add(CreateCondition("Exp2-3", AgentType.LLM, BiasCondition.ConformityBias, InformationStrategy.Standard, true));
+                conditions.Add(CreateCondition("Exp2-4", AgentType.LLM, BiasCondition.Combined, InformationStrategy.Standard, true));
+                break;
 
-        // 実験3: 情報提供戦略の検証（4条件）
-        if (preset == BatchExperimentPreset.Experiment3)
-        {
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-A",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Standard,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-B",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Urgent,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-C",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.Detailed,
-                overrideBias = false
-            });
-            conditions.Add(new ExperimentCondition
-            {
-                conditionId = "Exp3-D",
-                agentType = AgentType.LLM,
-                biasCondition = BiasCondition.None,
-                informationStrategy = InformationStrategy.DetailedUrgent,
-                overrideBias = false
-            });
+            // === 実験3: 個別条件 ===
+            case BatchExperimentPreset.Exp3_A_Standard:
+                conditions.Add(CreateCondition("Exp3-A", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                break;
+
+            case BatchExperimentPreset.Exp3_B_Urgent:
+                conditions.Add(CreateCondition("Exp3-B", AgentType.LLM, BiasCondition.None, InformationStrategy.Urgent, false));
+                break;
+
+            case BatchExperimentPreset.Exp3_C_Detailed:
+                conditions.Add(CreateCondition("Exp3-C", AgentType.LLM, BiasCondition.None, InformationStrategy.Detailed, false));
+                break;
+
+            case BatchExperimentPreset.Exp3_D_DetailedUrgent:
+                conditions.Add(CreateCondition("Exp3-D", AgentType.LLM, BiasCondition.None, InformationStrategy.DetailedUrgent, false));
+                break;
+
+            case BatchExperimentPreset.Experiment3:
+                conditions.Add(CreateCondition("Exp3-A", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                conditions.Add(CreateCondition("Exp3-B", AgentType.LLM, BiasCondition.None, InformationStrategy.Urgent, false));
+                conditions.Add(CreateCondition("Exp3-C", AgentType.LLM, BiasCondition.None, InformationStrategy.Detailed, false));
+                conditions.Add(CreateCondition("Exp3-D", AgentType.LLM, BiasCondition.None, InformationStrategy.DetailedUrgent, false));
+                break;
+
+            // === 全実験（重複統合） ===
+            case BatchExperimentPreset.AllExperiments:
+                // 共通ベースライン条件（Exp1-A, Exp2-1, Exp3-A を統合）
+                conditions.Add(CreateCondition("Baseline-LLM", AgentType.LLM, BiasCondition.None, InformationStrategy.Standard, false));
+                // 実験1固有
+                conditions.Add(CreateCondition("Exp1-B", AgentType.RuleBased, BiasCondition.None, InformationStrategy.Standard, false));
+                // 実験2固有（ベースライン除く）
+                conditions.Add(CreateCondition("Exp2-2", AgentType.LLM, BiasCondition.NormalcyBias, InformationStrategy.Standard, true));
+                conditions.Add(CreateCondition("Exp2-3", AgentType.LLM, BiasCondition.ConformityBias, InformationStrategy.Standard, true));
+                conditions.Add(CreateCondition("Exp2-4", AgentType.LLM, BiasCondition.Combined, InformationStrategy.Standard, true));
+                // 実験3固有（ベースライン除く）
+                conditions.Add(CreateCondition("Exp3-B", AgentType.LLM, BiasCondition.None, InformationStrategy.Urgent, false));
+                conditions.Add(CreateCondition("Exp3-C", AgentType.LLM, BiasCondition.None, InformationStrategy.Detailed, false));
+                conditions.Add(CreateCondition("Exp3-D", AgentType.LLM, BiasCondition.None, InformationStrategy.DetailedUrgent, false));
+                break;
+
+            default:
+                Debug.LogWarning($"[ExperimentConfig] Unknown preset: {preset}");
+                break;
         }
 
         return conditions;
+    }
+
+    /// <summary>
+    /// 実験条件を生成するヘルパーメソッド
+    /// </summary>
+    private ExperimentCondition CreateCondition(string conditionId, AgentType agentType, BiasCondition bias, InformationStrategy info, bool overrideBias)
+    {
+        return new ExperimentCondition
+        {
+            conditionId = conditionId,
+            agentType = agentType,
+            biasCondition = bias,
+            informationStrategy = info,
+            overrideBias = overrideBias
+        };
     }
 
     /// <summary>
@@ -910,6 +863,9 @@ public class ExperimentConfig : MonoBehaviour
 
             // SpawnLocationManagerをリセットして次の条件で正しく再初期化されるようにする
             SpawnLocationManager.ResetInstance();
+
+            // 家族データのキャッシュを完全クリア（条件間ではフルリセット）
+            FamilyManager.ClearCache();
 
             ApplyCondition(_batchConditions[_currentConditionIndex]);
             StartExperiment();

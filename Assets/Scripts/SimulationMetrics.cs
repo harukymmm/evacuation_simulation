@@ -24,6 +24,7 @@ public class SimulationMetrics : MonoBehaviour
     private EnvManager _envManager;
     private string _experimentId;
     private float _episodeStartTime;
+    private float _capturedElapsedTime;  // エピソード終了時にキャプチャした経過時間
     private bool _episodeInProgress = false;  // エピソード進行中フラグ
     private bool _partialLogsSaved = false;   // 部分ログ保存済みフラグ（二重保存防止）
 
@@ -252,6 +253,8 @@ public class SimulationMetrics : MonoBehaviour
 
     private void InitializeAgentMetrics()
     {
+        Debug.Log($"[SimulationMetrics] InitializeAgentMetrics: Evacuees count = {_envManager.Evacuees.Count}");
+
         foreach (var evacueeObj in _envManager.Evacuees)
         {
             if (evacueeObj == null) continue;
@@ -259,7 +262,10 @@ public class SimulationMetrics : MonoBehaviour
             var evacuee = evacueeObj.GetComponent<Evacuee>();
             if (evacuee == null) continue;
 
-            string agentId = evacuee.EvacueeId ?? evacueeObj.name;
+            // EvacueeIdを使用（RecordAction/RecordEvacuationと同じIDを使用して一致させる）
+            string agentId = evacuee.EvacueeId;
+
+            Debug.Log($"[SimulationMetrics] InitializeAgentMetrics: agentId={agentId}, objName={evacueeObj.name}");
 
             // ペルソナ情報を取得（EvacueeIdからintに変換）
             PersonaData persona = null;
@@ -288,13 +294,16 @@ public class SimulationMetrics : MonoBehaviour
 
             _agentMetrics[agentId] = metrics;
         }
+
+        Debug.Log($"[SimulationMetrics] InitializeAgentMetrics complete: _agentMetrics count = {_agentMetrics.Count}");
     }
 
-    private void OnEpisodeEnd(float evacuationRate)
+    private void OnEpisodeEnd(float evacuationRate, float elapsedTime)
     {
         if (!EnableMetrics) return;
 
         _episodeInProgress = false;  // エピソード終了をマーク
+        _capturedElapsedTime = elapsedTime;  // Dispose()でリセットされる前にキャプチャされた経過時間を保存
 
         // 既に部分ログが保存されている場合はスキップ（二重保存防止）
         if (_partialLogsSaved)
@@ -374,7 +383,8 @@ public class SimulationMetrics : MonoBehaviour
             var evacuee = evacueeObj.GetComponent<Evacuee>();
             if (evacuee == null) continue;
 
-            string agentId = evacueeObj.name;
+            // EvacueeIdを使用（InitializeAgentMetricsと同じIDを使用して一致させる）
+            string agentId = evacuee.EvacueeId;
             totalCount++;
 
             if (!_agentMetrics.TryGetValue(agentId, out var metrics))
@@ -642,6 +652,8 @@ public class SimulationMetrics : MonoBehaviour
     {
         if (!EnableMetrics) return;
 
+        Debug.Log($"[SimulationMetrics] RecordEvacuation called: agentId={agentId}, time={evacuationTime:F2}, shelter={shelterName}");
+
         var record = new EvacuationRecord
         {
             agentId = agentId,
@@ -679,7 +691,8 @@ public class SimulationMetrics : MonoBehaviour
             var evacuee = evacueeObj.GetComponent<Evacuee>();
             if (evacuee == null) continue;
 
-            string agentId = evacueeObj.name;
+            // EvacueeIdを使用（RecordEvacuationと同じIDを使用して一致させる）
+            string agentId = evacuee.EvacueeId;
 
             // 既に記録済みかチェック
             if (_evacuationRecords.Any(r => r.agentId == agentId)) continue;
@@ -791,16 +804,8 @@ public class SimulationMetrics : MonoBehaviour
 
     private string DetermineAgentType()
     {
-        // 最初の避難者のタイプを取得
-        if (_envManager.Evacuees.Count > 0 && _envManager.Evacuees[0] != null)
-        {
-            var evacuee = _envManager.Evacuees[0].GetComponent<Evacuee>();
-            if (evacuee != null)
-            {
-                return evacuee.UseLLMDecision ? "LLM" : "RuleBased";
-            }
-        }
-        return "Unknown";
+        // ExperimentConfigから直接取得（バッチ実験時の条件切り替えを正確に反映）
+        return ExperimentConfig.GetAgentType().ToString();
     }
 
     private float GetMedian(List<float> values)
@@ -821,7 +826,8 @@ public class SimulationMetrics : MonoBehaviour
     {
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
-        string filename = $"episode_{_envManager.currentEpisodeId}_actions{partialSuffix}.csv";
+        string conditionPrefix = GetConditionPrefix();
+        string filename = $"{conditionPrefix}episode_{_envManager.currentEpisodeId}_actions{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
@@ -858,17 +864,20 @@ public class SimulationMetrics : MonoBehaviour
     {
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
-        string filename = $"episode_{summary.episodeId}_summary{partialSuffix}.csv";
+        string conditionPrefix = GetConditionPrefix();
+        string filename = $"{conditionPrefix}episode_{summary.episodeId}_summary{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
         {
             // 部分ログの場合はヘッダーにメタ情報を追加
+            // 経過時間は完全ログの場合は_capturedElapsedTime、部分ログの場合は現在時刻を使用
+            float elapsedTime = isPartial ? _envManager.CurrentTimeSec : _capturedElapsedTime;
             if (isPartial)
             {
                 writer.WriteLine($"# PARTIAL LOG - シミュレーション途中停止時のデータ");
                 writer.WriteLine($"# 停止時刻: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                writer.WriteLine($"# 経過時間: {_envManager.CurrentTimeSec:F2}秒");
+                writer.WriteLine($"# 経過時間: {elapsedTime:F2}秒");
                 writer.WriteLine($"# 注意: このデータは不完全です。避難率・避難時間は停止時点の値です。");
             }
 
@@ -876,7 +885,7 @@ public class SimulationMetrics : MonoBehaviour
             writer.WriteLine($"episode_id,{summary.episodeId}");
             writer.WriteLine($"agent_type,{summary.agentType}");
             writer.WriteLine($"is_partial,{isPartial}");  // 部分ログフラグを追加
-            writer.WriteLine($"elapsed_time,{_envManager.CurrentTimeSec:F2}");  // 経過時間を追加
+            writer.WriteLine($"elapsed_time,{elapsedTime:F2}");  // 経過時間を追加（キャプチャ済みの値を使用）
             writer.WriteLine($"evacuation_rate,{summary.evacuationRate:F4}");
             writer.WriteLine($"average_evacuation_time,{summary.averageEvacuationTime:F2}");
             writer.WriteLine($"median_evacuation_time,{summary.medianEvacuationTime:F2}");
@@ -935,13 +944,31 @@ public class SimulationMetrics : MonoBehaviour
     }
 
     /// <summary>
+    /// 現在の実験条件IDを取得（バッチ実験時はExperimentNameから、そうでない場合は空文字）
+    /// </summary>
+    private string GetConditionPrefix()
+    {
+        if (ExperimentConfig.Instance != null && ExperimentConfig.Instance.IsBatchMode)
+        {
+            // ExperimentNameには条件ID（例: "Exp3-D"）が設定されている
+            string conditionId = ExperimentConfig.Instance.ExperimentName;
+            if (!string.IsNullOrEmpty(conditionId))
+            {
+                return conditionId + "_";
+            }
+        }
+        return "";
+    }
+
+    /// <summary>
     /// エージェント別メトリクスをCSVに保存
     /// </summary>
     private void SaveAgentMetrics(bool isPartial = false)
     {
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
-        string filename = $"episode_{_envManager.currentEpisodeId}_agents{partialSuffix}.csv";
+        string conditionPrefix = GetConditionPrefix();
+        string filename = $"{conditionPrefix}episode_{_envManager.currentEpisodeId}_agents{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))

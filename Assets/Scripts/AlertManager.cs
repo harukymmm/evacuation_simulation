@@ -270,7 +270,11 @@ public class AlertManager : MonoBehaviour
     {
         _jAlertSent = false;
         _lastCheckTime = 0f;
-        
+
+        // 保留中の放送メッセージをリセット
+        _pendingBroadcastMessage = null;
+        _hasPendingBroadcast = false;
+
         // 全スピーカーの放送状態をリセット
         foreach (var speaker in speakers)
         {
@@ -279,6 +283,8 @@ public class AlertManager : MonoBehaviour
                 speaker.ResetBroadcastState();
             }
         }
+
+        Debug.Log("[AlertManager] エピソード状態をリセットしました");
     }
 }
 

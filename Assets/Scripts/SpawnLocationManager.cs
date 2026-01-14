@@ -9,7 +9,11 @@ public class SpawnLocationManager : MonoBehaviour
 {
     private static SpawnLocationManager _instance;
     private Dictionary<BuildingCategory, List<EnvironmentalContextProvider.BuildingContext>> _buildingsByCategory;
-    
+
+    // タグベースのスポーン位置キャッシュ（エピソードリセットで消えないよう初回取得時に保存）
+    private static List<(Vector3 position, string name)> _schoolPositionsCache;
+    private static List<(Vector3 position, string name)> _preSchoolPositionsCache;
+
     [Header("設定")]
     [Tooltip("スポーン位置を地上に補正する")]
     public bool adjustToGround = true;
@@ -223,29 +227,39 @@ public class SpawnLocationManager : MonoBehaviour
     /// <summary>
     /// Schoolタグ付きオブジェクトからランダムにスポーン位置を取得
     /// PLATEAUデータに学校がない場合のフォールバック用
+    /// 初回取得時にキャッシュし、以降はキャッシュから返す（エピソードリセット対策）
     /// </summary>
     public static (Vector3 position, string buildingName) GetSchoolSpawnPosition()
     {
-        try
+        // キャッシュがなければ初回取得
+        if (_schoolPositionsCache == null)
         {
-            GameObject[] schools = GameObject.FindGameObjectsWithTag("School");
-            if (schools.Length > 0)
+            _schoolPositionsCache = new List<(Vector3, string)>();
+            try
             {
-                int randomIndex = Random.Range(0, schools.Length);
-                var school = schools[randomIndex];
-                Vector3 position = school.transform.position;
-
-                if (_instance != null && _instance.adjustToGround)
+                GameObject[] schools = GameObject.FindGameObjectsWithTag("School");
+                foreach (var school in schools)
                 {
-                    position.y = _instance.groundYOffset;
+                    Vector3 pos = school.transform.position;
+                    if (_instance != null && _instance.adjustToGround)
+                    {
+                        pos.y = _instance.groundYOffset;
+                    }
+                    _schoolPositionsCache.Add((pos, school.name));
                 }
-
-                return (position, school.name);
+                Debug.Log($"[SpawnLocationManager] Schoolタグ位置をキャッシュ: {_schoolPositionsCache.Count}件");
+            }
+            catch (UnityException)
+            {
+                // Schoolタグが存在しない場合は無視
             }
         }
-        catch (UnityException)
+
+        // キャッシュからランダムに返す
+        if (_schoolPositionsCache.Count > 0)
         {
-            // Schoolタグが存在しない場合は無視
+            int randomIndex = Random.Range(0, _schoolPositionsCache.Count);
+            return _schoolPositionsCache[randomIndex];
         }
 
         return (Vector3.zero, "不明");
@@ -254,29 +268,39 @@ public class SpawnLocationManager : MonoBehaviour
     /// <summary>
     /// PreSchoolタグ付きオブジェクトからランダムにスポーン位置を取得
     /// PLATEAUデータに保育園がない場合のフォールバック用
+    /// 初回取得時にキャッシュし、以降はキャッシュから返す（エピソードリセット対策）
     /// </summary>
     public static (Vector3 position, string buildingName) GetPreSchoolSpawnPosition()
     {
-        try
+        // キャッシュがなければ初回取得
+        if (_preSchoolPositionsCache == null)
         {
-            GameObject[] preschools = GameObject.FindGameObjectsWithTag("PreSchool");
-            if (preschools.Length > 0)
+            _preSchoolPositionsCache = new List<(Vector3, string)>();
+            try
             {
-                int randomIndex = Random.Range(0, preschools.Length);
-                var preschool = preschools[randomIndex];
-                Vector3 position = preschool.transform.position;
-
-                if (_instance != null && _instance.adjustToGround)
+                GameObject[] preschools = GameObject.FindGameObjectsWithTag("PreSchool");
+                foreach (var preschool in preschools)
                 {
-                    position.y = _instance.groundYOffset;
+                    Vector3 pos = preschool.transform.position;
+                    if (_instance != null && _instance.adjustToGround)
+                    {
+                        pos.y = _instance.groundYOffset;
+                    }
+                    _preSchoolPositionsCache.Add((pos, preschool.name));
                 }
-
-                return (position, preschool.name);
+                Debug.Log($"[SpawnLocationManager] PreSchoolタグ位置をキャッシュ: {_preSchoolPositionsCache.Count}件");
+            }
+            catch (UnityException)
+            {
+                // PreSchoolタグが存在しない場合は無視
             }
         }
-        catch (UnityException)
+
+        // キャッシュからランダムに返す
+        if (_preSchoolPositionsCache.Count > 0)
         {
-            // PreSchoolタグが存在しない場合は無視
+            int randomIndex = Random.Range(0, _preSchoolPositionsCache.Count);
+            return _preSchoolPositionsCache[randomIndex];
         }
 
         return (Vector3.zero, "不明");

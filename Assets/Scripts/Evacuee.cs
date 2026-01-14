@@ -4147,11 +4147,6 @@ public class Evacuee : MonoBehaviour {
             Debug.LogWarning($"[SafeSetDestination] {agentName}: SetDestination returned FALSE. " +
                            $"Destination={destStr}, Target={targetName}, Caller={callerName}");
         }
-        else
-        {
-            Debug.Log($"[SafeSetDestination] {agentName}: SUCCESS - Destination set. " +
-                     $"Destination={destStr}, Target={targetName}, isStopped={NavAgent.isStopped}, Caller={callerName}");
-        }
 
         return setDestResult;
     }
@@ -4176,20 +4171,6 @@ public class Evacuee : MonoBehaviour {
             waitFrames++;
         }
 
-        if (!NavAgent.hasPath)
-        {
-            Debug.LogError($"[SafeSetDestination] {agentName}: PATH NOT FOUND after {waitFrames + 1} frames! " +
-                          $"Destination={destStr}, Target={targetName}, " +
-                          $"pathStatus={NavAgent.pathStatus}, isStopped={NavAgent.isStopped}, " +
-                          $"velocity=({NavAgent.velocity.x:F2}, {NavAgent.velocity.y:F2}, {NavAgent.velocity.z:F2}), " +
-                          $"Caller={callerName}");
-        }
-        else
-        {
-            Debug.Log($"[SafeSetDestination] {agentName}: Path confirmed after {waitFrames + 1} frames. " +
-                     $"remainingDistance={NavAgent.remainingDistance:F2}m, pathStatus={NavAgent.pathStatus}, " +
-                     $"isStopped={NavAgent.isStopped}, Caller={callerName}");
-        }
     }
 
     /// <summary>
@@ -4229,14 +4210,6 @@ public class Evacuee : MonoBehaviour {
 
         bool previousState = NavAgent.isStopped;
         NavAgent.isStopped = stop;
-
-        // 状態が変わった場合のみログ出力
-        if (previousState != stop)
-        {
-            Debug.Log($"[SafeStopAgent] {agentName}: {action} SUCCESS - isStopped changed from {previousState} to {stop}. " +
-                     $"hasPath={NavAgent.hasPath}, velocity=({NavAgent.velocity.x:F2}, {NavAgent.velocity.y:F2}, {NavAgent.velocity.z:F2}), " +
-                     $"Caller={callerName}");
-        }
 
         return true;
     }

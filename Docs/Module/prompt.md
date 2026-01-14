@@ -52,7 +52,7 @@ FOLLOWの例:
 {"action_type": "FOLLOW", "target_evacuee_id": "14", "long_term_goal": "安全な場所に逃げたい", "mid_term_plan": "土地勘がある人についていく", "reasoning": "この人は避難所の場所を知っていそうだ", "confidence": 0.4}
 
 TALKの例:
-{"action_type": "TALK", "talk_target_id": "7", "talk_topic": "ShelterInfo", "talk_message": "すみません、避難所はどこですか？", "long_term_goal": "安全な避難所を見つけたい", "mid_term_plan": "まず情報を集める", "reasoning": "土地勘がないので聞いてみたい", "confidence": 0.5}
+{"action_type": "TALK", "talk_target_id": "7", "talk_topic": "ShelterInfo", "talk_message": "すみません、避難所はどこですか？", "long_term_goal": "安全な避難所を見つけたい", "mid_term_plan": "地元の人に避難先を聞く", "reasoning": "土地勘がないので地元の人に聞くのが一番確実だ", "confidence": 0.7}
 
 CONTACTの例:
 {"action_type": "CONTACT", "contact_target": "妻", "contact_message": "大丈夫？今どこにいる？", "long_term_goal": "家族の安全を確認したい", "mid_term_plan": "まず妻に連絡を取る", "reasoning": "妻の安否が心配だ", "confidence": 0.6}

@@ -77,7 +77,7 @@ public class Shelter : MonoBehaviour{
 
     void Start() {
         _env = GetComponentInParent<EnvManager>();
-        _env.OnEndEpisode += (float _) => {
+        _env.OnEndEpisode += (float _, float __) => {
             // 環境側のエピソード終了時に収容人数をリセット
             NowAccCount = 0;
             // NavMeshキャッシュもリセット

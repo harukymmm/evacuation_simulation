@@ -39,7 +39,7 @@ public class TsunamiEvacuationArea : MonoBehaviour
         _env = GetComponentInParent<EnvManager>();
         if (_env != null)
         {
-            _env.OnEndEpisode += (float _) => Reset();
+            _env.OnEndEpisode += (float _, float __) => Reset();
         }
 
         if (string.IsNullOrEmpty(uuid))

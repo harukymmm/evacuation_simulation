@@ -311,6 +311,31 @@ public static class FamilyManager
         _familiesCache = null;
         FamilyGroupManager.ClearCache();
     }
+
+    /// <summary>
+    /// エピソード開始時に家族メンバーの動的データをリセット
+    /// キャッシュ自体は保持し、search_position等のエピソード依存データのみクリア
+    /// </summary>
+    public static void ResetEpisodeState()
+    {
+        if (_familiesCache == null) return;
+
+        foreach (var family in _familiesCache.Values)
+        {
+            foreach (var member in family.members)
+            {
+                member.search_position = Vector3.zero;
+                member.spawn_building_name = "";
+                member.distance_meters = 0f;
+                member.is_reunited = false;
+            }
+        }
+
+        // FamilyGroupManagerの状態もリセット
+        FamilyGroupManager.ResetEpisodeState();
+
+        Debug.Log("[FamilyManager] エピソード状態をリセットしました");
+    }
 }
 
 

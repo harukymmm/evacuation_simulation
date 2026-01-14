@@ -1,5 +1,82 @@
 # 変更点とその意図
 
+- SEARCH_FAMILYアクションが機能しない問題を修正
+  - `families.csv`: シーン内家族ペア15組にtarget_agent_idを設定（双方向）
+  - 問題原因: 全ての家族メンバーのtarget_agent_idが-1（シーン外NPC）だったため、`m.agent_id > 0`の条件を満たせずSEARCH_FAMILYがavailable_actionsに追加されなかった
+  - 設定した家族ペア: 6⇔62, 14⇔34, 18⇔54, 25⇔28, 29⇔57, 36⇔40, 43⇔35, 46⇔51, 60⇔69, 66⇔90, 77⇔83, 81⇔82, 86⇔94, 88⇔32
+  - 意図: SEARCH_FAMILYアクションを有効化し、家族探索行動をシミュレーション可能にするため
+
+- TALKアクションの選択率向上を試みる修正
+  - `prompt.md`, `server.py`: TALKの例のconfidenceを0.5→0.7に変更
+  - `prompt.md`, `server.py`: TALKの例のreasoningを「土地勘がないので地元の人に聞くのが一番確実だ」に改善
+  - 意図: LLMがTALKを「消極的な選択」ではなく「有効な情報収集手段」として認識しやすくするため
+
+- Paper.mdの「結果と考察」セクションを精緻化（重要な知見への絞り込みとRQへの明示的回答）
+  - 実験1: 避難先の具体的場所名・人数の羅列を削除、社会的行動の創発と正常性バイアスの再現に焦点化
+  - 実験2: 試行1〜4の個別数値を平均・標準偏差に圧縮、認知特性と一貫性の関係を強調
+  - 実験3: 詳細数値を削除し、切迫感（+6pt）と具体性（-4pt）の主効果および正常性バイアス者への影響（-26.1pt）に絞り込み
+  - 総合考察: 序論の4つのリサーチクエスチョンへの明示的回答を追加
+  - 従来ルールベースモデルとの比較（確率分布による遅延時間vs認知プロセスの再現）を追加
+  - 意図: 情報過多を解消し、論文として有意義な知見に絞り込み深く考察する構成に変更するため
+
+- Paper.mdの「結果と考察」セクション（236行目〜343行目）を実験データに基づいて全面書き換え
+  - 実験1〜3の構成を明確化し、各実験に「結果」「考察」サブセクションを設置
+  - Table.mdの30表から具体的な数値データを参照して記述（避難完了率、平均避難時間、認知特性別分析等）
+  - 削除した記述: 500体エージェント（実際は100体）、N=10試行（実際は4試行）、震度/津波高さ条件比較（未実施）、RAGセクション（実験データなし）、コミュニケーション機能有無比較（未実施）
+  - 修正した実験3の構成: 3条件→2×2マトリクス（4条件: 切迫感×具体性）に変更
+  - 主要知見: 切迫感を高めると避難完了率+6pt、具体性を高めると-4pt、正常性バイアス者への具体情報は26.1pt低下を招く
+  - 意図: 仮記述であった「結果と考察」を、実験ログ（20260113_220000）とTable.mdのデータに基づく正確な記述に置き換えるため
+
+- Table.mdを20260113_220000実験結果に基づいて全面更新
+  - 実験1: LLMエージェント（79.0%）vsルールベース（99.0%）の比較結果を更新
+  - 実験2: 4試行（Exp1-A, Exp2-2〜2-4）の詳細分析を追加。避難完了率52%〜84%のばらつき、認知特性別一貫性分析を含む
+  - 実験3: 情報条件別（切迫感/具体性）の比較結果を更新。切迫感高で+6pt、具体性高で-4ptの効果を確認
+  - 全実験の総括表（表28〜30）を新規追加。3実験の主要知見、認知特性と避難行動の関係、実験間比較を含む
+  - 意図: 最新の実験ログ（20260113_220000）に基づく正確な数値と分析結果を反映するため
+
+- ログファイル名に実験条件IDを追加
+  - `SimulationMetrics.cs`: `GetConditionPrefix()`メソッドを追加し、バッチ実験時に条件ID（例: "Exp3-D_"）を取得
+  - `SimulationMetrics.cs`: `SaveEpisodeLogs()`, `SaveEpisodeSummary()`, `SaveAgentMetrics()`のファイル名に条件プレフィックスを追加
+  - ファイル名例: `Exp3-D_episode_0_actions.csv`, `Exp3-D_episode_0_summary.csv`, `Exp3-D_episode_0_agents.csv`
+  - 意図: バッチ実験時に複数条件のログが混在しないよう、ファイル名から条件を識別可能にするため
+
+- BatchExperimentPresetに個別条件を追加し、実験1-Aから3-Dまでの各条件を個別に選択可能に
+  - `ExperimentConfig.cs`: `BatchExperimentPreset`に12個の個別条件（Exp1_A_LLM, Exp1_B_RuleBased, Exp2_1_Baseline〜Exp2_4_CombinedBias, Exp3_A_Standard〜Exp3_D_DetailedUrgent）を追加
+  - `ExperimentConfig.cs`: `GenerateConditions()`をswitch文でリファクタリングし、各プリセットに対応
+  - `ExperimentConfig.cs`: `CreateCondition()`ヘルパーメソッドを追加してコードの重複を削減
+  - 意図: 特定の条件のみを再実験したい場合に、バッチ全体を実行せずに個別条件を選択できるようにするため
+
+- SimulationMetricsのagentID不一致問題を修正
+  - `SimulationMetrics.cs`: `InitializeAgentMetrics()`で`evacueeObj.name`ではなく`evacuee.EvacueeId`を使用するように変更
+  - `SimulationMetrics.cs`: `CollectEvacuationRecords()`で同様に`evacuee.EvacueeId`を使用するように変更
+  - `SimulationMetrics.cs`: `EvaluateSurvival()`で同様に`evacuee.EvacueeId`を使用するように変更
+  - 意図: `Evacuee`の`RecordAction()`や`RecordEvacuation()`では`_uniqueId`（数字のID、例: "1"）を使用するが、`InitializeAgentMetrics`等では`evacueeObj.name`（例: "Evacuee_1_中川優花"）を使用していたため、辞書のキーが不一致となり行動記録や避難完了記録が正しく集計されなかった問題を修正
+
+- バッチ実験時のログ記録における経過時間がリセットされる問題を修正
+  - `ShelterEnvManager.cs`: `EndEpisodeHandler`デリゲートに`elapsedTime`パラメータを追加し、`OnEndEpisode`イベント発火時に経過時間をキャプチャ
+  - `SimulationMetrics.cs`: `_capturedElapsedTime`フィールドを追加し、`OnEpisodeEnd`でキャプチャされた経過時間を使用してログを保存
+  - `ExperimentConfig.cs`: `OnTrialEnd`メソッドを修正し、キャプチャされた経過時間を使用
+  - `Shelter.cs`, `TsunamiEvacuationArea.cs`: ラムダ式のシグネチャを新しいデリゲートに合わせて修正
+  - 意図: バッチ実験でエピソード終了後に`Dispose()`が呼ばれ`currentTimeSec`がリセットされた後にログが保存されていたため、経過時間が0.00として記録される問題を修正
+
+- SimulationMetricsのagent_type判定ロジックを修正
+  - `SimulationMetrics.cs`: `DetermineAgentType()`メソッドを修正し、Evacueeインスタンスではなく`ExperimentConfig.GetAgentType()`から直接取得するように変更
+  - 意図: バッチ実験で条件切り替え時にEvacueeの状態と実験条件が不整合になり、ログのagent_typeが誤って記録される問題を修正
+
+- エピソード終了・リセット・開始フローの修正（OnEndEpisodeイベント複数回発火問題の解消）
+  - `ShelterEnvManager.cs`: `FixedUpdate()`冒頭に`EnableEnv`チェックを追加し、終了条件を満たしたら即座に`EnableEnv = false`を設定
+  - `ShelterEnvManager.cs`: `OnEndEpisodeHandler()`冒頭にエピソード終了ログを追加（終了理由: 時間切れ/全員避難完了）
+  - `ShelterEnvManager.cs`: `OnEpisodeBegin()`末尾にエピソード開始ログを追加（避難者数を表示）
+  - 意図: 複数エピソードを連続実行する際に`OnEndEpisode`イベントが毎フレーム発火され、ログが複数回保存される問題を解消するため
+
+- バッチ実験（AllExperiments等）でのエピソード間・条件間リセット処理を修正
+  - `FamilyData.cs`: `ResetEpisodeState()`メソッドを追加（search_position, spawn_building_name, distance_meters, is_reunitedをリセット）
+  - `FamilyGroupManager.cs`: `ResetEpisodeState()`メソッドを追加（FamilyGroupMemberの動的データをリセット）
+  - `AlertManager.cs`: `OnEpisodeStart()`に保留放送状態のリセットを追加（_pendingBroadcastMessage, _hasPendingBroadcastをnull/falseに）
+  - `ShelterEnvManager.cs`: `OnEpisodeBegin()`で`FamilyManager.ResetEpisodeState()`を呼び出し
+  - `ExperimentConfig.cs`: `OnConditionComplete()`で`FamilyManager.ClearCache()`を呼び出し（条件間では完全クリア）
+  - 意図: バッチ実験時に静的キャッシュ内の動的データ（前エピソードのEvacuee座標など）がリセットされず、新エピソードのスポーンが失敗する問題を解決するため
+
 - NavMeshAgent操作のデバッグログを追加
   - `Evacuee.cs`: `SafeSetDestination()`に詳細ログを追加（目的地座標、ターゲット名、失敗理由、呼び出し元メソッド名）
   - `Evacuee.cs`: `SafeStopAgent()`に詳細ログを追加（停止/再開の状態変化、失敗理由、呼び出し元メソッド名）
@@ -281,3 +358,6 @@
   - `ExperimentConfig.cs`: `OnConditionComplete()`で`SpawnLocationManager.ResetInstance()`を呼び出すように修正
   - `ShelterEnvManager.cs`: `OnEpisodeBegin()`で`SpawnLocationManager.ForceReinitialize()`を呼び出すように修正
   - 意図: シングルトンの`_buildingsByCategory`が古いまま残り、実験条件遷移時にスポーン位置が取得できなくなる問題を解消するため
+- 実験ログ（20260113_201741）に基づくtable.mdを作成
+  - `Logs/experiment_results/20260113_201741/table.md`: 12個の表を作成（全エピソードサマリー、基本指標、行動分布、避難先分布、認知特性別分析、社会的相互作用、試行間比較、主要知見）
+  - 意図: 実験結果のCSVデータを読みやすい表形式にまとめ、分析結果を整理するため

@@ -334,4 +334,27 @@ public static class FamilyGroupManager
         _familyGroups = null;
         _agentToFamilyMap = null;
     }
+
+    /// <summary>
+    /// エピソード開始時に家族グループメンバーの動的データをリセット
+    /// キャッシュ自体は保持し、search_position等のエピソード依存データのみクリア
+    /// </summary>
+    public static void ResetEpisodeState()
+    {
+        if (_familyGroups == null) return;
+
+        foreach (var group in _familyGroups.Values)
+        {
+            foreach (var member in group.members)
+            {
+                member.search_position = Vector3.zero;
+                member.spawn_building_name = "";
+                member.distance_meters = 0f;
+                member.relation_to_me = "";
+                member.likely_location = BuildingCategorizer.GetCategoryDisplayName(member.spawn_category);
+            }
+        }
+
+        Debug.Log("[FamilyGroupManager] エピソード状態をリセットしました");
+    }
 }

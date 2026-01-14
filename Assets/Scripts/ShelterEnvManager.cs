@@ -87,7 +87,7 @@ public class EnvManager : MonoBehaviour {
     public TextMeshProUGUI evacRateCounter;
 
     // Event Listeners
-    public delegate void EndEpisodeHandler(float evacueeRate);
+    public delegate void EndEpisodeHandler(float evacueeRate, float elapsedTime);
     public EndEpisodeHandler OnEndEpisode;
     public delegate void StartEpisodeHandler();
     public StartEpisodeHandler OnStartEpisode;
@@ -370,16 +370,24 @@ public class EnvManager : MonoBehaviour {
     }
 
     void FixedUpdate() {
+        if (!EnableEnv) return; // リセット中や終了後は処理をスキップ
+
         currentTimeSec += Time.deltaTime;
         EvacuationRate = GetCurrentEvacueeRate();
         evaRatePerSec.Add(new Tuple<float, float>(currentTimeSec, EvacuationRate));
         UpdateUI();
         if (currentTimeSec >= MaxSeconds || IsEvacuatedAll()) { // 制限時間 or 全避難者が避難完了した場合
-            OnEndEpisode?.Invoke(EvacuationRate); // 制限時間を超えた場合、エピソード終了のイベントを発火
+            EnableEnv = false; // 終了条件を満たしたらすぐに無効化（複数回発火防止）
+            float capturedElapsedTime = currentTimeSec; // Dispose()でリセットされる前にキャプチャ
+            OnEndEpisode?.Invoke(EvacuationRate, capturedElapsedTime); // エピソード終了のイベントを発火
         }
     }
 
-    private void OnEndEpisodeHandler(float evacuateRate) {
+    private void OnEndEpisodeHandler(float evacuateRate, float elapsedTime) {
+        // エピソード終了をConsoleに出力
+        string endReason = elapsedTime >= MaxSeconds ? "時間切れ" : "全員避難完了";
+        Debug.Log($"[EnvManager] エピソード {currentEpisodeId} 終了 ({endReason})");
+
         // 1. 避難率による報酬
         float evacuationRateReward = GetCurrentEvacueeRate();
 
@@ -417,6 +425,9 @@ public class EnvManager : MonoBehaviour {
         // SpawnLocationManagerを強制的に再初期化（バッチ実験のエピソード遷移対策）
         SpawnLocationManager.ForceReinitialize();
 
+        // 家族データの動的状態をリセット（バッチ実験のエピソード遷移対策）
+        FamilyManager.ResetEpisodeState();
+
         Create();
         
         // AlertManagerをリセット
@@ -440,6 +451,7 @@ public class EnvManager : MonoBehaviour {
         }
         
         OnStartEpisode?.Invoke();
+        Debug.Log($"[EnvManager] エピソード {currentEpisodeId} 開始 (避難者数: {Evacuees.Count})");
         EnableEnv = true;
     }
 
@@ -581,15 +593,33 @@ public class EnvManager : MonoBehaviour {
             }
         }
 
-        // NavMesh上の最寄り位置に補正（建物座標がNavMeshからずれている場合の対策）
+        // NavMesh上の最寄り位置に補正（段階的に探索範囲を拡大）
         NavMeshHit navHit;
-        if (NavMesh.SamplePosition(finalSpawnPos, out navHit, 50f, NavMesh.AllAreas))
+        float[] searchRadii = { 50f, 100f, 200f };
+        bool foundNavMesh = false;
+
+        foreach (float radius in searchRadii)
         {
-            finalSpawnPos = navHit.position;
+            if (NavMesh.SamplePosition(finalSpawnPos, out navHit, radius, NavMesh.AllAreas))
+            {
+                finalSpawnPos = navHit.position;
+                foundNavMesh = true;
+                break;
+            }
         }
-        else
+
+        if (!foundNavMesh)
         {
-            Debug.LogWarning($"[EnvManager] Agent {agentId}: NavMesh上の位置が見つかりません。元の位置 {finalSpawnPos} を使用します。");
+            // 最終フォールバック: 元のspawnPos引数を使用
+            if (NavMesh.SamplePosition(spawnPos, out navHit, 50f, NavMesh.AllAreas))
+            {
+                finalSpawnPos = navHit.position;
+                Debug.LogWarning($"[EnvManager] Agent {agentId}: 建物位置からNavMeshが見つからないため、デフォルト位置を使用します。");
+            }
+            else
+            {
+                Debug.LogWarning($"[EnvManager] Agent {agentId}: NavMesh上の位置が見つかりません。元の位置 {finalSpawnPos} を使用します。");
+            }
         }
 
         GameObject evacuee = Instantiate(SpawnEvacueePref, finalSpawnPos, Quaternion.identity, transform);
