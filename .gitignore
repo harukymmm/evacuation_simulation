@@ -187,6 +187,10 @@ mono_crash.*
 *.sln.DotSettings
 
 Paper.md
+Paper.tex
+Paper.log
+Paper.fls
+Paper.fdb_latexmk
 避難場所調査.md
 
 # ML-Agents additional files
