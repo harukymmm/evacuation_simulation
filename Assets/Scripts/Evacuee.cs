@@ -391,6 +391,69 @@ public class Evacuee : MonoBehaviour {
         }
     }
 
+    /// <summary>
+    /// 新しいエピソード開始時に全ての動的状態をリセット
+    /// ResetAlertState()を内包し、さらにLLM関連の状態もリセットする
+    /// </summary>
+    public void ResetForNewEpisode()
+    {
+        // 警報・放送状態のリセット
+        ResetAlertState();
+
+        // 行動状態のリセット
+        isEvacuating = false;
+        excludeShelters = new List<string>();
+        CurrentAction = LLM.ActionType.EVACUATE;
+        _stayPosition = Vector3.zero;
+
+        // 連絡・連続行動のリセット
+        _lastContactTarget = null;
+        _lastContactMessage = null;
+        _consecutiveContactCount = 0;
+        _contactCooldown = false;
+        _isRespondingToFamilyContact = false;
+        _actionBeforeFamilyContact = LLM.ActionType.EVACUATE;
+        _targetShelterBeforeFamilyContact = null;
+
+        // 家族探索のリセット
+        _searchFamilyTarget = null;
+        _searchFamilyTargetEvacuee = null;
+        _lastSearchFamilyCheck = 0f;
+
+        // 追従のリセット
+        _followTarget = null;
+        _followers = new List<Evacuee>();
+        _lastFollowCheck = 0f;
+
+        // 会話のリセット
+        _conversationHistory = new List<LLM.ConversationLogEntry>();
+        _consecutiveTalkCount = 0;
+        _conversationResponseTCS = null;
+        _isRespondingToConversation = false;
+        _actionBeforeConversation = LLM.ActionType.EVACUATE;
+        _targetShelterBeforeConversation = null;
+        _conversationSession = null;
+
+        // 階層的意思決定のリセット
+        _currentLongTermGoal = default;
+        _currentMidTermPlan = default;
+        _lastGoalUpdateTime = 0f;
+        _lastPlanUpdateTime = 0f;
+
+        // 行動履歴のリセット
+        _actionHistory = new List<LLM.ActionHistoryEntry>();
+        _summarizedActionHistory = null;
+        _totalActionCount = 0;
+
+        // LLM関連のリセット
+        _lastLLMDecisionTime = 0f;
+        _lastRequestTime = 0f;
+        _isRequestingLLMDecision = false;
+
+        // 移動目標のリセット
+        Target = null;
+    }
+
     void Awake() {
         // IDはEnvManagerから設定されるため、ここでは初期化しない
         NavAgent = GetComponent<NavMeshAgent>();
@@ -859,6 +922,12 @@ public class Evacuee : MonoBehaviour {
 
     private bool ApplyLLMDecision(LLMEvacDecisionResponse response)
     {
+        // 既に避難完了等で非アクティブな場合はスキップ
+        if (!gameObject.activeInHierarchy)
+        {
+            return false;
+        }
+
         if (response == null)
         {
             Debug.LogWarning($"[Evacuee] {gameObject.name}: LLMレスポンスがありません");

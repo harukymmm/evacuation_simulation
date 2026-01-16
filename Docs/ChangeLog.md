@@ -1,5 +1,17 @@
 # 変更点とその意図
 
+- 避難完了後のLLMレスポンス適用時に発生する警告ログを修正
+  - `Evacuee.cs`: `ApplyLLMDecision()`メソッドの冒頭でGameObjectのアクティブ状態をチェックし、非アクティブな場合は静かにスキップする処理を追加
+  - 意図: 避難完了でGameObjectが非アクティブ化された後にLLMレスポンスが到着した際の不要な警告ログを抑制するため
+
+- 複数エピソード実行時のリセット問題を修正し、エピソード情報のUI表示を追加
+  - `Evacuee.cs`: `ResetForNewEpisode()`メソッドを新規追加（行動履歴、会話履歴、連続行動カウント、追従情報、階層的意思決定状態など全ての動的状態をリセット）
+  - `ShelterEnvManager.cs`: エピソード開始時のリセット処理を`ResetAlertState()`から`ResetForNewEpisode()`に変更
+  - `ShelterEnvManager.cs`: `episodeInfoText`フィールドを追加し、現在のエピソード番号・実験条件・終了理由をUI上に表示
+  - `ShelterEnvManager.cs`: `GetConditionDisplayName()`メソッドを追加（エージェントタイプ、バイアス条件、情報戦略を日本語で表示）
+  - UI表示を日本語化（残り時間、避難完了率）
+  - 意図: 複数エピソード実行時に前回エピソードの状態が持ち越される問題を解消し、実験の視認性を向上させるため
+
 - SEARCH_FAMILYアクションが機能しない問題を修正
   - `families.csv`: シーン内家族ペア15組にtarget_agent_idを設定（双方向）
   - 問題原因: 全ての家族メンバーのtarget_agent_idが-1（シーン外NPC）だったため、`m.agent_id > 0`の条件を満たせずSEARCH_FAMILYがavailable_actionsに追加されなかった

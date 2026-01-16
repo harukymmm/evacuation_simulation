@@ -85,6 +85,7 @@ public class EnvManager : MonoBehaviour {
     [Header("UI Elements")]
     public TextMeshProUGUI stepCounter;
     public TextMeshProUGUI evacRateCounter;
+    public TextMeshProUGUI episodeInfoText; // エピソード情報（条件名、試行番号）
 
     // Event Listeners
     public delegate void EndEpisodeHandler(float evacueeRate, float elapsedTime);
@@ -385,8 +386,16 @@ public class EnvManager : MonoBehaviour {
 
     private void OnEndEpisodeHandler(float evacuateRate, float elapsedTime) {
         // エピソード終了をConsoleに出力
-        string endReason = elapsedTime >= MaxSeconds ? "時間切れ" : "全員避難完了";
-        Debug.Log($"[EnvManager] エピソード {currentEpisodeId} 終了 ({endReason})");
+        string endReason = elapsedTime >= MaxSeconds ? "Timeout" : "All Evacuated";
+        Debug.Log($"[EnvManager] Episode {currentEpisodeId} End ({endReason})");
+
+        // エピソード終了時のUI更新
+        if (episodeInfoText != null)
+        {
+            int currentTrial = ExperimentConfig.Instance?.CurrentTrialNumber ?? (currentEpisodeId + 1);
+            int totalTrials = ExperimentConfig.Instance?.NumberOfTrials ?? 1;
+            episodeInfoText.text = $"Episode {currentTrial}/{totalTrials} End: {endReason}";
+        }
 
         // 1. 避難率による報酬
         float evacuationRateReward = GetCurrentEvacueeRate();
@@ -437,7 +446,7 @@ public class EnvManager : MonoBehaviour {
             alertManager.OnEpisodeStart();
         }
         
-        // 全避難者の放送・Jアラート状態をリセット
+        // 全避難者の状態をリセット（警報・行動履歴・会話など全ての動的状態）
         foreach (var evacueeObj in Evacuees)
         {
             if (evacueeObj != null)
@@ -445,7 +454,7 @@ public class EnvManager : MonoBehaviour {
                 var evacuee = evacueeObj.GetComponent<Evacuee>();
                 if (evacuee != null)
                 {
-                    evacuee.ResetAlertState();
+                    evacuee.ResetForNewEpisode();
                 }
             }
         }
@@ -701,8 +710,123 @@ public class EnvManager : MonoBehaviour {
     }
 
     private void UpdateUI() {
-        stepCounter.text = $"Remain Seconds : {MaxSeconds - currentTimeSec:F2}";
-        evacRateCounter.text = $"Evacuation Rate : {EvacuationRate:F2}";
+        stepCounter.text = $"Remain: {MaxSeconds - currentTimeSec:F1}s";
+        evacRateCounter.text = $"Evacuation Rate: {EvacuationRate:P1}";
+
+        // エピソード情報を表示
+        if (episodeInfoText != null)
+        {
+            string conditionName = GetConditionDisplayName();
+            int currentTrial = ExperimentConfig.Instance?.CurrentTrialNumber ?? (currentEpisodeId + 1);
+            int totalTrials = ExperimentConfig.Instance?.NumberOfTrials ?? 1;
+            episodeInfoText.text = $"[{conditionName}] Episode {currentTrial}/{totalTrials}";
+        }
+    }
+
+    /// <summary>
+    /// 現在の実験条件の表示名を取得する
+    /// </summary>
+    private string GetConditionDisplayName()
+    {
+        if (ExperimentConfig.Instance == null)
+        {
+            return "Default";
+        }
+
+        var config = ExperimentConfig.Instance;
+
+        // 実験IDを取得
+        string expId = GetExperimentId(config);
+
+        // エージェントタイプ
+        string agentType = config.SelectedAgentType == ExperimentConfig.AgentType.LLM ? "LLM" : "Rule";
+
+        // バイアス条件
+        string biasName = config.SelectedBiasCondition switch
+        {
+            ExperimentConfig.BiasCondition.None => "",
+            ExperimentConfig.BiasCondition.NormalcyBias => "Normalcy",
+            ExperimentConfig.BiasCondition.ConformityBias => "Conformity",
+            ExperimentConfig.BiasCondition.Combined => "Combined",
+            _ => ""
+        };
+
+        // 情報戦略
+        string strategyName = config.SelectedInformationStrategy switch
+        {
+            ExperimentConfig.InformationStrategy.Standard => "",
+            ExperimentConfig.InformationStrategy.Urgent => "Urgent",
+            ExperimentConfig.InformationStrategy.Detailed => "Detailed",
+            ExperimentConfig.InformationStrategy.DetailedUrgent => "Detailed+Urgent",
+            _ => ""
+        };
+
+        // 条件名を組み立て
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(expId)) parts.Add(expId);
+        parts.Add(agentType);
+        if (!string.IsNullOrEmpty(biasName)) parts.Add(biasName);
+        if (!string.IsNullOrEmpty(strategyName)) parts.Add(strategyName);
+
+        return string.Join("/", parts);
+    }
+
+    /// <summary>
+    /// 現在の設定から実験IDを推定する
+    /// </summary>
+    private string GetExperimentId(ExperimentConfig config)
+    {
+        // バッチプリセットから直接IDを取得
+        string presetId = config.BatchPreset switch
+        {
+            ExperimentConfig.BatchExperimentPreset.Exp1_A_LLM => "1-A",
+            ExperimentConfig.BatchExperimentPreset.Exp1_B_RuleBased => "1-B",
+            ExperimentConfig.BatchExperimentPreset.Exp2_1_Baseline => "2-1",
+            ExperimentConfig.BatchExperimentPreset.Exp2_2_NormalcyBias => "2-2",
+            ExperimentConfig.BatchExperimentPreset.Exp2_3_ConformityBias => "2-3",
+            ExperimentConfig.BatchExperimentPreset.Exp2_4_CombinedBias => "2-4",
+            ExperimentConfig.BatchExperimentPreset.Exp3_A_Standard => "3-A",
+            ExperimentConfig.BatchExperimentPreset.Exp3_B_Urgent => "3-B",
+            ExperimentConfig.BatchExperimentPreset.Exp3_C_Detailed => "3-C",
+            ExperimentConfig.BatchExperimentPreset.Exp3_D_DetailedUrgent => "3-D",
+            _ => ""
+        };
+
+        if (!string.IsNullOrEmpty(presetId)) return presetId;
+
+        // プリセットがNoneの場合、設定値から推定
+        // 実験1: エージェントタイプのみで判断
+        if (config.SelectedBiasCondition == ExperimentConfig.BiasCondition.None &&
+            config.SelectedInformationStrategy == ExperimentConfig.InformationStrategy.Standard)
+        {
+            return config.SelectedAgentType == ExperimentConfig.AgentType.LLM ? "1-A" : "1-B";
+        }
+
+        // 実験2: バイアス条件で判断
+        if (config.SelectedBiasCondition != ExperimentConfig.BiasCondition.None)
+        {
+            return config.SelectedBiasCondition switch
+            {
+                ExperimentConfig.BiasCondition.NormalcyBias => "2-2",
+                ExperimentConfig.BiasCondition.ConformityBias => "2-3",
+                ExperimentConfig.BiasCondition.Combined => "2-4",
+                _ => "2-1"
+            };
+        }
+
+        // 実験3: 情報戦略で判断
+        if (config.SelectedInformationStrategy != ExperimentConfig.InformationStrategy.Standard)
+        {
+            return config.SelectedInformationStrategy switch
+            {
+                ExperimentConfig.InformationStrategy.Urgent => "3-B",
+                ExperimentConfig.InformationStrategy.Detailed => "3-C",
+                ExperimentConfig.InformationStrategy.DetailedUrgent => "3-D",
+                _ => "3-A"
+            };
+        }
+
+        return "";
     }
 
     /// <summary>
