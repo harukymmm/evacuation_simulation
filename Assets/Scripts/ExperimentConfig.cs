@@ -209,6 +209,7 @@ public class ExperimentConfig : MonoBehaviour
     public int TrialsPerCondition = 10;
 
     private EnvManager _envManager;
+    private SimulationMetrics _simulationMetrics;
     private int _currentTrialIndex = 0;
     private bool _experimentStarted = false;
     private bool _experimentCompleted = false;
@@ -266,6 +267,7 @@ public class ExperimentConfig : MonoBehaviour
     void Start()
     {
         _envManager = FindFirstObjectByType<EnvManager>();
+        _simulationMetrics = FindFirstObjectByType<SimulationMetrics>();
 
         if (_envManager != null)
         {
@@ -342,6 +344,19 @@ public class ExperimentConfig : MonoBehaviour
     private void OnTrialEnd(float evacuationRate, float elapsedTime)
     {
         if (!_experimentStarted || _experimentCompleted) return;
+
+        // ★重要: 条件切り替え前にSimulationMetricsのログ保存を明示的に実行
+        // イベントハンドラの実行順序に依存せず、確実に現在の条件でログを保存する
+        if (_simulationMetrics != null)
+        {
+            _simulationMetrics.FinalizeAndSaveEpisodeLogs(elapsedTime);
+        }
+
+        // ログ保存完了を通知 → これによりOnEpisodeBegin()でのリセットが許可される
+        if (_envManager != null)
+        {
+            _envManager.SignalEpisodeFinalized();
+        }
 
         // 試行結果を記録（経過時間はイベント発火時にキャプチャされた値を使用）
         var result = new ExperimentTrialResult

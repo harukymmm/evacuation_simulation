@@ -137,6 +137,9 @@ public class Evacuee : MonoBehaviour {
     private const float SEARCH_FAMILY_CHECK_INTERVAL = 10f; // 座標更新間隔（秒）
     private const float FAMILY_REUNION_DISTANCE = 10f; // 合流判定距離（メートル）
 
+    [Header("RuleBased Action Recording")]
+    private bool _firstRuleBasedActionRecorded = false; // RuleBasedエージェントの初回行動が記録されたか
+
     [Header("Follow Action")]
     private Evacuee _followTarget;           // 追従対象の避難者
     private LLM.ActionType _followTargetLastAction; // 追従対象の前回の行動（行動変更検知用）
@@ -420,6 +423,9 @@ public class Evacuee : MonoBehaviour {
         _searchFamilyTargetEvacuee = null;
         _lastSearchFamilyCheck = 0f;
 
+        // RuleBased行動記録のリセット
+        _firstRuleBasedActionRecorded = false;
+
         // 追従のリセット
         _followTarget = null;
         _followers = new List<Evacuee>();
@@ -470,6 +476,15 @@ public class Evacuee : MonoBehaviour {
         {
             UseLLMDecision = ExperimentConfig.ShouldUseLLM();
             UseRuleBasedDecision = !UseLLMDecision;
+            Debug.Log($"[Evacuee] {gameObject.name}: ExperimentConfigから設定を取得 - UseLLM={UseLLMDecision}, UseRuleBased={UseRuleBasedDecision}");
+        }
+        else
+        {
+            // ExperimentConfigが見つからない場合のフォールバック
+            // デフォルトではLLMを使用（従来の動作を維持）
+            UseLLMDecision = true;
+            UseRuleBasedDecision = false;
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: ExperimentConfig.Instanceがnullです。デフォルト設定を使用: UseLLM={UseLLMDecision}");
         }
 
         if (UseLLMDecision && DecisionClient == null)
@@ -595,26 +610,47 @@ public class Evacuee : MonoBehaviour {
     /// </summary>
     private void RequestRuleBasedDecision()
     {
-        if (_ruleBasedDecisionMaker == null) return;
+        // ★デバッグログ: 関数呼び出し確認
+        Debug.LogError($"[DEBUG-EVACUEE] RequestRuleBasedDecision呼び出し: {gameObject.name}");
+
+        if (_ruleBasedDecisionMaker == null)
+        {
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: _ruleBasedDecisionMaker=null");
+            return;
+        }
 
         var (actionType, targetShelter, reasoning, familyTarget) = _ruleBasedDecisionMaker.MakeDecisionExtended();
 
-        // 行動が変更された場合のみ処理
+        // 行動が変更された場合、または初回の行動記録が未実行の場合に処理
         bool actionChanged = CurrentAction != actionType;
         bool targetChanged = actionType == LLM.ActionType.EVACUATE && Target != targetShelter;
         bool familyTargetChanged = actionType == LLM.ActionType.SEARCH_FAMILY &&
             (_searchFamilyTarget == null || (familyTarget != null && _searchFamilyTarget.agent_id != familyTarget.agent_id));
+        bool needsRecording = !_firstRuleBasedActionRecorded;
 
-        if (actionChanged || targetChanged || familyTargetChanged)
+        // ★デバッグログ: 記録判定
+        Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: actionType={actionType}, needsRecording={needsRecording}, actionChanged={actionChanged}");
+
+        if (actionChanged || targetChanged || familyTargetChanged || needsRecording)
         {
             CurrentAction = actionType;
 
-            // SimulationMetricsに記録
-            var metrics = FindFirstObjectByType<SimulationMetrics>();
+            // SimulationMetricsに記録（シングルトンインスタンスを優先）
+            var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
+
+            // ★デバッグログ: metrics取得結果
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: metrics={metrics != null}, Instance={SimulationMetrics.Instance != null}");
+
             if (metrics != null)
             {
                 string targetName = targetShelter?.name ?? familyTarget?.name ?? "";
                 metrics.RecordAction(_uniqueId ?? gameObject.name, actionType, targetName, reasoning, 1.0f);
+                _firstRuleBasedActionRecorded = true;  // 初回記録完了をマーク
+            }
+            else
+            {
+                Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: metricsがnullのためRecordActionをスキップ");
+                Debug.LogWarning($"[Evacuee] {gameObject.name}: SimulationMetricsが見つかりません。アクション記録をスキップします。");
             }
 
             switch (actionType)
@@ -751,17 +787,23 @@ public class Evacuee : MonoBehaviour {
     /// 避難所のオブジェクトにアタッチされ、当たり判定により呼び出される 
     /// </summary>
     public void Evacuation(Shelter shelter) {
+        // ★デバッグログ: 関数呼び出し確認
+        Debug.LogError($"[DEBUG-EVACUEE] Evacuation呼び出し: {gameObject.name}, shelter={shelter?.displayName}, isEvacuating={isEvacuating}");
+
         if(isEvacuating) {
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: isEvacuating=trueのためスキップ");
             return;
         }
         isEvacuating = true;
         // キャパシティーがある場合、避難処理を行う
         if(shelter.currentCapacity > 0) {
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: 避難成功、RecordEvacuationToMetrics呼び出し");
             shelter.NowAccCount++;
             // 避難成功時にSimulationMetricsに記録
             RecordEvacuationToMetrics(shelter.displayName, shelter.gameObject.name);
             gameObject.SetActive(false);
         } else { //キャパシティがいっぱいの場合、次の避難所を探す
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: キャパシティ不足（capacity={shelter.currentCapacity}）");
             excludeShelters.Add(shelter.uuid);
             if (UseLLMDecision && DecisionClient != null)
             {
@@ -807,16 +849,36 @@ public class Evacuee : MonoBehaviour {
     /// <param name="locationGameObjectName">避難先のGameObject名（フォールバック用）</param>
     private void RecordEvacuationToMetrics(string locationDisplayName, string locationGameObjectName)
     {
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
-        if (metrics != null && _env != null)
-        {
-            string agentId = EvacueeId ?? gameObject.name;
-            float evacuationTime = _env.CurrentTimeSec;
-            string locationName = !string.IsNullOrEmpty(locationDisplayName) ? locationDisplayName : locationGameObjectName;
-            string agentType = UseLLMDecision ? "LLM" : "RuleBased";
+        // ★デバッグログ: 関数呼び出し確認
+        Debug.LogError($"[DEBUG-EVACUEE] RecordEvacuationToMetrics呼び出し: {gameObject.name}, Instance={SimulationMetrics.Instance != null}");
 
-            metrics.RecordEvacuation(agentId, evacuationTime, locationName, agentType);
+        // シングルトンインスタンスを優先、フォールバックでFindFirstObjectByType
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
+        if (metrics == null)
+        {
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: SimulationMetrics=null（Instance={SimulationMetrics.Instance != null}, FindFirst=false）");
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: SimulationMetricsが見つかりません。避難記録をスキップします。");
+            return;
         }
+
+        // _envがnullの場合はFindFirstObjectByTypeでフォールバック
+        var env = _env ?? FindFirstObjectByType<EnvManager>();
+        if (env == null)
+        {
+            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: EnvManager=null（_env={_env != null}）");
+            Debug.LogWarning($"[Evacuee] {gameObject.name}: EnvManagerが見つかりません。避難記録をスキップします。");
+            return;
+        }
+
+        string agentId = EvacueeId ?? gameObject.name;
+        float evacuationTime = env.CurrentTimeSec;
+        string locationName = !string.IsNullOrEmpty(locationDisplayName) ? locationDisplayName : locationGameObjectName;
+        string agentType = UseLLMDecision ? "LLM" : "RuleBased";
+
+        // ★デバッグログ: RecordEvacuation呼び出し前
+        Debug.LogError($"[DEBUG-EVACUEE] RecordEvacuation呼び出し前: agentId={agentId}, time={evacuationTime:F2}, metrics.EnableMetrics={metrics.EnableMetrics}");
+
+        metrics.RecordEvacuation(agentId, evacuationTime, locationName, agentType);
     }
 
     private void RequestLLMDecision()
@@ -1066,7 +1128,7 @@ public class Evacuee : MonoBehaviour {
         SafeResetPath();
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.STAY, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: STAY行動を選択 - その場で待機します " +
@@ -1145,7 +1207,7 @@ public class Evacuee : MonoBehaviour {
         SafeSetDestination(destination);
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.SEARCH_FAMILY, null, response.reasoning, response.confidence);
 
         string trackingMode = _searchFamilyTargetEvacuee != null ? "リアルタイム追跡" : "予測位置";
@@ -1215,7 +1277,7 @@ public class Evacuee : MonoBehaviour {
         SafeResetPath();
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.CONTACT, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: CONTACT行動を選択 - {target.relation} {target.name} に連絡します " +
@@ -1819,7 +1881,7 @@ public class Evacuee : MonoBehaviour {
         }
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.FOLLOW, null, response.reasoning, response.confidence);
 
         return true;
@@ -1858,7 +1920,7 @@ public class Evacuee : MonoBehaviour {
         SafeResetPath();
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.TALK, null, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: TALK行動を選択 - {talkTarget.PersonaName}(ID:{talkTarget.EvacueeId})に話しかけます " +
@@ -2668,7 +2730,7 @@ public class Evacuee : MonoBehaviour {
         }
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.FOLLOW, null, $"家族({familyName})と合流したため連帯行動を開始", 1.0f);
     }
 
@@ -3090,7 +3152,7 @@ public class Evacuee : MonoBehaviour {
         }
 
         // メトリクス記録
-        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         metrics?.RecordAction(_uniqueId ?? gameObject.name, LLM.ActionType.EVACUATE, response.selected_shelter_id, response.reasoning, response.confidence);
 
         Debug.Log($"[Evacuee] {gameObject.name}: EVACUATE - 【{destinationType}】{displayName}に向かいます "
@@ -3757,6 +3819,28 @@ public class Evacuee : MonoBehaviour {
             Vector3 destination = Target.transform.position;
             SafeSetDestination(destination);
             ResetMovementSpeed();
+
+            // CurrentActionを更新
+            CurrentAction = LLM.ActionType.EVACUATE;
+
+            // SimulationMetricsにアクションを記録（フォールバック時も記録漏れを防ぐ）
+            var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
+            if (metrics != null)
+            {
+                string shelterName = Target?.transform.parent?.name ?? Target?.name ?? "";
+                metrics.RecordAction(
+                    _uniqueId ?? gameObject.name,
+                    LLM.ActionType.EVACUATE,
+                    shelterName,
+                    "最寄り避難所へフォールバック移動",
+                    1.0f
+                );
+            }
+            else
+            {
+                Debug.LogWarning($"[Evacuee] {gameObject.name}: SimulationMetricsが見つかりません。フォールバックアクション記録をスキップします。");
+            }
+
             Debug.Log($"[Evacuee] {gameObject.name}: 目的地を設定しました - 座標: ({destination.x:F2}, {destination.y:F2}, {destination.z:F2}), 避難所: {Target.transform.parent?.name}, speed={NavAgent?.speed:F2}");
         }
     }

@@ -25,6 +25,17 @@ public class EnvManager : MonoBehaviour {
     }
 
     /// <summary>
+    /// エピソードのライフサイクル状態
+    /// ログ保存完了を待ってからリセットを行うための状態管理
+    /// </summary>
+    public enum EpisodeState {
+        Idle,           // 初期状態 or リセット完了待機中
+        Running,        // エピソード実行中
+        Ending,         // 終了検知、ログ保存待ち
+        ReadyForReset   // ログ保存完了、リセット可能
+    }
+
+    /// <summary>
     /// 災害・状況シナリオの種類（震度ベース）
     /// （LLMプロンプト内の「状況」テキストを切り替えるために使用）
     /// </summary>
@@ -95,6 +106,11 @@ public class EnvManager : MonoBehaviour {
     [Header("Parameters")]
     public float EvacuationRate; // 全体の避難率
     public bool EnableEnv = false; // 環境の準備が完了したか否か（利用不可の場合はfalse）
+
+    /// <summary>
+    /// 現在のエピソード状態（ログ保存とリセットのタイミング制御用）
+    /// </summary>
+    public EpisodeState CurrentEpisodeState { get; private set; } = EpisodeState.Idle;
     public int currentStep; // 現在のステップ数
     private float currentTimeSec; //現在の経過時間（秒）
     private List<Tuple<float, float>> evaRatePerSec = new List<Tuple<float, float>>(); // 避難率の時間変化を記録するリスト
@@ -378,6 +394,7 @@ public class EnvManager : MonoBehaviour {
         evaRatePerSec.Add(new Tuple<float, float>(currentTimeSec, EvacuationRate));
         UpdateUI();
         if (currentTimeSec >= MaxSeconds || IsEvacuatedAll()) { // 制限時間 or 全避難者が避難完了した場合
+            CurrentEpisodeState = EpisodeState.Ending; // 状態を「終了処理中」に変更
             EnableEnv = false; // 終了条件を満たしたらすぐに無効化（複数回発火防止）
             float capturedElapsedTime = currentTimeSec; // Dispose()でリセットされる前にキャプチャ
             OnEndEpisode?.Invoke(EvacuationRate, capturedElapsedTime); // エピソード終了のイベントを発火
@@ -420,7 +437,24 @@ public class EnvManager : MonoBehaviour {
         /**エピソード終了の発行*/
         Agent.OnEndEpisode();
         Agent.EndEpisode();
-        currentEpisodeId++;
+        // 注意: currentEpisodeId++はOnEpisodeBegin()に移動（ログ保存完了後にインクリメント）
+    }
+
+    /// <summary>
+    /// ログ保存完了を通知し、リセット処理を許可する
+    /// ExperimentConfigから呼び出される
+    /// </summary>
+    public void SignalEpisodeFinalized()
+    {
+        if (CurrentEpisodeState == EpisodeState.Ending)
+        {
+            CurrentEpisodeState = EpisodeState.ReadyForReset;
+            Debug.Log($"[EnvManager] エピソード {currentEpisodeId} ログ保存完了、リセット準備完了");
+        }
+        else
+        {
+            Debug.LogWarning($"[EnvManager] SignalEpisodeFinalized: 予期しない状態 ({CurrentEpisodeState})");
+        }
     }
 
     /// <summary>
@@ -428,6 +462,21 @@ public class EnvManager : MonoBehaviour {
     /// この関数はエージェントのイベント関数から参照されます
     /// </summary>
     public void OnEpisodeBegin() {
+        // 状態チェック: ReadyForReset または Idle（初回起動）のみ許可
+        if (CurrentEpisodeState != EpisodeState.ReadyForReset &&
+            CurrentEpisodeState != EpisodeState.Idle)
+        {
+            Debug.LogWarning($"[EnvManager] OnEpisodeBegin: 現在の状態({CurrentEpisodeState})ではリセットできません。ログ保存完了を待機してください。");
+            return;
+        }
+
+        // 前エピソードが正常終了していた場合、エピソードIDをインクリメント
+        if (CurrentEpisodeState == EpisodeState.ReadyForReset)
+        {
+            currentEpisodeId++;
+        }
+
+        CurrentEpisodeState = EpisodeState.Idle;
         EnableEnv = false;
         Dispose();
 
@@ -461,6 +510,7 @@ public class EnvManager : MonoBehaviour {
         
         OnStartEpisode?.Invoke();
         Debug.Log($"[EnvManager] エピソード {currentEpisodeId} 開始 (避難者数: {Evacuees.Count})");
+        CurrentEpisodeState = EpisodeState.Running;
         EnableEnv = true;
     }
 
