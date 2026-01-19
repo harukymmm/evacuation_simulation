@@ -33,8 +33,17 @@ public class SimulationMetrics : MonoBehaviour
     private float _capturedElapsedTime;  // エピソード終了時にキャプチャした経過時間
     private bool _episodeInProgress = false;  // エピソード進行中フラグ
     private bool _partialLogsSaved = false;   // 部分ログ保存済みフラグ（二重保存防止）
-    private string _capturedConditionId = "";  // エピソード終了時にキャプチャした条件ID（ログファイル名用）
-    private string _capturedAgentType = "";   // エピソード終了時にキャプチャしたエージェントタイプ
+    private string _capturedConditionId = "";  // エピソード開始時にキャプチャした条件ID（ログファイル名用）
+    private string _capturedAgentType = "";   // エピソード開始時にキャプチャしたエージェントタイプ
+    private bool _conditionCaptured = false;  // 条件ID・エージェントタイプがキャプチャ済みか
+    private bool _hasEverSavedLogs = false;  // 一度でもログを保存したことがあるか（初回エピソード判定用）
+
+    // 次のエピソード用に事前設定された条件ID・エージェントタイプ・試行番号
+    // ExperimentConfigから条件切り替え前に設定される
+    private string _pendingConditionId = "";
+    private string _pendingAgentType = "";
+    private int _pendingTrialNumber = 1;  // 試行番号（1始まり）
+    private int _capturedTrialNumber = 1;  // キャプチャした試行番号
 
     /// <summary>
     /// 現在の実験IDを取得（LLMサーバーとのログ統合用）
@@ -123,7 +132,9 @@ public class SimulationMetrics : MonoBehaviour
     [Serializable]
     public class EpisodeSummary
     {
-        public int episodeId;
+        public int episodeId;       // グローバルエピソードID
+        public int trialNumber;     // 条件内での試行番号（1始まり）
+        public string conditionId;  // 条件ID
         public string agentType;
         public float evacuationRate;
         public float averageEvacuationTime;
@@ -155,9 +166,6 @@ public class SimulationMetrics : MonoBehaviour
         }
         Instance = this;
 
-        // ★デバッグログ: シングルトン設定完了
-        Debug.LogError($"[DEBUG-METRICS] SimulationMetrics.Awake: Instance設定完了, EnableMetrics={EnableMetrics}");
-
         _envManager = FindFirstObjectByType<EnvManager>();
         if (_envManager == null)
         {
@@ -171,9 +179,6 @@ public class SimulationMetrics : MonoBehaviour
         _envManager.OnEndEpisode += OnEpisodeEnd;
 
         InitializeActionCounts();
-
-        // ★デバッグログ: 初期化完了
-        Debug.LogError($"[DEBUG-METRICS] SimulationMetrics.Awake完了: Instance={Instance != null}, _envManager={_envManager != null}, EnableMetrics={EnableMetrics}");
     }
 
     void Start()
@@ -257,10 +262,35 @@ public class SimulationMetrics : MonoBehaviour
     {
         if (!EnableMetrics) return;
 
-        Debug.LogError($"[DEBUG-METRICS] OnEpisodeStart: _fullLogsSaved={_fullLogsSaved}, _evacuationRecords.Count={_evacuationRecords.Count}");
-
         _episodeStartTime = Time.time;
         _episodeInProgress = true;
+
+        // ★重要: _pendingConditionIdを最優先でチェック
+        // ExperimentConfig.OnConditionComplete()で次のエピソード用に事前設定された条件IDがあれば、それを使用
+        // これにより、条件切り替え後にOnEpisodeStartが呼ばれても正しい条件IDが使われる
+        string conditionIdToUse = "";
+        string agentTypeToUse = "";
+        int trialNumberToUse = 1;
+        bool usePendingCondition = false;
+
+        if (!string.IsNullOrEmpty(_pendingConditionId))
+        {
+            // 事前設定された条件IDを使用
+            conditionIdToUse = _pendingConditionId;
+            agentTypeToUse = _pendingAgentType;
+            trialNumberToUse = _pendingTrialNumber;
+            usePendingCondition = true;
+            // ★注意: ここではクリアしない
+            // 実際にキャプチャが行われる分岐内でクリアする
+            // （OnEpisodeStartが2回呼ばれる場合、1回目でクリアすると2回目で現在値が使われてしまう）
+        }
+        else
+        {
+            // 事前設定がない場合は現在値を使用
+            conditionIdToUse = CaptureCurrentConditionId();
+            agentTypeToUse = CaptureCurrentAgentType();
+            trialNumberToUse = CaptureCurrentTrialNumber();
+        }
 
         // ★重要: クリア処理はFinalizeAndSaveEpisodeLogs()でのみ行う
         // OnEpisodeStartでは、FinalizeAndSaveEpisodeLogs()でクリア済み（_fullLogsSaved=true）の場合のみ
@@ -270,17 +300,47 @@ public class SimulationMetrics : MonoBehaviour
             // 前のエピソードのログ保存が完了している場合のみフラグをリセット
             _partialLogsSaved = false;
             _fullLogsSaved = false;
+            _conditionCaptured = false;  // キャプチャフラグもリセット
+
+            // ★条件ID・エージェントタイプ・試行番号を設定（上で決定した値を使用）
+            _capturedConditionId = conditionIdToUse;
+            _capturedAgentType = agentTypeToUse;
+            _capturedTrialNumber = trialNumberToUse;
+            _conditionCaptured = true;
+
+            // ★実際にキャプチャしたので、_pendingConditionIdをクリア
+            if (usePendingCondition)
+            {
+                _pendingConditionId = "";
+                _pendingAgentType = "";
+                _pendingTrialNumber = 1;
+            }
 
             // エージェント別メトリクスを初期化（Evacueeリストが更新されている可能性があるため）
             InitializeAgentMetrics();
 
-            Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 開始 - 指標計測開始");
+            Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 開始 - conditionId={_capturedConditionId}, trial={_capturedTrialNumber}（{(usePendingCondition ? "事前設定値" : "現在値")}）");
         }
-        else if (_evacuationRecords.Count == 0)
+        else if (_evacuationRecords.Count == 0 && !_conditionCaptured)
         {
-            // 初回エピソード（まだログ保存が一度も行われていない）
+            // 初回エピソード（まだログ保存が一度も行われていない）かつ未キャプチャ
             _partialLogsSaved = false;
             _fullLogsSaved = false;
+
+            // ★条件ID・エージェントタイプ・試行番号を設定（上で決定した値を使用）
+            // 初回は_pendingConditionIdが設定されていないはずなので、通常はconditionIdToUseは現在値
+            _capturedConditionId = conditionIdToUse;
+            _capturedAgentType = agentTypeToUse;
+            _capturedTrialNumber = trialNumberToUse;
+            _conditionCaptured = true;
+
+            // ★実際にキャプチャしたので、_pendingConditionIdをクリア
+            if (usePendingCondition)
+            {
+                _pendingConditionId = "";
+                _pendingAgentType = "";
+                _pendingTrialNumber = 1;
+            }
 
             _actionLogs.Clear();
             InitializeActionCounts();
@@ -291,11 +351,42 @@ public class SimulationMetrics : MonoBehaviour
             // エージェント別メトリクスを初期化
             InitializeAgentMetrics();
 
-            Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 開始（初回） - 指標計測開始");
+            Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 開始（初回） - conditionId={_capturedConditionId}, trial={_capturedTrialNumber}（{(usePendingCondition ? "事前設定値" : "現在値")}）");
+        }
+        else if (_evacuationRecords.Count == 0 && _conditionCaptured)
+        {
+            // 既にキャプチャ済み（OnEpisodeStartが2回呼ばれた場合）
+            // ただし、_pendingConditionIdが設定されている場合は新しい条件なのでキャプチャし直す
+            if (usePendingCondition && _capturedConditionId != conditionIdToUse)
+            {
+                _capturedConditionId = conditionIdToUse;
+                _capturedAgentType = agentTypeToUse;
+                _capturedTrialNumber = trialNumberToUse;
+                _pendingConditionId = "";
+                _pendingAgentType = "";
+                _pendingTrialNumber = 1;
+                Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} - 新しい条件をキャプチャ（conditionId={_capturedConditionId}, trial={_capturedTrialNumber}）");
+            }
+            else
+            {
+                Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} - 既にキャプチャ済み（conditionId={_capturedConditionId}, trial={_capturedTrialNumber}）");
+            }
+        }
+        else if (_evacuationRecords.Count > 0 && usePendingCondition)
+        {
+            // 前のエピソードのレコードが残っているが、新しい条件が事前設定されている
+            // ★重要: ログ保存が完了していない場合は、現在のエピソードのデータを守る必要がある
+            // _fullLogsSaved=falseの場合はキャプチャしない（前のエピソードのログ保存を待つ）
+            // この状態は、OnConditionComplete()でFinalizeMLAgentEpisode()が呼ばれた時に発生する
+            // FinalizeAndSaveEpisodeLogs()はOnTrialEnd()内で先に呼ばれているはずなので、
+            // ここに到達するということはまだ保存が完了していない
+            Debug.LogWarning($"[SimulationMetrics] OnEpisodeStart: レコード残存({_evacuationRecords.Count})、ログ保存待ち - _pendingConditionIdは保持（{conditionIdToUse}）");
+            // ★_pendingConditionIdはクリアしない（次のOnEpisodeStart()で使用される）
         }
         else
         {
             // 前のエピソードのログ保存がまだ完了していない
+            // ★ここではキャプチャしない（前のエピソードの値を保持）
             Debug.LogWarning($"[SimulationMetrics] OnEpisodeStart: 前エピソードのログ保存待ち（_evacuationRecords.Count={_evacuationRecords.Count}）");
         }
     }
@@ -322,6 +413,33 @@ public class SimulationMetrics : MonoBehaviour
     private string CaptureCurrentAgentType()
     {
         return ExperimentConfig.GetAgentType().ToString();
+    }
+
+    /// <summary>
+    /// 現在の試行番号をキャプチャする
+    /// </summary>
+    private int CaptureCurrentTrialNumber()
+    {
+        if (ExperimentConfig.Instance != null)
+        {
+            return ExperimentConfig.Instance.CurrentTrialNumber;
+        }
+        return 1;
+    }
+
+    /// <summary>
+    /// 次のエピソード用に条件ID・エージェントタイプ・試行番号を事前設定する
+    /// ExperimentConfigから条件切り替え前に呼び出される
+    /// これにより、OnEpisodeStart時点で条件が既に切り替わっていても正しい値を使用できる
+    /// </summary>
+    /// <param name="conditionId">次の条件ID</param>
+    /// <param name="agentType">次のエージェントタイプ</param>
+    /// <param name="trialNumber">試行番号（1始まり、省略時は1）</param>
+    public void SetPendingCondition(string conditionId, string agentType, int trialNumber = 1)
+    {
+        _pendingConditionId = conditionId;
+        _pendingAgentType = agentType;
+        _pendingTrialNumber = trialNumber;
     }
 
     private void InitializeAgentMetrics()
@@ -376,14 +494,20 @@ public class SimulationMetrics : MonoBehaviour
 
     private void OnEpisodeEnd(float evacuationRate, float elapsedTime)
     {
-        // ★経過時間を先にキャプチャ（OnEpisodeStartが先に呼ばれた場合に備える）
+        // ★経過時間のみキャプチャ（条件ID・エージェントタイプはOnEpisodeStartでキャプチャ済み）
         _capturedElapsedTime = elapsedTime;
-        _capturedConditionId = CaptureCurrentConditionId();
-        _capturedAgentType = CaptureCurrentAgentType();
 
-        // ExperimentConfigから明示的にFinalizeAndSaveEpisodeLogsが呼ばれる場合はそちらで処理される
-        // ここはフォールバック：ExperimentConfigを経由しない場合（非バッチモード等）にも対応
-        FinalizeAndSaveEpisodeLogs(elapsedTime);
+        // ★重要: ExperimentConfigがある場合はOnTrialEnd()からFinalizeAndSaveEpisodeLogsが呼ばれる
+        // そちらで条件切り替え前にログ保存が行われるため、ここでは呼ばない
+        // ExperimentConfigがない場合（非バッチモード等）のみフォールバックとして呼び出す
+        if (ExperimentConfig.Instance == null)
+        {
+            FinalizeAndSaveEpisodeLogs(elapsedTime);
+        }
+        else
+        {
+            Debug.Log($"[SimulationMetrics] OnEpisodeEnd: ExperimentConfigが存在するため、OnTrialEnd()でのログ保存を待機");
+        }
     }
 
     /// <summary>
@@ -395,37 +519,28 @@ public class SimulationMetrics : MonoBehaviour
     /// <param name="elapsedTime">エピソードの経過時間</param>
     public void FinalizeAndSaveEpisodeLogs(float elapsedTime)
     {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-METRICS] FinalizeAndSaveEpisodeLogs開始: _evacuationRecords.Count={_evacuationRecords.Count}");
-
         if (!EnableMetrics) return;
 
         // 既に完全ログが保存されている場合はスキップ（二重保存防止）
         if (_fullLogsSaved)
         {
-            Debug.LogError($"[DEBUG-METRICS] FinalizeAndSaveEpisodeLogs: _fullLogsSaved=trueのためスキップ");
             return;
         }
 
-        // ログ保存前に条件ID・エージェントタイプをキャプチャ
-        _capturedConditionId = CaptureCurrentConditionId();
-        _capturedAgentType = CaptureCurrentAgentType();
-
+        // ★条件ID・エージェントタイプはOnEpisodeStartでキャプチャ済み
+        // ここでは経過時間のみキャプチャ
         _episodeInProgress = false;  // エピソード終了をマーク
         _capturedElapsedTime = elapsedTime;  // Dispose()でリセットされる前にキャプチャされた経過時間を保存
 
         // 既に部分ログが保存されている場合はスキップ（二重保存防止）
         if (_partialLogsSaved)
         {
-            Debug.LogError($"[DEBUG-METRICS] FinalizeAndSaveEpisodeLogs: _partialLogsSaved=trueのためスキップ");
             Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} - 部分ログが既に保存済みのためスキップ");
             return;
         }
 
         // 避難完了記録を収集
-        Debug.LogError($"[DEBUG-METRICS] CollectEvacuationRecords呼び出し前: Count={_evacuationRecords.Count}");
         CollectEvacuationRecords();
-        Debug.LogError($"[DEBUG-METRICS] CollectEvacuationRecords呼び出し後: Count={_evacuationRecords.Count}");
 
         // 未完了エージェントのSTAY継続時間を確定
         FinalizeAgentMetrics();
@@ -443,6 +558,7 @@ public class SimulationMetrics : MonoBehaviour
 
         // 完全ログ保存済みフラグを立てる
         _fullLogsSaved = true;
+        _hasEverSavedLogs = true;  // 一度でもログを保存したことを記録（初回エピソード判定用）
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 終了 - " +
                   $"避難完了率: {summary.evacuationRate:P1}, " +
@@ -458,7 +574,6 @@ public class SimulationMetrics : MonoBehaviour
         _shelterSelectionCounts.Clear();
         _agentMetrics.Clear();
         _stayStartTimes.Clear();
-        Debug.LogError($"[DEBUG-METRICS] FinalizeAndSaveEpisodeLogs完了: レコードをクリアしました");
     }
 
     /// <summary>
@@ -662,14 +777,7 @@ public class SimulationMetrics : MonoBehaviour
                                           string primaryGoal, string[] planSteps,
                                           bool goalUpdated, bool planUpdated)
     {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-METRICS] RecordAction呼び出し: agentId={agentId}, actionType={actionType}, EnableMetrics={EnableMetrics}");
-
-        if (!EnableMetrics)
-        {
-            Debug.LogError($"[DEBUG-METRICS] RecordAction: EnableMetrics=falseのためスキップ");
-            return;
-        }
+        if (!EnableMetrics) return;
 
         float currentTime = _envManager.CurrentTimeSec;
 
@@ -689,14 +797,10 @@ public class SimulationMetrics : MonoBehaviour
 
         _actionLogs.Add(entry);
 
-        // ★デバッグログ: 記録追加後のカウント確認
-        Debug.LogError($"[DEBUG-METRICS] RecordAction: _actionLogs.Count={_actionLogs.Count}");
-
         // 行動カウントを更新
         if (_actionCounts.ContainsKey(actionType))
         {
             _actionCounts[actionType]++;
-            Debug.LogError($"[DEBUG-METRICS] RecordAction: _actionCounts[{actionType}]={_actionCounts[actionType]}");
         }
 
         // 避難所選択カウントを更新
@@ -787,16 +891,7 @@ public class SimulationMetrics : MonoBehaviour
     /// </summary>
     public void RecordEvacuation(string agentId, float evacuationTime, string shelterName, string agentType)
     {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-METRICS] RecordEvacuation呼び出し: agentId={agentId}, EnableMetrics={EnableMetrics}");
-
-        if (!EnableMetrics)
-        {
-            Debug.LogError($"[DEBUG-METRICS] RecordEvacuation: EnableMetrics=falseのためスキップ");
-            return;
-        }
-
-        Debug.Log($"[SimulationMetrics] RecordEvacuation called: agentId={agentId}, time={evacuationTime:F2}, shelter={shelterName}");
+        if (!EnableMetrics) return;
 
         var record = new EvacuationRecord
         {
@@ -808,9 +903,6 @@ public class SimulationMetrics : MonoBehaviour
         };
 
         _evacuationRecords.Add(record);
-
-        // ★デバッグログ: 記録追加後のカウント確認
-        Debug.LogError($"[DEBUG-METRICS] RecordEvacuation: _evacuationRecords.Count={_evacuationRecords.Count}");
 
         // エージェント別メトリクスを更新
         if (_agentMetrics.TryGetValue(agentId, out var metrics))
@@ -862,20 +954,7 @@ public class SimulationMetrics : MonoBehaviour
 
     private EpisodeSummary GenerateEpisodeSummary()
     {
-        // ★デバッグログ: レコード数確認
-        Debug.LogError($"[DEBUG-METRICS] GenerateEpisodeSummary: _evacuationRecords.Count={_evacuationRecords.Count}");
-
         var completedRecords = _evacuationRecords.Where(r => r.completedInTime).ToList();
-
-        // ★デバッグログ: completedInTime=trueのレコード数確認
-        Debug.LogError($"[DEBUG-METRICS] GenerateEpisodeSummary: completedRecords.Count={completedRecords.Count}");
-
-        // ★デバッグログ: 最初の10件のcompletedInTime状態を確認
-        for (int i = 0; i < Math.Min(10, _evacuationRecords.Count); i++)
-        {
-            var r = _evacuationRecords[i];
-            Debug.LogError($"[DEBUG-METRICS] Record[{i}]: agentId={r.agentId}, completedInTime={r.completedInTime}");
-        }
 
         var evacuationTimes = completedRecords.Select(r => r.evacuationTime).ToList();
 
@@ -942,6 +1021,8 @@ public class SimulationMetrics : MonoBehaviour
         return new EpisodeSummary
         {
             episodeId = _envManager.currentEpisodeId,
+            trialNumber = _capturedTrialNumber,
+            conditionId = _capturedConditionId,
             agentType = _capturedAgentType,  // OnEpisodeEndでキャプチャした値を使用
             evacuationRate = _envManager.EvacuationRate,
             averageEvacuationTime = evacuationTimes.Count > 0 ? evacuationTimes.Average() : 0f,
@@ -982,7 +1063,8 @@ public class SimulationMetrics : MonoBehaviour
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
         string conditionPrefix = GetConditionPrefix();
-        string filename = $"{conditionPrefix}episode_{_envManager.currentEpisodeId}_actions{partialSuffix}.csv";
+        // ファイル名に試行番号を使用（条件内での何回目かがわかるように）
+        string filename = $"{conditionPrefix}trial_{_capturedTrialNumber}_actions{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
@@ -1020,7 +1102,8 @@ public class SimulationMetrics : MonoBehaviour
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
         string conditionPrefix = GetConditionPrefix();
-        string filename = $"{conditionPrefix}episode_{summary.episodeId}_summary{partialSuffix}.csv";
+        // ファイル名に試行番号を使用（条件内での何回目かがわかるように）
+        string filename = $"{conditionPrefix}trial_{_capturedTrialNumber}_summary{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))
@@ -1038,6 +1121,8 @@ public class SimulationMetrics : MonoBehaviour
 
             writer.WriteLine("metric,value");
             writer.WriteLine($"episode_id,{summary.episodeId}");
+            writer.WriteLine($"trial_number,{summary.trialNumber}");
+            writer.WriteLine($"condition_id,{summary.conditionId}");
             writer.WriteLine($"agent_type,{summary.agentType}");
             writer.WriteLine($"is_partial,{isPartial}");  // 部分ログフラグを追加
             writer.WriteLine($"elapsed_time,{elapsedTime:F2}");  // 経過時間を追加（キャプチャ済みの値を使用）
@@ -1129,7 +1214,8 @@ public class SimulationMetrics : MonoBehaviour
         string directory = GetOutputDirectory();
         string partialSuffix = isPartial ? "_PARTIAL" : "";
         string conditionPrefix = GetConditionPrefix();
-        string filename = $"{conditionPrefix}episode_{_envManager.currentEpisodeId}_agents{partialSuffix}.csv";
+        // ファイル名に試行番号を使用（条件内での何回目かがわかるように）
+        string filename = $"{conditionPrefix}trial_{_capturedTrialNumber}_agents{partialSuffix}.csv";
         string filepath = Path.Combine(directory, filename);
 
         using (var writer = new StreamWriter(filepath))

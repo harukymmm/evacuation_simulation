@@ -347,10 +347,14 @@ public class ExperimentConfig : MonoBehaviour
 
         // ★重要: 条件切り替え前にSimulationMetricsのログ保存を明示的に実行
         // イベントハンドラの実行順序に依存せず、確実に現在の条件でログを保存する
-        if (_simulationMetrics != null)
+        var metrics = SimulationMetrics.Instance ?? _simulationMetrics;
+        if (metrics != null)
         {
-            _simulationMetrics.FinalizeAndSaveEpisodeLogs(elapsedTime);
+            metrics.FinalizeAndSaveEpisodeLogs(elapsedTime);
         }
+
+        // ★注意: SetPendingConditionはApplyCondition()内で呼び出されるようになったため、
+        // ここでの事前設定は不要（OnConditionComplete→ApplyConditionで設定される）
 
         // ログ保存完了を通知 → これによりOnEpisodeBegin()でのリセットが許可される
         if (_envManager != null)
@@ -374,6 +378,24 @@ public class ExperimentConfig : MonoBehaviour
         if (_currentTrialIndex >= NumberOfTrials)
         {
             OnExperimentComplete();
+        }
+        else
+        {
+            // まだ試行が残っている場合は、次の試行番号をSimulationMetricsに通知
+            if (metrics != null && IsBatchMode)
+            {
+                var currentCondition = _batchConditions[_currentConditionIndex];
+                string agentType = currentCondition.agentType.ToString();
+                int nextTrialNumber = _currentTrialIndex + 1;
+                metrics.SetPendingCondition(currentCondition.conditionId, agentType, nextTrialNumber);
+            }
+
+            // ML-Agentのエピソード終了処理を実行
+            // （OnExperimentCompleteの場合はOnConditionComplete内でOnEpisodeBeginが呼ばれる）
+            if (_envManager != null)
+            {
+                _envManager.FinalizeMLAgentEpisode();
+            }
         }
     }
 
@@ -836,6 +858,18 @@ public class ExperimentConfig : MonoBehaviour
         ExperimentName = condition.conditionId;
         NumberOfTrials = TrialsPerCondition;
 
+        // ★重要: SimulationMetricsに即座に条件IDを通知
+        // OnEpisodeStart()が呼ばれる前に確実に設定しておく
+        var metrics = SimulationMetrics.Instance ?? _simulationMetrics;
+        if (metrics != null)
+        {
+            string agentType = condition.agentType.ToString();
+            // 条件適用時は試行番号1から開始（_currentTrialIndexは0始まりなので+1）
+            // 注意: ApplyConditionはResetExperiment()後に呼ばれるので、_currentTrialIndexは0にリセット済み
+            int trialNumber = _currentTrialIndex + 1;
+            metrics.SetPendingCondition(condition.conditionId, agentType, trialNumber);
+        }
+
         Debug.Log($"[ExperimentConfig] ----------------------------------------");
         Debug.Log($"[ExperimentConfig] 条件適用: {condition.conditionId}");
         Debug.Log($"[ExperimentConfig]   AgentType: {condition.agentType}");
@@ -874,6 +908,10 @@ public class ExperimentConfig : MonoBehaviour
             Debug.Log($"[ExperimentConfig] 条件 {_currentConditionIndex}/{_batchConditions.Count} 完了");
             Debug.Log($"[ExperimentConfig] 次の条件: {_batchConditions[_currentConditionIndex].conditionId}");
 
+            // ★注意: SetPendingConditionはOnTrialEnd()で既に呼び出し済み
+            // ここで再度呼ぶと「次の次の条件」を設定してしまうため、呼ばない
+            // OnTrialEnd()で設定された_pendingConditionIdがOnEpisodeStart()で使用される
+
             ResetExperiment();
 
             // SpawnLocationManagerをリセットして次の条件で正しく再初期化されるようにする
@@ -888,6 +926,13 @@ public class ExperimentConfig : MonoBehaviour
             // エピソードをリスタート
             if (_envManager != null)
             {
+                // ML-Agentのエピソード終了処理を実行（OnEpisodeBeginの前に呼ぶ）
+                // ★注意: FinalizeMLAgentEpisode()→Agent.EndEpisode()により
+                // ML-Agentsが自動的にOnEpisodeBegin()を呼び、OnEpisodeStart()が発火する
+                // その後、_envManager.OnEpisodeBegin()でもOnEpisodeStart()が発火するが、
+                // SimulationMetricsは2回目の呼び出しでは_conditionCaptured=trueのため
+                // キャプチャをスキップし、_pendingConditionIdも保持される
+                _envManager.FinalizeMLAgentEpisode();
                 _envManager.OnEpisodeBegin();
             }
         }
@@ -1037,6 +1082,11 @@ public class ExperimentConfig : MonoBehaviour
     /// 総条件数
     /// </summary>
     public int TotalConditions => _batchConditions?.Count ?? 0;
+
+    /// <summary>
+    /// 条件あたりの総試行数
+    /// </summary>
+    public int TotalTrials => TrialsPerCondition;
 
     #endregion
 }

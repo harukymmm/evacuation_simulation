@@ -427,8 +427,8 @@ public class EnvManager : MonoBehaviour {
 
         if(IsRecordData) {
             Utils.SaveResultCSV(
-                new string[] { "Time", "EvacuationRate" }, 
-                evaRatePerSec, 
+                new string[] { "Time", "EvacuationRate" },
+                evaRatePerSec,
                 (data) => new string[] { data.Item1.ToString(), data.Item2.ToString() },
                 $"{recordID}/EvaRatesPerSec_Episode_{currentEpisodeId}.csv"
             );
@@ -436,8 +436,23 @@ public class EnvManager : MonoBehaviour {
 
         /**エピソード終了の発行*/
         Agent.OnEndEpisode();
-        Agent.EndEpisode();
+        // ★重要: Agent.EndEpisode()はここでは呼ばない
+        // EndEpisode()を呼ぶとML-Agentsが自動的にOnEpisodeBegin()を呼ぶが、
+        // その時点ではまだExperimentConfig.OnTrialEnd()でSetPendingCondition()が呼ばれていない
+        // → ExperimentConfig.OnTrialEnd()の最後でFinalizeMLAgentEpisode()を呼ぶことで、
+        //    SetPendingCondition()の後にAgent.EndEpisode()が呼ばれることを保証する
         // 注意: currentEpisodeId++はOnEpisodeBegin()に移動（ログ保存完了後にインクリメント）
+    }
+
+    /// <summary>
+    /// ML-Agentsのエピソード終了処理を実行する
+    /// ExperimentConfig.OnTrialEnd()の最後で呼び出される
+    /// これにより、SetPendingCondition()の後にAgent.EndEpisode()が呼ばれることを保証する
+    /// </summary>
+    public void FinalizeMLAgentEpisode()
+    {
+        Agent.EndEpisode();
+        Debug.Log($"[EnvManager] ML-Agentエピソード終了処理完了");
     }
 
     /// <summary>

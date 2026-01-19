@@ -610,12 +610,8 @@ public class Evacuee : MonoBehaviour {
     /// </summary>
     private void RequestRuleBasedDecision()
     {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-EVACUEE] RequestRuleBasedDecision呼び出し: {gameObject.name}");
-
         if (_ruleBasedDecisionMaker == null)
         {
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: _ruleBasedDecisionMaker=null");
             return;
         }
 
@@ -628,18 +624,12 @@ public class Evacuee : MonoBehaviour {
             (_searchFamilyTarget == null || (familyTarget != null && _searchFamilyTarget.agent_id != familyTarget.agent_id));
         bool needsRecording = !_firstRuleBasedActionRecorded;
 
-        // ★デバッグログ: 記録判定
-        Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: actionType={actionType}, needsRecording={needsRecording}, actionChanged={actionChanged}");
-
         if (actionChanged || targetChanged || familyTargetChanged || needsRecording)
         {
             CurrentAction = actionType;
 
             // SimulationMetricsに記録（シングルトンインスタンスを優先）
             var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
-
-            // ★デバッグログ: metrics取得結果
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: metrics={metrics != null}, Instance={SimulationMetrics.Instance != null}");
 
             if (metrics != null)
             {
@@ -649,7 +639,6 @@ public class Evacuee : MonoBehaviour {
             }
             else
             {
-                Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: metricsがnullのためRecordActionをスキップ");
                 Debug.LogWarning($"[Evacuee] {gameObject.name}: SimulationMetricsが見つかりません。アクション記録をスキップします。");
             }
 
@@ -787,23 +776,17 @@ public class Evacuee : MonoBehaviour {
     /// 避難所のオブジェクトにアタッチされ、当たり判定により呼び出される 
     /// </summary>
     public void Evacuation(Shelter shelter) {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-EVACUEE] Evacuation呼び出し: {gameObject.name}, shelter={shelter?.displayName}, isEvacuating={isEvacuating}");
-
         if(isEvacuating) {
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: isEvacuating=trueのためスキップ");
             return;
         }
         isEvacuating = true;
         // キャパシティーがある場合、避難処理を行う
         if(shelter.currentCapacity > 0) {
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: 避難成功、RecordEvacuationToMetrics呼び出し");
             shelter.NowAccCount++;
             // 避難成功時にSimulationMetricsに記録
             RecordEvacuationToMetrics(shelter.displayName, shelter.gameObject.name);
             gameObject.SetActive(false);
         } else { //キャパシティがいっぱいの場合、次の避難所を探す
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: キャパシティ不足（capacity={shelter.currentCapacity}）");
             excludeShelters.Add(shelter.uuid);
             if (UseLLMDecision && DecisionClient != null)
             {
@@ -849,14 +832,10 @@ public class Evacuee : MonoBehaviour {
     /// <param name="locationGameObjectName">避難先のGameObject名（フォールバック用）</param>
     private void RecordEvacuationToMetrics(string locationDisplayName, string locationGameObjectName)
     {
-        // ★デバッグログ: 関数呼び出し確認
-        Debug.LogError($"[DEBUG-EVACUEE] RecordEvacuationToMetrics呼び出し: {gameObject.name}, Instance={SimulationMetrics.Instance != null}");
-
         // シングルトンインスタンスを優先、フォールバックでFindFirstObjectByType
         var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
         if (metrics == null)
         {
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: SimulationMetrics=null（Instance={SimulationMetrics.Instance != null}, FindFirst=false）");
             Debug.LogWarning($"[Evacuee] {gameObject.name}: SimulationMetricsが見つかりません。避難記録をスキップします。");
             return;
         }
@@ -865,7 +844,6 @@ public class Evacuee : MonoBehaviour {
         var env = _env ?? FindFirstObjectByType<EnvManager>();
         if (env == null)
         {
-            Debug.LogError($"[DEBUG-EVACUEE] {gameObject.name}: EnvManager=null（_env={_env != null}）");
             Debug.LogWarning($"[Evacuee] {gameObject.name}: EnvManagerが見つかりません。避難記録をスキップします。");
             return;
         }
@@ -874,9 +852,6 @@ public class Evacuee : MonoBehaviour {
         float evacuationTime = env.CurrentTimeSec;
         string locationName = !string.IsNullOrEmpty(locationDisplayName) ? locationDisplayName : locationGameObjectName;
         string agentType = UseLLMDecision ? "LLM" : "RuleBased";
-
-        // ★デバッグログ: RecordEvacuation呼び出し前
-        Debug.LogError($"[DEBUG-EVACUEE] RecordEvacuation呼び出し前: agentId={agentId}, time={evacuationTime:F2}, metrics.EnableMetrics={metrics.EnableMetrics}");
 
         metrics.RecordEvacuation(agentId, evacuationTime, locationName, agentType);
     }
