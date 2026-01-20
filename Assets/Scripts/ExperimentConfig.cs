@@ -425,12 +425,6 @@ public class ExperimentConfig : MonoBehaviour
             GenerateReport();
         }
 
-        // 結果をCSV出力
-        if (ExportResults)
-        {
-            ExportResultsToCSV();
-        }
-
         // 終了アクションを実行
         if (AutoStopOnComplete)
         {
@@ -521,37 +515,6 @@ public class ExperimentConfig : MonoBehaviour
         sb.AppendLine("==========================================\n");
 
         Debug.Log(sb.ToString());
-    }
-
-    /// <summary>
-    /// 結果をCSVファイルに出力
-    /// </summary>
-    private void ExportResultsToCSV()
-    {
-        if (_trialResults.Count == 0) return;
-
-        string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string fileName = $"{ExperimentName}_{SelectedAgentType}_{timestamp}_results.csv";
-        string directoryPath = Path.Combine(Application.dataPath, "..", "Logs", "experiment_results");
-
-        // ディレクトリが存在しない場合は作成
-        if (!Directory.Exists(directoryPath))
-        {
-            Directory.CreateDirectory(directoryPath);
-        }
-
-        string filePath = Path.Combine(directoryPath, fileName);
-
-        var sb = new StringBuilder();
-        sb.AppendLine("trial_index,evacuation_rate,elapsed_time,timestamp");
-
-        foreach (var result in _trialResults)
-        {
-            sb.AppendLine($"{result.trialIndex},{result.evacuationRate:F4},{result.elapsedTime:F2},{result.timestamp}");
-        }
-
-        File.WriteAllText(filePath, sb.ToString());
-        Debug.Log($"[ExperimentConfig] 結果をCSVに出力しました: {filePath}");
     }
 
     /// <summary>
@@ -897,9 +860,6 @@ public class ExperimentConfig : MonoBehaviour
         };
         _batchResults.Add(conditionResult);
 
-        // 条件別CSVを出力
-        ExportConditionResultsToCSV(_batchConditions[_currentConditionIndex], conditionResult);
-
         _currentConditionIndex++;
 
         if (_currentConditionIndex < _batchConditions.Count)
@@ -989,8 +949,9 @@ public class ExperimentConfig : MonoBehaviour
     /// </summary>
     private void ExportBatchSummaryToCSV()
     {
-        string fileName = $"batch_{BatchPreset}_{_batchTimestamp}_summary.csv";
-        string directoryPath = Path.Combine(Application.dataPath, "..", "Logs", "experiment_results");
+        string fileName = $"{BatchPreset}_{_batchTimestamp}_summary.csv";
+        // タイムスタンプ付きのサブディレクトリに出力
+        string directoryPath = Path.Combine(Application.dataPath, "..", "Logs", "experiment_results", _batchTimestamp);
 
         if (!Directory.Exists(directoryPath))
             Directory.CreateDirectory(directoryPath);
@@ -1011,30 +972,6 @@ public class ExperimentConfig : MonoBehaviour
         string filePath = Path.Combine(directoryPath, fileName);
         File.WriteAllText(filePath, sb.ToString());
         Debug.Log($"[ExperimentConfig] バッチサマリーをCSVに出力: {filePath}");
-    }
-
-    /// <summary>
-    /// 条件別の詳細結果をCSVに出力
-    /// </summary>
-    private void ExportConditionResultsToCSV(ExperimentCondition condition, BatchConditionResult result)
-    {
-        string fileName = $"{condition.conditionId}_{_batchTimestamp}_results.csv";
-        string directoryPath = Path.Combine(Application.dataPath, "..", "Logs", "experiment_results");
-
-        if (!Directory.Exists(directoryPath))
-            Directory.CreateDirectory(directoryPath);
-
-        var sb = new StringBuilder();
-        sb.AppendLine("trial_index,evacuation_rate,elapsed_time,timestamp");
-
-        foreach (var trial in result.trialResults)
-        {
-            sb.AppendLine($"{trial.trialIndex},{trial.evacuationRate:F4},{trial.elapsedTime:F2},{trial.timestamp}");
-        }
-
-        string filePath = Path.Combine(directoryPath, fileName);
-        File.WriteAllText(filePath, sb.ToString());
-        Debug.Log($"[ExperimentConfig] 条件別結果をCSVに出力: {filePath}");
     }
 
     /// <summary>
