@@ -218,62 +218,52 @@ def build_system_prompt() -> str:
     """
     システムプロンプトを構築する（静的な内容のみ）。
     行動選択肢、出力形式の説明など、毎回変わらない情報を含む。
+
+    2026-01-20改善: トークン効率向上のため以下を実施
+    - 人間らしい反応を7項目から3項目に圧縮（重複・ペルソナで表現可能な項目を削除）
+    - JSON例を1つの完全例 + 行動別追加フィールド表に変更（約500トークン削減）
     """
     lines = []
 
-    lines.append("あなたは災害時の一般市民です。")
-    lines.append("与えられたペルソナ（性格・状況・優先事項）に基づいて、その人物として自然に行動してください。")
+    lines.append("あなたは災害時の一般市民です。与えられたペルソナに基づいて、その人物として自然に行動してください。")
     lines.append("")
 
-    # 人間らしさの強調
+    # 人間らしさの強調（3項目に圧縮）
     lines.append("【重要】")
-    lines.append("あなたは避難のプロではなく、突然の災害に直面した普通の人間です。")
-    lines.append("以下のような人間らしい反応を示すことがあります：")
-    lines.append("- パニックや混乱で判断力が鈍る")
-    lines.append("- 家族や大切な人のことが心配で、安全より合流を優先してしまう")
-    lines.append("- 土地勘がなく、どこに逃げればいいかわからない")
-    lines.append("- 周りの人の行動に流される")
-    lines.append("- 「まだ大丈夫」と危険を過小評価する")
-    lines.append("- 貴重品や思い出の品を取りに戻りたくなる")
-    lines.append("- 疲労や体力の限界を感じる")
+    lines.append("あなたは避難のプロではなく、突然の災害に直面した普通の人間です：")
+    lines.append("- 家族のことが心配で、安全より合流を優先してしまうことがある")
+    lines.append("- 周りの人の行動に流されることがある")
+    lines.append("- 「まだ大丈夫」と危険を過小評価することがある")
     lines.append("")
-    lines.append("ペルソナの性格・心理状態・優先事項を最優先に考え、")
-    lines.append("その人物が実際にとりそうな行動を選んでください。")
     lines.append("「正しい避難行動」ではなく「その人らしい行動」を選択してください。")
     lines.append("")
 
-    # 出力形式
-    lines.append("【出力形式】")
-    lines.append("以下の形式でJSON1つだけを出力してください。全フィールドをフラットに並べてください。")
+    # 出力形式（簡潔化）
+    lines.append("【出力形式】JSON1つのみ出力。必須フィールド:")
+    lines.append("- action_type: EVACUATE/STAY/SEARCH_FAMILY/CONTACT/FOLLOW/TALK")
+    lines.append("- long_term_goal: 今一番やりたいこと（1文）")
+    lines.append("- mid_term_plan: 次にやること（1文）")
+    lines.append("- reasoning: 判断理由（2-3文）")
+    lines.append("- confidence: 0.0-1.0")
     lines.append("")
-    lines.append("【重要】long_term_goal と mid_term_plan は必須フィールドです。必ず出力してください。")
-    lines.append("- long_term_goal: 今一番やりたいこと・目指していること（1文で簡潔に）")
-    lines.append("- mid_term_plan: そのために今考えていること・次にやること（1文で簡潔に）")
-    lines.append("")
-    lines.append("EVACUATEの例:")
+
+    # 1つの完全例のみ
+    lines.append("例:")
     lines.append('{"action_type": "EVACUATE", "selected_shelter_id": "諏訪神社", "desired_speed": "急ぎ足", "long_term_goal": "安全な高台に避難したい", "mid_term_plan": "まず諏訪神社を目指す", "reasoning": "津波が心配なので高い場所に行きたい", "confidence": 0.7}')
     lines.append("")
-    lines.append("STAYの例:")
-    lines.append('{"action_type": "STAY", "long_term_goal": "状況を把握してから動きたい", "mid_term_plan": "揺れが収まるまで待つ", "reasoning": "まだ揺れているので様子を見たい", "confidence": 0.5}')
+
+    # 行動別追加フィールド（表形式で簡潔に）
+    lines.append("【行動別の追加フィールド】")
+    lines.append("- EVACUATE: selected_shelter_id（避難所名）, desired_speed（ゆっくり/普通/急ぎ足/走る）")
+    lines.append("- SEARCH_FAMILY: target_family_member（家族名）")
+    lines.append("- CONTACT: contact_target（連絡先）, contact_message（メッセージ）")
+    lines.append("- FOLLOW: target_evacuee_id（避難者ID）")
+    lines.append("- TALK: talk_target_id（避難者ID）, talk_topic（話題）, talk_message（内容）")
+    lines.append("- STAY: 追加フィールドなし")
     lines.append("")
-    lines.append("SEARCH_FAMILYの例:")
-    lines.append('{"action_type": "SEARCH_FAMILY", "target_family_member": "息子", "long_term_goal": "家族全員で安全な場所に避難したい", "mid_term_plan": "まず息子を見つけて合流する", "reasoning": "息子の安全が心配だ", "confidence": 0.6}')
-    lines.append("")
-    lines.append("FOLLOWの例:")
-    lines.append('{"action_type": "FOLLOW", "target_evacuee_id": "14", "long_term_goal": "安全な場所に逃げたい", "mid_term_plan": "土地勘がある人についていく", "reasoning": "この人は避難所の場所を知っていそうだ", "confidence": 0.4}')
-    lines.append("")
-    lines.append("TALKの例:")
-    lines.append('{"action_type": "TALK", "talk_target_id": "7", "talk_topic": "ShelterInfo", "talk_message": "すみません、避難所はどこですか？", "long_term_goal": "安全な避難所を見つけたい", "mid_term_plan": "地元の人に避難先を聞く", "reasoning": "土地勘がないので地元の人に聞くのが一番確実だ", "confidence": 0.7}')
-    lines.append("")
-    lines.append("CONTACTの例:")
-    lines.append('{"action_type": "CONTACT", "contact_target": "妻", "contact_message": "大丈夫？今どこにいる？", "long_term_goal": "家族の安全を確認したい", "mid_term_plan": "まず妻に連絡を取る", "reasoning": "妻の安否が心配だ", "confidence": 0.6}')
-    lines.append("")
-    lines.append("【移動速度】desired_speed: ゆっくり/普通/急ぎ足/走る")
-    lines.append("")
-    lines.append("【注意】")
-    lines.append("- selected_shelter_idは表示されている避難所名を正確に指定してください。")
-    lines.append("- target_evacuee_id/talk_target_idは「周辺の避難者」に表示されているIDを正確に指定してください（数字のみ）。")
-    lines.append("- 利用可能な行動のみ選択してください（後述の「利用可能な行動」を確認）。")
+
+    # 注意事項（簡潔化）
+    lines.append("【注意】表示されているID・避難所名を正確に使用すること。")
 
     return "\n".join(lines)
 
@@ -322,16 +312,19 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
     # A. あなた自身に関する情報（WHO）
     # ========================================
 
-    # A-1. ペルソナ情報
+    # A-1. ペルソナ情報（2026-01-20改善: 名前・年齢・役割を1行に統合、土地勘・家族概要を削除）
     if persona:
         lines.append("【あなたのペルソナ】")
-        lines.append(f"名前: {persona.get('name', '不明')}")
-        lines.append(f"役割: {persona.get('role', '不明')}")
-        lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+        # 名前・年齢・役割を1行に統合
+        name = persona.get('name', '不明')
+        age_group = persona.get('age_group', '不明')
+        role = persona.get('role', '不明')
+        lines.append(f"{name}（{age_group}・{role}）")
+
         lines.append(f"心理状態: {persona.get('mental_state', '不明')}")
         lines.append(f"優先事項: {persona.get('priority', '不明')}")
 
-        # 拡張フィールド: 生活背景情報
+        # 拡張フィールド: 生活背景情報（自宅情報は維持）
         home_category = persona.get('home_location_category')
         home_elevation = persona.get('home_elevation', 0)
         home_structure = persona.get('home_structure')
@@ -352,40 +345,22 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
                 home_desc += f"、{structure_ja}"
             lines.append(home_desc)
 
+        # 居住歴（維持 - 土地勘の代わりとして機能）
         residence_years = persona.get('residence_years', 0)
         if residence_years > 0:
             lines.append(f"居住歴: この地域に{residence_years}年")
 
-        local_knowledge = persona.get('local_knowledge_level')
-        if local_knowledge:
-            knowledge_ja = {
-                "newcomer": "引っ越してきたばかりで土地勘がない",
-                "resident": "数年住んでおり、ある程度土地勘がある",
-                "native": "地元出身で土地勘に詳しい"
-            }.get(local_knowledge, local_knowledge)
-            lines.append(f"土地勘: {knowledge_ja}")
+        # 土地勘フィールドは削除（居住歴で代替）
 
         current_reason = persona.get('current_location_reason')
         if current_reason:
             lines.append(f"現在ここにいる理由: {current_reason}")
 
-        # 家族の状況をfamily_membersから動的生成（概要のみ）
-        family_members = payload.get("family_members", [])
-        if family_members and len(family_members) > 0:
-            family_descriptions = []
-            for member in family_members:
-                relation = member.get("relation", "")
-                location = member.get("likely_location", "")
-                if relation and location:
-                    family_descriptions.append(f"{relation}が{location}にいる")
-            if family_descriptions:
-                lines.append(f"家族の状況: {' / '.join(family_descriptions)}")
-        elif not family_members:
-            lines.append("家族の状況: 一人暮らし")
+        # 家族の状況（概要）は削除（セクションD「あなたの家族情報」と重複のため）
 
         past_disaster = persona.get('past_disaster_experience')
         if past_disaster:
-            lines.append(f"過去の災害経験: {past_disaster}")
+            lines.append(f"災害経験: {past_disaster}")
 
         physical_condition = persona.get('physical_condition')
         if physical_condition and physical_condition != "健康":
@@ -395,32 +370,23 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
         lines.append(persona.get("system_prompt_context", ""))
         lines.append("")
 
-    # A-2. あなたの状態（体力、ストレス等）
+    # A-2. あなたの状態（2026-01-20改善: エネルギー削除、移動速度を1行に統合）
     if agent_input is not None:
         self_state = agent_input.self_state
         temporal = agent_input.temporal_context
         lines.append("【あなたの状態】")
 
-        # 体力（stamina）情報の追加
+        # 体力（stamina）情報
         stamina = getattr(self_state, 'stamina', 1.0) if self_state else 1.0
-        stamina_label = getattr(self_state, 'stamina_label', None)
-        if stamina_label is None:
-            if stamina >= 0.7:
-                stamina_label = "十分"
-            elif stamina >= 0.5:
-                stamina_label = "普通"
-            elif stamina >= 0.3:
-                stamina_label = "低下"
-            else:
-                stamina_label = "疲労"
 
-        lines.append(
-            f"体力(スタミナ): {stamina_label}({stamina:.0%}), "
-            f"エネルギー: {self_state.energy_label}({self_state.energy_level:.2f}), "
-            f"ストレス: {self_state.stress_label}({self_state.stress_level:.2f})"
+        # ストレスを日本語ラベルに変換
+        stress_ja = {"calm": "低", "moderate": "中", "high": "高"}.get(
+            self_state.stress_label, self_state.stress_label
         )
+        # 体力とストレスの2指標に圧縮（エネルギーは削除）
+        lines.append(f"体力: {stamina:.0%} / ストレス: {stress_ja}")
 
-        # 現在の速度選択と利用可能な選択肢
+        # 移動速度を1行に統合
         current_speed = getattr(self_state, 'current_speed_choice', 'NORMAL')
         available_speeds = getattr(self_state, 'available_speed_choices', None)
         if available_speeds is None:
@@ -433,8 +399,7 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
         speed_names = {"SLOW": "ゆっくり", "NORMAL": "普通", "FAST": "急ぎ足", "RUN": "走る"}
         current_speed_display = speed_names.get(current_speed, current_speed)
-        lines.append(f"現在の移動速度: {current_speed_display}")
-        lines.append(f"選択可能な速度: {', '.join(available_speeds)}")
+        lines.append(f"移動速度: {current_speed_display}（選択可能: {'/'.join(available_speeds)}）")
 
         if self_state.stress_reason:
             lines.append(f"ストレス要因: {self_state.stress_reason}")
@@ -480,95 +445,59 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
     # ========================================
     # B. 災害に関する情報（WHAT）
+    # 2026-01-20改善: 行動指示を削除、体感表現のみに、地域説明をセクションCに移動
     # ========================================
 
-    # B-1. 状況（地震発生の説明）
+    # B-1. 状況（体感表現のみ、数値は警報で）
     lines.append("【状況】")
 
-    # 地域情報を状況の冒頭に追加
+    # 地域名のみ（説明・標高範囲はセクションCに移動）
     scenario_context = load_scenario_context()
+    region_description = None  # セクションCで使用するため保存
+    region_elevation_range = None
     if scenario_context:
         region = scenario_context.get("region", {})
         if region:
             region_name = region.get('name', '不明')
             lines.append(f"あなたは現在、{region_name}にいます。")
-            if region.get('description'):
-                lines.append(region.get('description'))
+            # 地域説明・標高範囲はセクションCに移動（ここでは保存のみ）
+            region_description = region.get('description')
             geography = region.get('geography', {})
-            if geography.get('elevation_range'):
-                lines.append(f"標高範囲は{geography.get('elevation_range')}です。")
-            lines.append("")
+            region_elevation_range = geography.get('elevation_range')
 
+    # 体感表現のみ（数値・行動指示は削除）
     if scenario_id == "shindo_2":
-        lines.append("地震が発生しました。震度は2で、少し揺れたかなという程度です。")
-        lines.append("地震の震度: 2")
-        lines.append("")
-        lines.append("あなたは今、この状況でどう行動するべきか考えています。")
-        lines.append("避難するか、それとも別の行動を取るか...")
-        lines.append(
-            "状況を判断するために一度留まって状況の確認に努めるのも一つの手です。"
-        )
+        lines.append("地震が発生しました。少し揺れを感じる程度です。")
     elif scenario_id == "shindo_6":
-        lines.append(
-            "強い地震が発生しました。震度は6で、室内の物が大きく揺れ、一部は棚から落ちています。"
-        )
-        lines.append("地震の震度: 6")
+        lines.append("強い揺れが発生しました。室内の物が大きく揺れ、一部は棚から落ちています。")
         lines.append("建物自体は大きく損壊していませんが、余震の可能性もあります。")
-        lines.append("")
-        lines.append("あなたは今、自分と家族の安全を最優先に行動する必要があります。")
-        lines.append(
-            "すぐに避難するか、しばらく建物内で安全を確認しつつ様子を見るかを考えてください。"
-        )
     elif scenario_id == "shindo_7_tsunami":
-        lines.append(
-            "非常に強い地震が発生しました。震度は7クラスで、沿岸部では津波警報が発表されています。"
-        )
-        lines.append("地震の震度: 7 / 津波警報: 発令中")
-        lines.append(
-            "あなたのいる地域にも津波が到達する可能性があり、早めの高台への避難が推奨されています。"
-        )
-        lines.append("")
-        lines.append(
-            "周囲の状況や家族の所在を考えつつも、津波到達までの時間には限りがあります。"
-        )
-        lines.append("どこに向かうか、誰を優先するかを慎重かつ素早く判断してください。")
+        lines.append("非常に強い揺れが発生しました。立っていられないほどの激しい揺れで、棚から物が落ちています。")
+        lines.append("津波警報が発令されているようです。")
     else:
-        lines.append(
-            "地震が発生しました。揺れはそれほど大きくありませんが、状況を注意深く見守る必要があります。"
-        )
-        lines.append("地震の震度: 2（デフォルト）")
+        lines.append("地震が発生しました。揺れはそれほど大きくありません。")
 
-    # B-2. 現在の災害状況（environment_stateから動的に）
+    # B-2. 災害フェーズ（簡潔に1-2行）
     environment_state = payload.get("environment_state")
     if environment_state:
-        lines.append("")
-        lines.append("【現在の災害状況】")
-
         disaster_phase = environment_state.get("disaster_phase", "")
         phase_display = environment_state.get("disaster_phase_display")
-        if phase_display:
-            lines.append(f"フェーズ: {phase_display}")
 
-        # フェーズに応じた説明を追加
+        # フェーズに応じた簡潔な説明
         phase_descriptions = {
-            "Shaking": "現在、強い揺れが続いています。安全な場所で身を守ってください。",
-            "InfoGap": "停電により情報が入りにくい状況です。周囲の様子を注意深く観察してください。",
-            "WarningIssued": "津波警報が発表されています。高台への避難を検討してください。",
-            "PreArrival": "津波が接近しています。直ちに高台へ避難してください。",
-            "FirstWave": "津波の第1波が到達しています。絶対に海に近づかないでください。",
-            "MainWave": "津波の本波が到達しています。最大限の注意が必要です。",
+            "Shaking": "安全な場所で身を守ってください",
+            "InfoGap": "情報が入りにくい状況です",
+            "WarningIssued": "津波警報発表中",
+            "PreArrival": "津波が接近しています",
+            "FirstWave": "津波の第1波が到達中",
+            "MainWave": "津波の本波が到達中",
         }
-        if disaster_phase in phase_descriptions:
-            lines.append(phase_descriptions[disaster_phase])
+        desc = phase_descriptions.get(disaster_phase, "")
+        if phase_display and desc:
+            lines.append("")
+            lines.append(f"【災害フェーズ】{phase_display} - {desc}")
 
-        seismic = environment_state.get("seismic_intensity", 0)
-        if seismic > 0:
-            lines.append(f"震度: {seismic}")
-
-        tsunami_height = environment_state.get("tsunami_height", 0)
-        if tsunami_height > 0:
-            lines.append(f"津波予想高さ: {tsunami_height}m")
-
+        # 停電・防災無線故障の状態のみ表示（震度・津波高さはJアラートに移動）
         is_power_on = environment_state.get("is_power_on", True)
         if not is_power_on:
             lines.append("※ 現在停電中")
@@ -577,11 +506,25 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
         if not is_radio_working:
             lines.append("※ 防災無線が故障中")
 
-        rumble_intensity = environment_state.get("rumble_intensity", 0)
-        if rumble_intensity > 0.5:
-            lines.append("※ 強い地鳴りが聞こえる")
+    # B-3. Jアラート（スマホの緊急速報）- 震度・津波高さを含める
+    has_received_j_alert = payload.get("has_received_j_alert", False)
+    last_j_alert_message = payload.get("last_j_alert_message", "")
+    if has_received_j_alert and last_j_alert_message:
+        lines.append("")
+        lines.append("【スマホの緊急速報（Jアラート）】")
+        lines.append("あなたのスマートフォンに、次のような警報が届きました:")
+        # 震度・津波高さをJアラートメッセージに追加
+        alert_parts = [last_j_alert_message]
+        if environment_state:
+            seismic = environment_state.get("seismic_intensity", 0)
+            tsunami_height = environment_state.get("tsunami_height", 0)
+            if seismic > 0:
+                alert_parts.append(f"震度{seismic}")
+            if tsunami_height > 0:
+                alert_parts.append(f"予想津波高さ{tsunami_height}m")
+        lines.append(" ".join(alert_parts))
 
-    # B-4. 防災行政無線の放送（条件付き）
+    # B-4. 防災行政無線の放送（条件付き）- 別セクションで維持
     has_heard_broadcast = payload.get("has_heard_broadcast", False)
     last_broadcast_message = payload.get("last_broadcast_message", "")
     if has_heard_broadcast and last_broadcast_message:
@@ -589,15 +532,6 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
         lines.append("【防災行政無線の放送】")
         lines.append("あなたは屋外スピーカーからの放送を聞きました:")
         lines.append(last_broadcast_message)
-
-    # B-5. Jアラート（スマホの緊急速報）（条件付き）
-    has_received_j_alert = payload.get("has_received_j_alert", False)
-    last_j_alert_message = payload.get("last_j_alert_message", "")
-    if has_received_j_alert and last_j_alert_message:
-        lines.append("")
-        lines.append("【スマホの緊急速報（Jアラート）】")
-        lines.append("あなたのスマートフォンに、次のような警報が届きました:")
-        lines.append(last_j_alert_message)
 
     # B-6. 行政からの追加情報（条件付き・実験3用）
     information_strategy = payload.get("information_strategy", "standard")
@@ -681,7 +615,17 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
     # ========================================
     # C. 場所に関する情報（WHERE）
+    # 2026-01-20改善: 地域説明・標高範囲をセクションBから移動
     # ========================================
+
+    # C-0. 地域の特性（セクションBから移動）
+    if region_description or region_elevation_range:
+        lines.append("")
+        lines.append("【この地域について】")
+        if region_description:
+            lines.append(region_description)
+        if region_elevation_range:
+            lines.append(f"標高範囲: {region_elevation_range}")
 
     # C-1. あなたの現在位置
     lines.append("")

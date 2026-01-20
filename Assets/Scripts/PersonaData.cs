@@ -109,6 +109,18 @@ public static class PersonaManager
                 if (fields.Length >= 16)
                     persona.physical_condition = fields[15];
 
+                // has_smartphone: 16番目のカラム（オプショナル、デフォルトはtrue）
+                if (fields.Length >= 17)
+                {
+                    string smartphoneValue = fields[16].Trim().ToLower();
+                    if (smartphoneValue == "false" || smartphoneValue == "0")
+                        persona.has_smartphone = false;
+                    else if (smartphoneValue == "true" || smartphoneValue == "1" || string.IsNullOrEmpty(smartphoneValue))
+                        persona.has_smartphone = true;
+                    else if (bool.TryParse(fields[16], out bool hasPhone))
+                        persona.has_smartphone = hasPhone;
+                }
+
                 _personas[persona.agent_id] = persona;
             }
 
