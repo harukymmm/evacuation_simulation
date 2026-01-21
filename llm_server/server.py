@@ -214,6 +214,122 @@ def _get_shelter_elevation_from_context(shelter_name: str) -> Optional[float]:
     return None
 
 
+def _get_building_perception(building: Dict[str, Any], seismic_intensity: int) -> tuple[str, str]:
+    """
+    建物情報を避難者の感覚的表現に変換する
+
+    Args:
+        building: 建物情報の辞書
+        seismic_intensity: 震度（0-7）
+
+    Returns:
+        (外観の感覚的表現, 損傷推定の文章) のタプル
+    """
+    height = building.get("height", 0)
+    structure = building.get("structure_type", "")
+    distance = building.get("distance", 0)
+    is_wooden = "木造" in structure
+
+    # 距離の感覚的表現
+    if distance <= 5:
+        dist_desc = "すぐ近く"
+    elif distance <= 15:
+        dist_desc = f"{distance:.0f}m先"
+    elif distance <= 30:
+        dist_desc = f"{distance:.0f}m先"
+    else:
+        dist_desc = f"{distance:.0f}m先"
+
+    # 建物の外観表現
+    if height > 15 and not is_wooden:
+        appearance = "高くて頑丈そうな建物"
+    elif height > 10 and is_wooden:
+        appearance = "高い木造の建物"
+    elif height > 10 and not is_wooden:
+        appearance = "中くらいの鉄筋の建物"
+    elif height <= 5 and is_wooden:
+        appearance = "低い古そうな建物"
+    elif height <= 5 and not is_wooden:
+        appearance = "低い鉄筋の建物"
+    else:
+        # 5m < height <= 10m
+        if is_wooden:
+            appearance = "木造2階建ての家"
+        else:
+            appearance = "2階建ての建物"
+
+    # 損傷推定（震度6以上の場合）
+    damage = ""
+    if seismic_intensity >= 6:
+        if is_wooden and height <= 5:
+            damage = "傾いているように見える。危険だ"
+        elif is_wooden:
+            damage = "壁にひびが入っているかもしれない"
+        elif height <= 5:
+            damage = "窓ガラスが割れている可能性がある"
+        else:
+            damage = "揺れは大きかったが、建物自体は無事そうだ"
+
+    return f"{dist_desc}に{appearance}がある", damage
+
+
+def _get_location_description(
+    env_context: Optional[Dict[str, Any]],
+    scenario_context: Optional[Dict[str, Any]]
+) -> str:
+    """
+    座標を地名+環境表現に変換する
+
+    Args:
+        env_context: 環境コンテキスト
+        scenario_context: シナリオコンテキスト
+
+    Returns:
+        場所の説明文
+    """
+    parts = []
+
+    # 地域名を取得
+    region_name = ""
+    if scenario_context:
+        region = scenario_context.get("region", {})
+        region_name = region.get("name", "")
+
+    # 土地利用から場所の種類を推定
+    land_use = ""
+    if env_context:
+        land_use = env_context.get("current_land_use", "")
+
+    location_type = ""
+    if land_use:
+        if "住宅" in land_use:
+            location_type = "住宅街"
+        elif "商業" in land_use:
+            location_type = "商店街付近"
+        elif "田" in land_use or "畑" in land_use or "農" in land_use:
+            location_type = "農地付近"
+        elif "森林" in land_use or "山林" in land_use:
+            location_type = "山林付近"
+        elif "工業" in land_use:
+            location_type = "工業地帯"
+
+    # 地名と場所タイプを組み合わせ
+    if region_name and location_type:
+        parts.append(f"{region_name}の{location_type}")
+    elif region_name:
+        parts.append(region_name)
+    elif location_type:
+        parts.append(location_type)
+
+    # 海抜情報を追加
+    if env_context:
+        elevation = env_context.get("current_elevation", -1)
+        if elevation >= 0:
+            parts.append(f"海抜{elevation:.0f}m")
+
+    return "（" + "、".join(parts) + "）" if parts else ""
+
+
 def build_system_prompt() -> str:
     """
     システムプロンプトを構築する（静的な内容のみ）。
@@ -627,16 +743,16 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
         if region_elevation_range:
             lines.append(f"標高範囲: {region_elevation_range}")
 
-    # C-1. あなたの現在位置
+    # C-1. あなたの現在位置（2026-01-20改善: 座標→地名+環境表現）
+    # 環境コンテキスト（周辺建物情報）を取得（先に取得して場所説明に使用）
+    env_context = payload.get("environmental_context")
+
     lines.append("")
     lines.append("【あなたの現在位置】")
-    lines.append(
-        f"座標: ({evacuee.get('position', {}).get('x', 0):.2f}, "
-        f"{evacuee.get('position', {}).get('z', 0):.2f})"
-    )
-
-    # 環境コンテキスト（周辺建物情報）を取得
-    env_context = payload.get("environmental_context")
+    # 地名+環境表現に変換
+    location_desc = _get_location_description(env_context, scenario_context)
+    if location_desc:
+        lines.append(location_desc)
 
     # デバッグログ: environmental_contextの有無を確認
     if env_context is None:
@@ -741,40 +857,26 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
                 lines.append(f"- {awareness}")
 
     # C-5. 周辺環境の情報（建物情報）
+    # 2026-01-20改善: 10件→3件に削減、感覚的表現+損傷推定に変換、総数は維持
     if env_context and env_context.get("nearby_buildings"):
         lines.append("")
-        lines.append("【周辺環境の情報】")
-        lines.append(
-            f"検索範囲: 半径{env_context['search_radius']:.0f}m以内に"
-            f"{env_context['total_buildings_in_area']}件の建物があります"
-        )
+        lines.append("【周辺の建物】")
+        # 総数を明示（検索範囲の詳細は削除）
+        total_buildings = env_context.get('total_buildings_in_area', len(env_context["nearby_buildings"]))
+        lines.append(f"周囲に{total_buildings}件の建物があります。")
         lines.append("")
-        lines.append("近くの建物（距離順、上位10件）:")
 
-        for idx, building in enumerate(env_context["nearby_buildings"], 1):
-            usage = building.get("usage", "不明")
-            distance = building.get("distance", 0)
-            height = building.get("height", 0)
-            floors = building.get("floors", 0)
-            major_usage = building.get("major_usage", "")
-            structure_type = building.get("structure_type", "")
+        # 震度を取得（損傷推定に使用）
+        seismic_intensity = 0
+        if environment_state:
+            seismic_intensity = environment_state.get("seismic_intensity", 0)
 
-            lines.append(f"{idx}. {usage} (距離: {distance:.1f}m)")
-
-            details = []
-            # 9999は「不明」を意味するため、1階建てとして扱う
-            display_floors = 1 if floors == 9999 else floors
-            if display_floors > 0:
-                details.append(f"{display_floors}階建て")
-            if height > 0:
-                details.append(f"高さ{height:.1f}m")
-            if structure_type:
-                details.append(f"{structure_type}")
-            if major_usage:
-                details.append(f"用途: {major_usage}")
-
-            if details:
-                lines.append(f"   {' / '.join(details)}")
+        # 上位3件のみ表示
+        for idx, building in enumerate(env_context["nearby_buildings"][:3], 1):
+            appearance, damage = _get_building_perception(building, seismic_intensity)
+            lines.append(f"{idx}. {appearance}")
+            if damage:
+                lines.append(f"   → {damage}")
 
     # ========================================
     # D. 家族に関する情報（FAMILY）
@@ -820,11 +922,11 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
 
 
     # D-3. 直近の家族からの返信（条件付き）
+    # 2026-01-20改善: 導入文を削除
     last_contact_message = payload.get("last_contact_message")
     if last_contact_message:
         lines.append("")
         lines.append("【直近の家族からの返信】")
-        lines.append("前回、家族から返ってきたメッセージの内容:")
         lines.append(last_contact_message)
 
     # ========================================
@@ -868,18 +970,17 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             lines.append(f"緊急時の代替案: {contingency}")
 
     # E-3. 直近の行動履歴（条件付き）
+    # 2026-01-20改善: 行動回数表示を削除
     action_history = payload.get("action_history")
     if action_history:
         all_actions = action_history.get("recent_actions", [])
-        total_action_count = action_history.get("total_action_count", 0)
 
         # 直近3件のみ取得
         recent_actions = get_recent_actions(all_actions, max_count=3)
 
         if recent_actions and len(recent_actions) > 0:
             lines.append("")
-            lines.append("【直近の行動履歴】")
-            lines.append(f"これまでに{total_action_count}回の行動判断を行っています。直近3件:")
+            lines.append("【直近の行動】")
             lines.append("")
 
             for action in recent_actions:
@@ -949,11 +1050,11 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
                 lines.append("")
 
     # E-5. あなたの記憶・知識（長期記憶）（条件付き）
+    # 2026-01-20改善: 導入文を削除
     long_term_memories = payload.get("long_term_memories", [])
     if long_term_memories and len(long_term_memories) > 0:
         lines.append("")
-        lines.append("【あなたの記憶・知識（長期記憶）】")
-        lines.append("以下は現在の状況に関連する、あなたが持っている知識や経験です:")
+        lines.append("【あなたの記憶・知識】")
         lines.append("")
 
         for mem in long_term_memories:
@@ -997,9 +1098,11 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
                 f"半径30m以内に {nearby_evacuees_count}人の避難者がいます{density_desc}。"
             )
             lines.append("")
-            lines.append("近くの避難者の詳細情報（距離順、上位5人）:")
+            # 2026-01-20改善: 5人→3人に削減（総数は維持）
+            lines.append("近くの避難者（FOLLOW/TALK対象、上位3人）:")
 
-        for idx, nearby_evacuee in enumerate(nearby_evacuees, 1):
+        # 上位3人のみ表示
+        for idx, nearby_evacuee in enumerate(nearby_evacuees[:3], 1):
             evacuee_id = nearby_evacuee.get("id", "不明")
             distance = nearby_evacuee.get("distance_meters", 0)
             action = nearby_evacuee.get("current_action", "不明")
@@ -1038,62 +1141,51 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             "※ FOLLOW/TALKを選択する場合は、上記のID（数字）をtarget_evacuee_id/talk_target_idに指定してください。"
         )
 
-    # F-2. 近くの避難所
+    # F-2. 避難先候補（2026-01-20改善: 避難所と津波避難場所を統合）
     lines.append("")
-    regular_shelters = [s for s in shelters if s.get("destination_type") != "tsunami_evacuation_area"]
-    tsunami_areas = [s for s in shelters if s.get("destination_type") == "tsunami_evacuation_area"]
+    lines.append("【避難先候補】")
 
-    if regular_shelters:
-        lines.append("【近くの避難所】")
-        for idx, shelter in enumerate(regular_shelters[:3], 1):
-            display_name = shelter.get("display_name", shelter.get("id", "不明"))
-            distance_m = shelter.get("distance_meters", 0)
-            walking_time = shelter.get("walking_time_minutes", 0)
-            # JSONから海抜情報を優先的に取得、なければUnity側の値を使用
-            elevation_from_json = _get_shelter_elevation_from_context(display_name)
-            elevation_meters = elevation_from_json if elevation_from_json is not None else shelter.get("elevation_meters", 0)
+    # 全避難所を統合して海抜でソート
+    all_shelters = shelters.copy()
+    # 海抜情報を追加してソート
+    for shelter in all_shelters:
+        display_name = shelter.get("display_name", shelter.get("id", "不明"))
+        elevation_from_json = _get_shelter_elevation_from_context(display_name)
+        shelter["_elevation"] = elevation_from_json if elevation_from_json is not None else shelter.get("elevation_meters", 0)
+    all_shelters.sort(key=lambda s: s.get("_elevation", 0), reverse=True)
 
-            distance_desc = _get_distance_description(distance_m, walking_time)
-            features = _get_shelter_features(display_name)
+    for idx, shelter in enumerate(all_shelters[:5], 1):
+        display_name = shelter.get("display_name", shelter.get("id", "不明"))
+        distance_m = shelter.get("distance_meters", 0)
+        walking_time = shelter.get("walking_time_minutes", 0)
+        elevation_meters = shelter.get("_elevation", 0)
+        features = _get_shelter_features(display_name)
 
-            # 特徴をまとめる
-            characteristics = [distance_desc]
-            if elevation_meters >= 20:
-                characteristics.append(_get_elevation_description(elevation_meters))
-            elif elevation_meters > 0 and elevation_meters < 20:
-                # 低海抜の場合は警告として表示
-                characteristics.append(f"海抜{elevation_meters:.1f}m（低い）")
-            if features:
-                characteristics.append(features[0])  # 最も重要な特徴1つのみ
+        # 距離表示を「距離m/時間分」形式に変更
+        if distance_m < 1000:
+            distance_str = f"{distance_m:.0f}m"
+        else:
+            distance_str = f"{distance_m/1000:.1f}km"
+        distance_time_str = f"{distance_str}/{walking_time:.0f}分"
 
-            lines.append(f"{idx}. {display_name} - {', '.join(characteristics)}")
+        # 海抜は常に表示
+        elevation_str = f"海抜{elevation_meters:.0f}m"
 
-    # F-3. 近くの津波避難場所
-    if tsunami_areas:
-        lines.append("")
-        lines.append("【近くの津波避難場所】")
-        for idx, shelter in enumerate(tsunami_areas[:3], 1):
-            display_name = shelter.get("display_name", shelter.get("id", "不明"))
-            distance_m = shelter.get("distance_meters", 0)
-            walking_time = shelter.get("walking_time_minutes", 0)
-            # JSONから海抜情報を優先的に取得、なければUnity側の値を使用
-            elevation_from_json = _get_shelter_elevation_from_context(display_name)
-            elevation_meters = elevation_from_json if elevation_from_json is not None else shelter.get("elevation_meters", 0)
+        # 高台かどうか
+        elevation_desc = ""
+        if elevation_meters >= 30:
+            elevation_desc = "高台"
+        elif elevation_meters >= 20:
+            elevation_desc = "やや高台"
 
-            distance_desc = _get_distance_description(distance_m, walking_time)
-            features = _get_shelter_features(display_name)
+        # 特徴をまとめる
+        characteristics = [distance_time_str, elevation_str]
+        if elevation_desc:
+            characteristics.append(elevation_desc)
+        if features:
+            characteristics.append(features[0])
 
-            # 特徴をまとめる
-            characteristics = [distance_desc]
-            if elevation_meters >= 20:
-                characteristics.append(_get_elevation_description(elevation_meters))
-            elif elevation_meters > 0 and elevation_meters < 20:
-                # 低海抜の場合は警告として表示
-                characteristics.append(f"海抜{elevation_meters:.1f}m（低い）")
-            if features:
-                characteristics.append(features[0])  # 最も重要な特徴1つのみ
-
-            lines.append(f"{idx}. {display_name} - {', '.join(characteristics)}")
+        lines.append(f"{idx}. {display_name} - {' / '.join(characteristics)}")
 
     # F-4. 選択可能な行動
     available_actions = payload.get("available_actions", [])
@@ -1114,14 +1206,21 @@ def build_user_prompt(payload: Dict[str, Any], agent_input: Optional[AgentInput]
             desc = action_descriptions.get(action, action)
             lines.append(f"- {action}: {desc}")
 
-        # 選択できない行動を明示
+        # 選択できない行動を明示（2026-01-20改善: 具体的理由を追加）
         all_actions = ["EVACUATE", "STAY", "SEARCH_FAMILY", "CONTACT", "FOLLOW", "TALK"]
         unavailable = [a for a in all_actions if a not in available_actions]
         if unavailable:
             lines.append("")
-            lines.append("※以下は現在選択できません（条件を満たしていないため）:")
-            for action in unavailable:
-                lines.append(f"  - {action}")
+            unavailable_reasons = {
+                "FOLLOW": "周囲30m以内に適切な対象がいない",
+                "TALK": "周囲30m以内に会話可能な対象がいない",
+                "CONTACT": "連絡可能な家族がいない",
+                "SEARCH_FAMILY": "探索対象の家族がいない",
+                "EVACUATE": "避難先が設定されていない",
+                "STAY": "待機できない状況",
+            }
+            unavailable_str = ", ".join([f"{a}（{unavailable_reasons.get(a, '条件未達')}）" for a in unavailable])
+            lines.append(f"※選択不可: {unavailable_str}")
 
     return "\n".join(lines)
 

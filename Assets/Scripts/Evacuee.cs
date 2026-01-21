@@ -149,6 +149,10 @@ public class Evacuee : MonoBehaviour {
     private const float FOLLOW_SEARCH_RADIUS = 30f; // 周辺避難者検索半径（メートル）
     private List<Evacuee> _followers = new List<Evacuee>(); // この避難者を追従しているFOLLOWERのリスト
 
+    [Header("Information Diffusion")]
+    private float _informationDiffusionCheckInterval = 1f; // 情報伝播チェック間隔（秒）
+    private float _lastInformationDiffusionCheck = 0f;     // 最後に情報伝播チェックした時刻
+
     [Header("Talk Action")]
     private List<LLM.ConversationLogEntry> _conversationHistory = new List<LLM.ConversationLogEntry>();
     private int _consecutiveTalkCount = 0;
@@ -213,6 +217,11 @@ public class Evacuee : MonoBehaviour {
     /// UnityのオブジェクトはC#のnull条件演算子と異なる挙動をするため、明示的にnullチェック
     /// </summary>
     public string CurrentTargetShelterId => (Target != null && Target) ? Target.name : "";
+
+    /// <summary>
+    /// 現在の追従対象（FOLLOW循環検出で使用）
+    /// </summary>
+    public Evacuee FollowTarget => _followTarget;
 
 
     /// <summary>
@@ -574,6 +583,9 @@ public class Evacuee : MonoBehaviour {
         // ルールベースモードの定期評価
         if (UseRuleBasedDecision && _ruleBasedDecisionMaker != null && gameObject.activeSelf && _env != null)
         {
+            // 情報伝播チェック（待機中のエージェントが近くの避難者から情報を受け取る）
+            CheckInformationDiffusion();
+
             // ルールベースは常に再評価可能（内部で間隔制御）
             RequestRuleBasedDecision();
             return;
@@ -668,6 +680,10 @@ public class Evacuee : MonoBehaviour {
                 case LLM.ActionType.CONTACT:
                     ExecuteRuleBasedContact(familyTarget, reasoning);
                     break;
+
+                case LLM.ActionType.FOLLOW:
+                    ExecuteRuleBasedFollow(reasoning);
+                    break;
             }
         }
     }
@@ -714,6 +730,170 @@ public class Evacuee : MonoBehaviour {
         // CONTACT完了後はルール再評価で次の行動が決まる
         // （_hasContactedFamily=trueになっているので、次はEVACUATEかSTAYが選ばれる）
         StartCoroutine(TransitionAfterContact());
+    }
+
+    /// <summary>
+    /// ルールベースでFOLLOWを実行（同調バイアスによる追従行動）
+    /// </summary>
+    private void ExecuteRuleBasedFollow(string reasoning)
+    {
+        // RuleBasedDecisionMakerから追従対象を取得
+        if (_ruleBasedDecisionMaker == null)
+        {
+            Debug.LogWarning($"[RuleBased] {gameObject.name}: FOLLOW - RuleBasedDecisionMakerがありません。STAYにフォールバックします。");
+            _stayPosition = transform.position;
+            SafeStopAgent(true);
+            SafeResetPath();
+            return;
+        }
+
+        var targetEvacuee = _ruleBasedDecisionMaker.GetFollowTargetEvacuee();
+        if (targetEvacuee == null)
+        {
+            Debug.LogWarning($"[RuleBased] {gameObject.name}: FOLLOW - 追従対象がありません。STAYにフォールバックします。");
+            _stayPosition = transform.position;
+            SafeStopAgent(true);
+            SafeResetPath();
+            return;
+        }
+
+        // 循環チェック
+        if (WouldCreateFollowCycle(targetEvacuee))
+        {
+            Debug.LogWarning($"[RuleBased] {gameObject.name}: FOLLOW - {targetEvacuee.PersonaName}をフォローすると循環が発生するため、STAYにフォールバックします。");
+            _stayPosition = transform.position;
+            SafeStopAgent(true);
+            SafeResetPath();
+            return;
+        }
+
+        // 追従対象を設定
+        _followTarget = targetEvacuee;
+
+        // 追従対象に自分をフォロワーとして登録
+        _followTarget.RegisterFollower(this);
+
+        // 追従者はNavMesh優先度を低く設定（リーダーに避けさせない）
+        if (NavAgent != null)
+        {
+            NavAgent.avoidancePriority = 80; // 高い値 = 低優先度（自分が避ける）
+        }
+
+        // 追従開始
+        _lastFollowCheck = Time.time;
+        _followTargetLastAction = _followTarget.CurrentAction;
+
+        // 相手の行動に合わせた初期処理
+        if (_followTargetLastAction == LLM.ActionType.EVACUATE)
+        {
+            // 相手がEVACUATEを選択していた場合 → 同じ避難所を目指す
+            if (_followTarget.Target != null)
+            {
+                Target = _followTarget.Target;
+                SafeStopAgent(false);
+                SafeSetDestination(Target.transform.position);
+                Debug.Log($"[RuleBased] {gameObject.name}: FOLLOW - {_followTarget.PersonaName}について行きます（相手は避難所に向かっているため、同じ避難所を目指します）({reasoning})");
+            }
+            else
+            {
+                // 相手の目標が設定されていない場合は位置を追従
+                SafeStopAgent(false);
+                SafeSetDestination(_followTarget.transform.position);
+                Debug.Log($"[RuleBased] {gameObject.name}: FOLLOW - {_followTarget.PersonaName}について行きます（相手の位置を追従）({reasoning})");
+            }
+        }
+        else if (_followTargetLastAction == LLM.ActionType.STAY)
+        {
+            // 相手がSTAYだった場合 → 同じようにSTAYする
+            _stayPosition = transform.position;
+            SafeStopAgent(true);
+            SafeResetPath();
+            Debug.Log($"[RuleBased] {gameObject.name}: FOLLOW - {_followTarget.PersonaName}について行きます（相手は待機中なので、同じく待機します）({reasoning})");
+        }
+        else
+        {
+            // その他の行動の場合は位置を追従
+            SafeStopAgent(false);
+            SafeSetDestination(_followTarget.transform.position);
+            Debug.Log($"[RuleBased] {gameObject.name}: FOLLOW - {_followTarget.PersonaName}について行きます ({reasoning})");
+        }
+    }
+
+    /// <summary>
+    /// 情報伝播チェック（Pseudo-TALK）
+    /// 待機中のルールベースエージェントが、近くの避難中エージェントから情報を受け取る
+    /// SIRモデルを応用：避難中エージェント（Infected）→ 待機中エージェント（Susceptible）
+    /// </summary>
+    private void CheckInformationDiffusion()
+    {
+        // ルールベースエージェントのみ対象
+        if (!UseRuleBasedDecision || _ruleBasedDecisionMaker == null)
+            return;
+
+        // 待機中のエージェントのみが情報を受け取る
+        if (CurrentAction != LLM.ActionType.STAY)
+            return;
+
+        // 既に情報を受け取っている場合はスキップ
+        if (_ruleBasedDecisionMaker.HasHeardFromNearbyAgent)
+            return;
+
+        // チェック間隔制限
+        float currentTime = _env != null ? _env.CurrentTimeSec : Time.time;
+        if (currentTime - _lastInformationDiffusionCheck < _informationDiffusionCheckInterval)
+            return;
+        _lastInformationDiffusionCheck = currentTime;
+
+        // 近くの避難中エージェントを検索
+        float proximityRadius = _ruleBasedDecisionMaker.ProximityRadius;
+        var allEvacuees = FindObjectsByType<Evacuee>(FindObjectsSortMode.None);
+
+        foreach (var nearby in allEvacuees)
+        {
+            if (nearby == this || nearby == null || !nearby.gameObject.activeSelf)
+                continue;
+
+            // 距離チェック
+            float distance = Vector3.Distance(transform.position, nearby.transform.position);
+            if (distance > proximityRadius)
+                continue;
+
+            // 相手が情報源として機能できるか確認
+            bool canSpread = false;
+            if (nearby.UseRuleBasedDecision && nearby._ruleBasedDecisionMaker != null)
+            {
+                canSpread = nearby._ruleBasedDecisionMaker.CanSpreadInformation();
+            }
+            else if (nearby.UseLLMDecision)
+            {
+                // LLMエージェントは避難中/追従中なら情報源
+                canSpread = nearby.CurrentAction == LLM.ActionType.EVACUATE ||
+                            nearby.CurrentAction == LLM.ActionType.FOLLOW;
+            }
+
+            if (!canSpread) continue;
+
+            // 確率的に情報伝播
+            float probability = _ruleBasedDecisionMaker.InformationDiffusionProbability;
+            if (UnityEngine.Random.value < probability)
+            {
+                string sourceName = nearby.PersonaName ?? nearby.EvacueeId;
+                _ruleBasedDecisionMaker.OnHeardFromNearbyAgent(sourceName);
+
+                // メトリクス記録（オプション）
+                var metrics = SimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>();
+                // 情報伝播の記録は既存のRecordActionを流用
+                metrics?.RecordAction(
+                    EvacueeId,
+                    LLM.ActionType.STAY,
+                    null,
+                    $"[情報伝播] {sourceName}から避難情報を受け取った",
+                    1.0f
+                );
+
+                break; // 1回の伝播で終了
+            }
+        }
     }
 
     /// <summary>
