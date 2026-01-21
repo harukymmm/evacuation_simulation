@@ -2,163 +2,163 @@
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "豊間中学校は海抜約30mの高台にあり、津波避難ビルとして指定されています。体育館と広い校庭があり、収容人数は約400人です。標高が高いため津波避難に最適です。",
+    "content": "豊間中学校は高台にあって、津波のときはあそこに逃げればいい。海抜30mくらいあるし、体育館も校庭も広いから安心だ。",
     "metadata": {"location": "豊間中学校", "elevation": 30, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "江名小学校は海抜約25mに位置し、耐震構造の建物です。収容人数は約500人で、江名地区の主要避難所として指定されています。",
+    "content": "江名小学校も避難所になってる。海抜25mくらいで、建物も頑丈だから津波が来ても大丈夫だろう。",
     "metadata": {"location": "江名小学校", "elevation": 25, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "江名公民館は海抜約20mに位置し、バリアフリー対応です。高齢者や車椅子利用者の避難に適しています。収容人数は約200人です。",
+    "content": "江名公民館はバリアフリーだから、足の悪い人やお年寄りはあそこがいい。海抜20mくらいある。",
     "metadata": {"location": "江名公民館", "elevation": 20, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "健登師記念会館は海抜約22mに位置する堅牢な建物です。薄磯地区からのアクセスが良く、収容人数は約150人です。",
+    "content": "健登師記念会館は薄磯から近いし、しっかりした建物だ。海抜22mくらいあったはず。",
     "metadata": {"location": "健登師記念会館", "elevation": 22, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "望洋荘は海抜約28mの高台に位置する施設です。海岸から離れており、津波避難に適しています。収容人数は約100人です。",
+    "content": "望洋荘は海から離れた高台にある。海抜28mくらいだから、津波のときは安全だと思う。",
     "metadata": {"location": "望洋荘", "elevation": 28, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "諏訪神社は海抜約35mの高台に位置し、古くから津波避難場所として地元で知られています。収容人数は約100人です。",
+    "content": "諏訪神社は昔から津波のときに逃げる場所として知られてる。海抜35mくらいの高台だ。",
     "metadata": {"location": "諏訪神社", "elevation": 35, "category": "shelter"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "中田山は海抜約40mの高台エリアで、津波避難地域として指定されています。広いエリアのため収容制限がなく、多くの避難者を受け入れることができます。",
+    "content": "中田山は海抜40mもある高台だ。広いから何人でも逃げられる。津波のときはとにかくあそこを目指せばいい。",
     "metadata": {"location": "中田山", "elevation": 40, "category": "tsunami_evacuation_area"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "薄磯海岸沿いは津波浸水想定区域です。海抜10m以下の地域は特に危険で、地震発生時は速やかに高台へ避難してください。",
+    "content": "薄磯の海岸沿いは津波が来たら浸水する場所だ。海抜10m以下は危ないから、地震があったらすぐに高台へ逃げないと。",
     "metadata": {"area": "薄磯海岸", "hazard_type": "tsunami", "category": "hazard"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "県道382号線（海岸通り）は海抜5m以下の低地を通っています。津波時は浸水の危険があり、避難経路としては不適切です。",
+    "content": "県道382号線は海抜5mもない低い場所を通ってる。津波のときにあの道を使って逃げるのは危険だ。",
     "metadata": {"road": "県道382号線", "hazard_type": "low_elevation", "category": "hazard"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "国道6号線は緊急車両優先道路に指定されており、災害時は一般車両の通行が制限されます。車での避難は渋滞を招くため推奨されません。",
+    "content": "国道6号線は災害のとき緊急車両が優先だから、車で逃げようとしても渋滞で動けなくなる。歩いた方がいい。",
     "metadata": {"road": "国道6号線", "restriction": "emergency_priority", "category": "traffic"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "海岸から500m以内の地域では、津波到達まで約10分と想定されています。この区域にいる場合は、揺れが収まったら直ちに避難を開始してください。",
+    "content": "海岸から500m以内にいたら、津波が来るまで10分くらいしかない。揺れが収まったらすぐに逃げないと間に合わない。",
     "metadata": {"distance_from_coast": 500, "tsunami_arrival_time": 10, "category": "time_constraint"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "高齢者や車椅子利用者は、バリアフリー対応の江名公民館への避難が推奨されます。",
+    "content": "足の悪い人やお年寄りは江名公民館に逃げるといい。バリアフリーだから移動しやすい。",
     "metadata": {"target_group": "elderly", "to": "江名公民館", "category": "route"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "豊間漁港周辺は最も危険な区域です。海抜が低く、津波の影響を最も早く受けます。発災後は立ち入り禁止となります。",
+    "content": "豊間漁港の周りは一番危ない場所だ。海抜が低いから津波が真っ先に来る。地震があったら絶対に近づいちゃだめだ。",
     "metadata": {"location": "豊間漁港", "hazard_type": "tsunami", "category": "hazard"}
   },
   {
     "memory_type": "social_knowledge",
     "agent_id": null,
-    "content": "豊間地区の消防団は地震発生から5分以内に巡回を開始します。サイレンと拡声器で避難を呼びかけ、住民を誘導します。",
+    "content": "消防団の人たちは地震があったら5分くらいで巡回を始める。サイレンや拡声器で避難を呼びかけてくれるから、聞こえたら従った方がいい。",
     "metadata": {"organization": "消防団", "category": "emergency_response"}
   },
   {
     "memory_type": "social_knowledge",
     "agent_id": null,
-    "content": "地区の自治会では、災害時に高齢者や一人暮らしの方の安否確認を行う体制があります。近所同士で声を掛け合うことが推奨されています。",
+    "content": "この地区では災害のとき、近所同士で声を掛け合うことになってる。一人暮らしのお年寄りとかは特に心配だから。",
     "metadata": {"organization": "自治会", "category": "community"}
   },
   {
     "memory_type": "social_knowledge",
     "agent_id": null,
-    "content": "平日の昼間は、働き盛りの世代は市街地に出ており、地区には高齢者と子供、主婦が多くなります。避難時は互いに助け合うことが大切です。",
+    "content": "平日の昼間はこの辺りにいるのはお年寄りと子供、主婦が多い。若い人は街に出てるから、逃げるときは助け合わないと。",
     "metadata": {"category": "demographic", "time": "weekday_daytime"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "2011年3月11日の東日本大震災では、豊間地区で最大波高8m超の津波を記録しました。海岸から500m内陸まで浸水し、多くの犠牲者が出ました。",
+    "content": "2011年の震災のとき、豊間地区には8m以上の津波が来た。海岸から500mも内陸まで浸水して、たくさんの人が亡くなった。",
     "metadata": {"event": "2011_tsunami", "year": 2011, "category": "historical"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "2011年の津波では、「ここまで来ない」という過信が多くの犠牲者を出しました。過去の経験や固定観念にとらわれず、早期避難が最も重要です。",
+    "content": "2011年の津波のとき「ここまで津波は来ない」と思って逃げなかった人が大勢いた。過去の経験を信じすぎちゃだめだ。とにかく早く逃げることが大事。",
     "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation", "category": "lesson"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "2011年の津波では、第1波が比較的小さかったため油断した人が多くいました。「もう大丈夫」と思って家に戻り、第2波・第3波で犠牲になった例があります。",
+    "content": "2011年の津波は最初の波が小さかったから、「もう大丈夫」と思って家に戻った人がいた。でも第2波、第3波で犠牲になった。津波は何度も来る。",
     "metadata": {"event": "2011_tsunami", "lesson": "multiple_waves", "category": "lesson"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "2011年の津波では、車で避難しようとして渋滞に巻き込まれ、逃げ遅れた人が多くいました。徒歩での避難が原則です。",
+    "content": "2011年の津波のとき車で逃げようとした人が渋滞に巻き込まれて、逃げ遅れた。津波のときは歩いて逃げた方がいい。",
     "metadata": {"event": "2011_tsunami", "lesson": "walk_over_drive", "category": "lesson"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "2011年の津波では、家族を探しに戻ったり、貴重品を取りに戻ったりして犠牲になった人がいます。避難開始後は絶対に戻らないでください。",
+    "content": "家族を探しに戻ったり、貴重品を取りに戻ったりして亡くなった人がいた。一度逃げ始めたら絶対に戻っちゃだめだ。",
     "metadata": {"event": "2011_tsunami", "lesson": "no_return", "category": "lesson"}
   },
   {
     "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "津波警報が出ても避難しない人を何人も見ました。声をかけて一緒に逃げることで、命が救われることがあります。",
+    "content": "津波警報が出ても逃げない人を何人も見た。声をかけて一緒に逃げれば、助かる命がある。",
     "metadata": {"lesson": "community_evacuation", "category": "lesson"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "「津波てんでんこ」という言葉があります。各自がまず自分の命を守ることを優先し、家族を信じて高台で再会することを意味します。",
+    "content": "「津波てんでんこ」って言葉がある。まず自分の命を守って、家族とは高台で会おうってことだ。",
     "metadata": {"category": "local_wisdom"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "津波は繰り返し来ます。一度引いても安心せず、警報が解除されるまで高台にとどまってください。",
+    "content": "津波は一回で終わりじゃない。何度も来るから、一度引いても安心しちゃだめだ。警報が解除されるまで高台にいないと。",
     "metadata": {"category": "local_wisdom"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "引き波（海面が急激に下がる現象）が始まったら、数分以内に大きな津波が来る前兆です。海が見える場所にいる人は特に注意してください。",
+    "content": "海の水が急に引いたら、大きな津波が来る前触れだ。海が見えるところにいたら、すぐに逃げないと。",
     "metadata": {"category": "warning_sign"}
   },
   {
     "memory_type": "regional_knowledge",
     "agent_id": null,
-    "content": "防災行政無線は地区全域をカバーしていますが、老朽化により一部で不鳴動の可能性があります。無線が聞こえなくても、揺れが収まったら自主的に避難を開始してください。",
+    "content": "防災無線は古くなってるから、場所によっては聞こえないこともある。無線が聞こえなくても、大きな揺れがあったら自分で判断して逃げた方がいい。",
     "metadata": {"category": "infrastructure"}
   },
   {
-    "memory_type": "regional_knowledge",
+    "memory_type": "disaster_experience",
     "agent_id": null,
-    "content": "震度6以上の地震では停電が発生する可能性が高いです。停電時もスマートフォンのエリアメールで津波警報を受信できる場合があります。",
+    "content": "震度6以上だと停電になることが多い。でもスマホのエリアメールは届くかもしれないから、確認した方がいい。",
     "metadata": {"category": "infrastructure"}
   }
 ]

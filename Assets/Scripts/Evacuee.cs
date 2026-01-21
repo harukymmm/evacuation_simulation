@@ -1151,6 +1151,14 @@ public class Evacuee : MonoBehaviour {
             return false;
         }
 
+        // LLMエラー情報がある場合は赤色警告で出力
+        if (response.llm_error != null && !string.IsNullOrEmpty(response.llm_error.error_type))
+        {
+            var errorInfo = response.llm_error;
+            // OpenAI APIからのエラーメッセージをそのまま表示
+            Debug.LogError($"[LLM {errorInfo.error_type}] {gameObject.name}\nOpenAI API Error: {errorInfo.error_message}");
+        }
+
         // action_typeを解析（デフォルトはEVACUATE）
         LLM.ActionType actionType = LLM.ActionType.EVACUATE;
         if (!string.IsNullOrEmpty(response.action_type))
@@ -3736,7 +3744,7 @@ public class Evacuee : MonoBehaviour {
 
         // 追加警告メッセージ（切迫感が高い場合）
         string additionalWarning = isUrgent
-            ? "東日本大震災を思い出してください。想定を過信せず、より高い場所を目指してください。"
+            ? "あなたの命がかかっています！想定を過信せず、より高い場所を目指してください。"
             : null;
 
         return new AdministrativeGuidancePayload

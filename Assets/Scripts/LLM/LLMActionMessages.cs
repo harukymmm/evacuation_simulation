@@ -538,12 +538,27 @@ namespace LLM
 
         // 短期記憶（行動履歴要約）
         public string summarized_action_history;          // サーバーで生成された行動履歴の要約
+
+        // エラー情報（LLM API呼び出し失敗時）
+        public LLMErrorInfo llm_error;                    // エラー情報（正常時はnull）
     }
 
     [Serializable]
     internal class ResponseEnvelope
     {
         public string request_id;
+    }
+
+    /// <summary>
+    /// LLMサーバーからのエラー情報（レートリミット等）
+    /// </summary>
+    [Serializable]
+    public class LLMErrorInfo
+    {
+        public string error_type;              // エラータイプ: "RateLimitError", "APIError", "UnexpectedError"
+        public string error_message;           // エラーメッセージ全文
+        public string rate_limit_type;         // レートリミット種類: "RPM", "TPM", "RPD", "UNKNOWN" (RateLimitErrorの場合のみ)
+        public string rate_limit_description;  // レートリミットの日本語説明
     }
 
     /// <summary>

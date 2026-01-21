@@ -176,6 +176,32 @@ def calculate_evacuation_location_averages(summaries):
     return result
 
 
+def calculate_evacuation_time_stats(agents_dfs):
+    """避難時間の統計量を計算（エージェント間の標準偏差含む）"""
+    if not agents_dfs:
+        return {}
+
+    combined_df = pd.concat(agents_dfs, ignore_index=True)
+
+    # 避難完了者の避難時間のみ抽出
+    evac_times = combined_df[combined_df['evacuation_time'] > 0]['evacuation_time']
+
+    if len(evac_times) == 0:
+        return {
+            'evacuation_time_std_agents': 0,
+            'evacuation_time_min': 0,
+            'evacuation_time_25pct': 0,
+            'evacuation_time_75pct': 0
+        }
+
+    return {
+        'evacuation_time_std_agents': evac_times.std(),
+        'evacuation_time_min': evac_times.min(),
+        'evacuation_time_25pct': evac_times.quantile(0.25),
+        'evacuation_time_75pct': evac_times.quantile(0.75)
+    }
+
+
 def calculate_mental_state_metrics(agents_dfs, condition_id):
     """認知特性別の指標を計算"""
     if not agents_dfs:
@@ -307,7 +333,7 @@ def calculate_evacuation_start_times(agents_dfs):
 def main():
     # パス設定
     base_dir = Path(__file__).parent.parent
-    experiment_dir = base_dir / 'Logs' / 'experiment_results' / '20260120_002733'
+    experiment_dir = base_dir / 'Logs' / 'experiment_results' / '20260121_025302'
     output_dir = experiment_dir / 'averaged'
     tables_dir = base_dir / 'Docs' / 'Tables'
 
@@ -330,7 +356,8 @@ def main():
             'mental_state_metrics': calculate_mental_state_metrics(agents_dfs, condition),
             'social_interactions': calculate_social_interactions(agents_dfs),
             'stay_behavior': calculate_stay_behavior(agents_dfs),
-            'evacuation_start': calculate_evacuation_start_times(agents_dfs)
+            'evacuation_start': calculate_evacuation_start_times(agents_dfs),
+            'evacuation_time_stats': calculate_evacuation_time_stats(agents_dfs)
         }
 
     # CSV出力
@@ -459,8 +486,8 @@ def main():
             ])
 
     # Markdown表の生成
-    print('Generating Table_20260120.md...')
-    generate_markdown_tables(all_data, tables_dir / 'Table_20260120.md')
+    print('Generating Table_20260121.md...')
+    generate_markdown_tables(all_data, tables_dir / 'Table_20260121.md')
 
     print('Done!')
 
@@ -471,7 +498,7 @@ def generate_markdown_tables(all_data, output_path):
     lines = []
     lines.append('# 実験結果の表（5トライアル平均）')
     lines.append('')
-    lines.append('データソース: `Logs/experiment_results/20260120_002733/`')
+    lines.append('データソース: `Logs/experiment_results/20260121_025302/`')
     lines.append('')
 
     # 実験1: 基本性能の検証
@@ -486,14 +513,22 @@ def generate_markdown_tables(all_data, output_path):
 
     llm_avg = llm_data['condition_averages']
     rb_avg = rb_data['condition_averages']
+    llm_time_stats = llm_data['evacuation_time_stats']
+    rb_time_stats = rb_data['evacuation_time_stats']
+
+    llm_total_agents = llm_avg.get("total_agents_mean", 0)
+    rb_total_agents = rb_avg.get("total_agents_mean", 0)
 
     lines.append('| 指標 | LLMエージェント | ルールベースエージェント |')
     lines.append('|:-----|:---------------:|:------------------------:|')
-    lines.append(f'| 総エージェント数 | 100 | 100 |')
+    lines.append(f'| 総エージェント数 | {llm_total_agents:.0f} | {rb_total_agents:.0f} |')
     lines.append(f'| 避難完了者数 | {llm_avg.get("evacuated_agents_mean", 0):.1f} | {rb_avg.get("evacuated_agents_mean", 0):.1f} |')
     lines.append(f'| **避難完了率** | **{llm_avg.get("evacuation_rate_mean", 0)*100:.1f}%** | **{rb_avg.get("evacuation_rate_mean", 0)*100:.1f}%** |')
     lines.append(f'| 平均避難時間 | {llm_avg.get("average_evacuation_time_mean", 0):.2f}秒 | {rb_avg.get("average_evacuation_time_mean", 0):.2f}秒 |')
+    lines.append(f'| 避難時間標準偏差 | {llm_time_stats.get("evacuation_time_std_agents", 0):.2f}秒 | {rb_time_stats.get("evacuation_time_std_agents", 0):.2f}秒 |')
+    lines.append(f'| 避難時間25%点 | {llm_time_stats.get("evacuation_time_25pct", 0):.2f}秒 | {rb_time_stats.get("evacuation_time_25pct", 0):.2f}秒 |')
     lines.append(f'| 中央値避難時間 | {llm_avg.get("median_evacuation_time_mean", 0):.2f}秒 | {rb_avg.get("median_evacuation_time_mean", 0):.2f}秒 |')
+    lines.append(f'| 避難時間75%点 | {llm_time_stats.get("evacuation_time_75pct", 0):.2f}秒 | {rb_time_stats.get("evacuation_time_75pct", 0):.2f}秒 |')
     lines.append(f'| 最大避難時間 | {llm_avg.get("max_evacuation_time_mean", 0):.2f}秒 | {rb_avg.get("max_evacuation_time_mean", 0):.2f}秒 |')
     lines.append(f'| 避難所への避難率 | {llm_avg.get("evacuation_rate_to_shelter_mean", 0)*100:.1f}% | {rb_avg.get("evacuation_rate_to_shelter_mean", 0)*100:.1f}% |')
     lines.append(f'| 津波避難地域への避難率 | {llm_avg.get("evacuation_rate_to_area_mean", 0)*100:.1f}% | {rb_avg.get("evacuation_rate_to_area_mean", 0)*100:.1f}% |')
@@ -529,7 +564,7 @@ def generate_markdown_tables(all_data, output_path):
 
     lines.append('| 指標 | LLMエージェント | ルールベースエージェント |')
     lines.append('|:-----|:---------------:|:------------------------:|')
-    lines.append(f'| 避難開始エージェント数 | {llm_start.get("started_count", 0):.1f}/100 | {rb_start.get("started_count", 0):.1f}/100 |')
+    lines.append(f'| 避難開始エージェント数 | {llm_start.get("started_count", 0):.1f}/{llm_start.get("total_count", 0):.0f} | {rb_start.get("started_count", 0):.1f}/{rb_start.get("total_count", 0):.0f} |')
     lines.append(f'| 平均避難開始時刻 | {llm_start.get("avg_start_time", 0):.2f}秒 | {rb_start.get("avg_start_time", 0):.2f}秒 |')
     lines.append(f'| 最小避難開始時刻 | {llm_start.get("min_start_time", 0):.2f}秒 | {rb_start.get("min_start_time", 0):.2f}秒 |')
     lines.append(f'| 最大避難開始時刻 | {llm_start.get("max_start_time", 0):.2f}秒 | {rb_start.get("max_start_time", 0):.2f}秒 |')
@@ -663,6 +698,10 @@ def generate_markdown_tables(all_data, output_path):
     # 平均避難時間
     avg_times = [all_data[c]['condition_averages'].get('average_evacuation_time_mean', 0) for c in bias_conditions]
     lines.append(f'| 平均避難時間（秒） | {avg_times[0]:.2f} | {avg_times[1]:.2f} | {avg_times[2]:.2f} | {avg_times[3]:.2f} | {np.mean(avg_times):.1f} | {np.std(avg_times):.1f} |')
+
+    # 避難時間標準偏差（エージェント間）
+    time_stds = [all_data[c]['evacuation_time_stats'].get('evacuation_time_std_agents', 0) for c in bias_conditions]
+    lines.append(f'| 避難時間標準偏差（秒） | {time_stds[0]:.2f} | {time_stds[1]:.2f} | {time_stds[2]:.2f} | {time_stds[3]:.2f} | {np.mean(time_stds):.1f} | {np.std(time_stds):.1f} |')
 
     # 中央値避難時間
     med_times = [all_data[c]['condition_averages'].get('median_evacuation_time_mean', 0) for c in bias_conditions]
@@ -864,7 +903,8 @@ def generate_markdown_tables(all_data, output_path):
     lines.append('| 指標 | 条件A（標準） | 条件B（切迫） | 条件C（詳細） | 条件D（詳細+切迫） |')
     lines.append('|:-----|:-------------:|:-------------:|:-------------:|:-----------------:|')
 
-    lines.append('| 総エージェント数 | 100 | 100 | 100 | 100 |')
+    total_agents_info = [all_data[c]['condition_averages'].get('total_agents_mean', 0) for c in info_conditions]
+    lines.append(f'| 総エージェント数 | {total_agents_info[0]:.0f} | {total_agents_info[1]:.0f} | {total_agents_info[2]:.0f} | {total_agents_info[3]:.0f} |')
 
     evac_counts_info = [all_data[c]['condition_averages'].get('evacuated_agents_mean', 0) for c in info_conditions]
     lines.append(f'| 避難完了者数 | {evac_counts_info[0]:.0f} | {evac_counts_info[1]:.0f} | {evac_counts_info[2]:.0f} | {evac_counts_info[3]:.0f} |')
@@ -874,6 +914,9 @@ def generate_markdown_tables(all_data, output_path):
 
     avg_times_info = [all_data[c]['condition_averages'].get('average_evacuation_time_mean', 0) for c in info_conditions]
     lines.append(f'| 平均避難時間（秒） | {avg_times_info[0]:.2f} | {avg_times_info[1]:.2f} | {avg_times_info[2]:.2f} | {avg_times_info[3]:.2f} |')
+
+    time_stds_info = [all_data[c]['evacuation_time_stats'].get('evacuation_time_std_agents', 0) for c in info_conditions]
+    lines.append(f'| 避難時間標準偏差（秒） | {time_stds_info[0]:.2f} | {time_stds_info[1]:.2f} | {time_stds_info[2]:.2f} | {time_stds_info[3]:.2f} |')
 
     med_times_info = [all_data[c]['condition_averages'].get('median_evacuation_time_mean', 0) for c in info_conditions]
     lines.append(f'| 中央値避難時間（秒） | {med_times_info[0]:.2f} | {med_times_info[1]:.2f} | {med_times_info[2]:.2f} | {med_times_info[3]:.2f} |')
@@ -917,7 +960,8 @@ def generate_markdown_tables(all_data, output_path):
         start = all_data[c]['evacuation_start']
 
     started_counts = [all_data[c]['evacuation_start'].get('started_count', 0) for c in info_conditions]
-    lines.append(f'| 避難開始エージェント数 | {started_counts[0]:.0f}/100 | {started_counts[1]:.0f}/100 | {started_counts[2]:.0f}/100 | {started_counts[3]:.0f}/100 |')
+    total_counts_info = [all_data[c]['evacuation_start'].get('total_count', 0) for c in info_conditions]
+    lines.append(f'| 避難開始エージェント数 | {started_counts[0]:.0f}/{total_counts_info[0]:.0f} | {started_counts[1]:.0f}/{total_counts_info[1]:.0f} | {started_counts[2]:.0f}/{total_counts_info[2]:.0f} | {started_counts[3]:.0f}/{total_counts_info[3]:.0f} |')
 
     avg_starts = [all_data[c]['evacuation_start'].get('avg_start_time', 0) for c in info_conditions]
     lines.append(f'| 平均避難開始時刻（秒） | {avg_starts[0]:.1f} | {avg_starts[1]:.1f} | {avg_starts[2]:.1f} | {avg_starts[3]:.1f} |')

@@ -36,7 +36,6 @@ public class SimulationMetrics : MonoBehaviour
     private string _capturedConditionId = "";  // エピソード開始時にキャプチャした条件ID（ログファイル名用）
     private string _capturedAgentType = "";   // エピソード開始時にキャプチャしたエージェントタイプ
     private bool _conditionCaptured = false;  // 条件ID・エージェントタイプがキャプチャ済みか
-    private bool _hasEverSavedLogs = false;  // 一度でもログを保存したことがあるか（初回エピソード判定用）
 
     // 次のエピソード用に事前設定された条件ID・エージェントタイプ・試行番号
     // ExperimentConfigから条件切り替え前に設定される
@@ -558,7 +557,6 @@ public class SimulationMetrics : MonoBehaviour
 
         // 完全ログ保存済みフラグを立てる
         _fullLogsSaved = true;
-        _hasEverSavedLogs = true;  // 一度でもログを保存したことを記録（初回エピソード判定用）
 
         Debug.Log($"[SimulationMetrics] エピソード {_envManager.currentEpisodeId} 終了 - " +
                   $"避難完了率: {summary.evacuationRate:P1}, " +

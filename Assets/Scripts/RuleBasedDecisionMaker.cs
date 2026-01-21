@@ -58,7 +58,6 @@ public class RuleBasedDecisionMaker : MonoBehaviour
 
     // Level 2: 家族対応用フィールド
     private FamilyData _familyData;
-    private bool _hasContactedFamily = false;
 
     // Level 3: ペルソナベースの行動分化用フィールド
     private PersonaData _persona;
@@ -950,7 +949,6 @@ public class RuleBasedDecisionMaker : MonoBehaviour
         _hasHeardBroadcast = false;
         _hasReceivedJAlert = false;
         _hasHeardFireTruck = false;
-        _hasContactedFamily = false;
         _alertReceivedCount = 0;
         _preparationComplete = false;
         _preparationStartTime = -1f;
