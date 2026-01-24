@@ -25,15 +25,15 @@ CONDITIONS = [
 
 NUM_TRIALS = 5
 
-# 認知特性のリスト
+# 認知特性のリスト（personas.csvのmental_stateに定義されている値）
 MENTAL_STATES = [
     '冷静・分析的',
     '冷静・合理的',
     '慎重・人混み恐怖',
-    '同調性・集団追従',
+    '楽観的・自己信頼型',
+    '社交的・周囲配慮型',
     '焦燥・目的外行動',
-    '同調性・パニック気味',
-    '正常性バイアス・楽観的'
+    '不安傾向・サポート希求型'
 ]
 
 # 避難場所（LLMエージェント用）
@@ -331,15 +331,23 @@ def calculate_evacuation_start_times(agents_dfs):
 
 
 def main():
+    import sys
     # パス設定
     base_dir = Path(__file__).parent.parent
-    experiment_dir = base_dir / 'Logs' / 'experiment_results' / '20260121_025302'
+
+    # コマンドライン引数で実験ディレクトリを指定可能
+    if len(sys.argv) > 1:
+        experiment_id = sys.argv[1]
+    else:
+        experiment_id = '20260121_025302'
+
+    experiment_dir = base_dir / 'Logs' / 'experiment_results' / experiment_id
     output_dir = experiment_dir / 'averaged'
-    tables_dir = base_dir / 'Docs' / 'Tables'
+    # Markdown表の出力先を実験結果ディレクトリに変更
+    tables_dir = experiment_dir
 
     # 出力ディレクトリ作成
     output_dir.mkdir(parents=True, exist_ok=True)
-    tables_dir.mkdir(parents=True, exist_ok=True)
 
     # 全条件のデータを収集
     all_data = {}
@@ -486,19 +494,22 @@ def main():
             ])
 
     # Markdown表の生成
-    print('Generating Table_20260121.md...')
-    generate_markdown_tables(all_data, tables_dir / 'Table_20260121.md')
+    # experiment_idから日付部分を抽出してファイル名に使用
+    date_part = experiment_id.split('_')[0]
+    output_filename = f'Table_{date_part}.md'
+    print(f'Generating {output_filename}...')
+    generate_markdown_tables(all_data, tables_dir / output_filename, experiment_id)
 
     print('Done!')
 
 
-def generate_markdown_tables(all_data, output_path):
+def generate_markdown_tables(all_data, output_path, experiment_id='20260121_025302'):
     """Markdown形式の表を生成"""
 
     lines = []
     lines.append('# 実験結果の表（5トライアル平均）')
     lines.append('')
-    lines.append('データソース: `Logs/experiment_results/20260121_025302/`')
+    lines.append(f'データソース: `Logs/experiment_results/{experiment_id}/`')
     lines.append('')
 
     # 実験1: 基本性能の検証
@@ -650,10 +661,7 @@ def generate_markdown_tables(all_data, output_path):
         llm_evacuated = int(llm_total * llm_rate + 0.5)
         rb_evacuated = int(llm_total * rb_rate + 0.5)
 
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| **{ms}** | **{llm_evacuated}/{llm_total} ({llm_rate*100:.1f}%)** | **{rb_evacuated}/{llm_total} ({rb_rate*100:.1f}%)** |')
-        else:
-            lines.append(f'| {ms} | {llm_evacuated}/{llm_total} ({llm_rate*100:.1f}%) | {rb_evacuated}/{llm_total} ({rb_rate*100:.1f}%) |')
+        lines.append(f'| {ms} | {llm_evacuated}/{llm_total} ({llm_rate*100:.1f}%) | {rb_evacuated}/{llm_total} ({rb_rate*100:.1f}%) |')
     lines.append('')
 
     # 表9: 認知特性別避難時間
@@ -766,10 +774,7 @@ def generate_markdown_tables(all_data, output_path):
         total = baseline_ms.get(ms, {}).get('total', 0)
         rate = baseline_ms.get(ms, {}).get('evacuation_rate', 0)
         evacuated = int(total * rate + 0.5)
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| **{ms}** | **{total}** | **{evacuated}** | **{rate*100:.1f}%** |')
-        else:
-            lines.append(f'| {ms} | {total} | {evacuated} | {rate*100:.1f}% |')
+        lines.append(f'| {ms} | {total} | {evacuated} | {rate*100:.1f}% |')
     lines.append('')
 
     # 表14: 認知バイアス条件別認知特性別避難完了率
@@ -780,10 +785,7 @@ def generate_markdown_tables(all_data, output_path):
 
     for ms in MENTAL_STATES:
         rates = [all_data[c]['mental_state_metrics'].get(ms, {}).get('evacuation_rate', 0) * 100 for c in bias_conditions]
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| **{ms}** | **{rates[0]:.1f}%** | **{rates[1]:.1f}%** | **{rates[2]:.1f}%** | **{rates[3]:.1f}%** | **{np.mean(rates):.1f}%** |')
-        else:
-            lines.append(f'| {ms} | {rates[0]:.1f}% | {rates[1]:.1f}% | {rates[2]:.1f}% | {rates[3]:.1f}% | {np.mean(rates):.1f}% |')
+        lines.append(f'| {ms} | {rates[0]:.1f}% | {rates[1]:.1f}% | {rates[2]:.1f}% | {rates[3]:.1f}% | {np.mean(rates):.1f}% |')
     lines.append('')
 
     # 表15: ベースライン社会的相互作用
@@ -853,10 +855,7 @@ def generate_markdown_tables(all_data, output_path):
         all_success = int(total * min(rates) + 0.5) if rates else 0
         three_plus = int(total * np.percentile(rates, 25) + 0.5) if rates else 0
 
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| {ms} | {all_success}/{total} ({min(rates)*100:.1f}%) | {three_plus}/{total} ({np.percentile(rates, 25)*100:.1f}%) | {consistency} |')
-        else:
-            lines.append(f'| {ms} | {all_success}/{total} ({min(rates)*100:.1f}%) | {three_plus}/{total} ({np.percentile(rates, 25)*100:.1f}%) | {consistency} |')
+        lines.append(f'| {ms} | {all_success}/{total} ({min(rates)*100:.1f}%) | {three_plus}/{total} ({np.percentile(rates, 25)*100:.1f}%) | {consistency} |')
     lines.append('')
 
     # 表19: 実験2主要知見
@@ -988,10 +987,7 @@ def generate_markdown_tables(all_data, output_path):
             evacuated = int(total * rate + 0.5)
             rates.append(f'{evacuated}/{total} ({rate*100:.1f}%)')
 
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| **{ms}** | **{rates[0]}** | **{rates[1]}** | **{rates[2]}** | **{rates[3]}** |')
-        else:
-            lines.append(f'| {ms} | {rates[0]} | {rates[1]} | {rates[2]} | {rates[3]} |')
+        lines.append(f'| {ms} | {rates[0]} | {rates[1]} | {rates[2]} | {rates[3]} |')
     lines.append('')
 
     # 表25: 情報条件別社会的相互作用
@@ -1098,21 +1094,18 @@ def generate_markdown_tables(all_data, output_path):
         else:
             time_char = '長い、開始遅延'
 
-        # 社会的行動特性（簡略化）
+        # 社会的行動特性（認知特性ごとの傾向）
         social_chars = {
             '冷静・分析的': 'FOLLOW少、独立行動',
             '冷静・合理的': 'CONTACT活用',
             '慎重・人混み恐怖': 'FOLLOW中程度',
-            '同調性・集団追従': 'FOLLOW多、環境依存',
+            '楽観的・自己信頼型': 'STAY傾向、様子見',
+            '社交的・周囲配慮型': 'FOLLOW多、他者同調',
             '焦燥・目的外行動': '家族連絡に時間消費',
-            '同調性・パニック気味': '不安定、他者依存',
-            '正常性バイアス・楽観的': 'STAY多、EVACUATE遅延'
+            '不安傾向・サポート希求型': 'FOLLOW多、集団追従'
         }
 
-        if ms == '正常性バイアス・楽観的':
-            lines.append(f'| **{ms}** | **{avg_rate:.1f}%** | **{time_char}** | **{social_chars[ms]}** |')
-        else:
-            lines.append(f'| {ms} | {avg_rate:.1f}% | {time_char} | {social_chars[ms]} |')
+        lines.append(f'| {ms} | {avg_rate:.1f}% | {time_char} | {social_chars.get(ms, "-")} |')
     lines.append('')
 
     # 表30: 実験間の避難完了率比較

@@ -7,7 +7,8 @@ public enum BuildingCategory
 {
     Residential,          // 住宅
     WorkplaceResidential, // 職場兼住宅（作業所共同住宅・店舗共同住宅など）
-    Office,               // 職場・オフィス・工場・商業施設等
+    Office,               // 職場・オフィス・工場等
+    Commercial,           // 商業施設
     PublicFacility,       // 公共施設（官公庁施設など）
     School,               // 学校（※現時点ではusageでは判定しない、タグで対応）
     PreSchool,            // 保育園・幼稚園（※現時点ではusageでは判定しない、タグで対応）
@@ -38,22 +39,27 @@ public static class BuildingCategorizer
             return BuildingCategory.Unknown;
         }
 
-        // 1) usageが工場、商業施設、供給処理施設に属するものは「職場（Office）」として分類
-        //    例: "工場", "商業施設", "店舗", "供給処理施設" など
+        // 1) usageが商業施設に属するものは「商業施設（Commercial）」として分類
+        if (usage.Contains("商業施設"))
+        {
+            return BuildingCategory.Commercial;
+        }
+
+        // 2) usageが工場、供給処理施設に属するものは「職場（Office）」として分類
+        //    例: "工場", "供給処理施設" など
         if (usage.Contains("工場") ||
-            usage.Contains("商業施設") ||
             usage.Contains("供給処理施設"))
         {
             return BuildingCategory.Office;
         }
 
-        // 2) usageが官公庁施設に属するものは「公共施設（PublicFacility）」として分類
+        // 3) usageが官公庁施設に属するものは「公共施設（PublicFacility）」として分類
         if (usage.Contains("官公庁施設"))
         {
             return BuildingCategory.PublicFacility;
         }
 
-        // 3) usageが作業所共同住宅、店舗共同住宅に属するものは「職場兼住宅」として分類
+        // 4) usageが作業所共同住宅、店舗共同住宅に属するものは「職場兼住宅」として分類
         //    PLATEAUの実データでは「作業所兼用住宅」「店舗等併用住宅」等のバリエーションも考えられるため
         //    「作業所」かつ「住宅」、「店舗」かつ「住宅」を含む場合を職場兼住宅とみなす
         if ((usage.Contains("作業所") && usage.Contains("住宅")) ||
@@ -62,14 +68,14 @@ public static class BuildingCategorizer
             return BuildingCategory.WorkplaceResidential;
         }
 
-        // 4) usageが住宅に所属するものは「住宅」に分類
+        // 5) usageが住宅に所属するものは「住宅」に分類
         //    ここでは「住宅」「共同住宅」などを広く含める
         if (usage.Contains("住宅"))
         {
             return BuildingCategory.Residential;
         }
 
-        // 5) usageが上記以外の場合は「その他」として分類
+        // 6) usageが上記以外の場合は「その他」として分類
         return BuildingCategory.Other;
     }
 
@@ -86,6 +92,8 @@ public static class BuildingCategorizer
                 return "職場兼住宅";
             case BuildingCategory.Office:
                 return "職場・オフィス";
+            case BuildingCategory.Commercial:
+                return "商業施設";
             case BuildingCategory.PublicFacility:
                 return "公共施設";
             case BuildingCategory.School:

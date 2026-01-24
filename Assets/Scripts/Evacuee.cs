@@ -80,8 +80,11 @@ public class Evacuee : MonoBehaviour {
     // CONTACT: 電話/メール送受信で3秒（往復で6秒程度）
     private const float CONVERSATION_MESSAGE_LAG_SEC = 5.0f;
     private const float CONTACT_MESSAGE_LAG_SEC = 3.0f;
-    private const float CONVERSATION_TIMEOUT_SEC = 10.0f;  // 会話応答タイムアウト（ラグ込みで余裕を持たせる）
-    private const float CONTACT_TIMEOUT_SEC = 15.0f;       // 連絡応答タイムアウト（ラグ込みで余裕を持たせる）
+    // 注意: タイムアウトはシミュレーション時間で計測される
+    // TimeScale=7の場合、シミュレーション70秒 = 実時間10秒
+    // LLM応答には実時間で5-10秒程度必要なため、TimeScale考慮して設定
+    private const float CONVERSATION_TIMEOUT_SEC = 70.0f;  // 会話応答タイムアウト（TimeScale=7で実時間10秒相当）
+    private const float CONTACT_TIMEOUT_SEC = 105.0f;      // 連絡応答タイムアウト（TimeScale=7で実時間15秒相当）
 
     // 日本語名マッピング
     private static readonly Dictionary<LLM.SpeedChoice, string> SpeedChoiceNames = new Dictionary<LLM.SpeedChoice, string>
