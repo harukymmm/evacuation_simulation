@@ -5,11 +5,13 @@
 """
 
 import os
+import sys
 import csv
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
+import argparse
 
 # 実験条件
 CONDITIONS = [
@@ -29,7 +31,7 @@ NUM_TRIALS = 5
 MENTAL_STATES = [
     '冷静・分析的',
     '冷静・合理的',
-    '慎重・人混み恐怖',
+    '慎重・人混み回避',
     '楽観的・自己信頼型',
     '社交的・周囲配慮型',
     '焦燥・目的外行動',
@@ -330,18 +332,10 @@ def calculate_evacuation_start_times(agents_dfs):
     }
 
 
-def main():
-    import sys
-    # パス設定
-    base_dir = Path(__file__).parent.parent
+def main(experiment_dir: Path):
+    # 実験ディレクトリからexperiment_idを抽出
+    experiment_id = experiment_dir.name
 
-    # コマンドライン引数で実験ディレクトリを指定可能
-    if len(sys.argv) > 1:
-        experiment_id = sys.argv[1]
-    else:
-        experiment_id = '20260121_025302'
-
-    experiment_dir = base_dir / 'Logs' / 'experiment_results' / experiment_id
     output_dir = experiment_dir / 'averaged'
     # Markdown表の出力先を実験結果ディレクトリに変更
     tables_dir = experiment_dir
@@ -615,20 +609,14 @@ def generate_markdown_tables(all_data, output_path, experiment_id='20260121_0253
     lines.append('| 避難先 | 避難完了者数 | 分類 |')
     lines.append('|:-------|:-----------:|:----:|')
 
-    # 津波避難地域
-    tsunami_areas = ['諏訪神社', '小泉工業']
-    # 指定避難所
-    shelters = ['薄磯団地', '健登師記念会館', '豊間公園', '豊間中学校']
+    # 津波避難地域（高台）
+    tsunami_areas = ['中田山', '八坂神社', '望洋荘', '諏訪神社', '小泉工業']
 
-    for loc in tsunami_areas:
+    for loc in sorted(llm_locs.keys(), key=lambda x: llm_locs[x], reverse=True):
         count = llm_locs.get(loc, 0)
         if count > 0:
-            lines.append(f'| {loc} | {count:.1f} | 津波避難地域 |')
-
-    for loc in shelters:
-        count = llm_locs.get(loc, 0)
-        if count > 0:
-            lines.append(f'| {loc} | {count:.1f} | 指定避難所 |')
+            classification = '津波避難地域' if loc in tsunami_areas else '指定避難所'
+            lines.append(f'| {loc} | {count:.1f} | {classification} |')
     lines.append('')
 
     # 表7: ルールベースエージェント避難先分布
@@ -642,7 +630,8 @@ def generate_markdown_tables(all_data, output_path, experiment_id='20260121_0253
     for loc in sorted(rb_locs.keys(), key=lambda x: rb_locs[x], reverse=True):
         count = rb_locs.get(loc, 0)
         if count > 0:
-            lines.append(f'| {loc} | {count:.1f} | 指定避難所 |')
+            classification = '津波避難地域' if loc in tsunami_areas else '指定避難所'
+            lines.append(f'| {loc} | {count:.1f} | {classification} |')
     lines.append('')
 
     # 表8: 認知特性別避難完了率
@@ -1098,7 +1087,7 @@ def generate_markdown_tables(all_data, output_path, experiment_id='20260121_0253
         social_chars = {
             '冷静・分析的': 'FOLLOW少、独立行動',
             '冷静・合理的': 'CONTACT活用',
-            '慎重・人混み恐怖': 'FOLLOW中程度',
+            '慎重・人混み回避': 'FOLLOW中程度',
             '楽観的・自己信頼型': 'STAY傾向、様子見',
             '社交的・周囲配慮型': 'FOLLOW多、他者同調',
             '焦燥・目的外行動': '家族連絡に時間消費',
@@ -1139,4 +1128,13 @@ def generate_markdown_tables(all_data, output_path, experiment_id='20260121_0253
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='実験結果の集計スクリプト')
+    parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
+    args = parser.parse_args()
+
+    experiment_dir = Path(args.log_dir)
+    if not experiment_dir.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {experiment_dir}")
+        sys.exit(1)
+
+    main(experiment_dir)

@@ -187,7 +187,6 @@ mono_crash.*
 *.sln.DotSettings
 
 Paper.md
-Paper.tex
 Paper.log
 Paper.fls
 Paper.fdb_latexmk

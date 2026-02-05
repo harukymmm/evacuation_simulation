@@ -12,16 +12,25 @@
 """
 
 import os
+import sys
 import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import re
+import argparse
 from typing import Dict, List, Tuple, Optional
 
-# 実験結果のディレクトリ
-RESULT_DIR = Path("/Users/harukidoi/code/itolabo/simulation/evacuation_simulation/Logs/experiment_results/20260122_020101")
+# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
+RESULT_DIR = None
+
+def get_result_dir() -> Path:
+    """実験結果ディレクトリを取得"""
+    global RESULT_DIR
+    if RESULT_DIR is None:
+        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
+    return RESULT_DIR
 
 # 会話返答のカテゴリ定義（キーワードベース）- 拡充版
 RESPONSE_CATEGORIES = {
@@ -98,7 +107,7 @@ GOAL_CATEGORIES = {
 
 def load_agent_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
     """エージェントデータを読み込む"""
-    filepath = RESULT_DIR / f"{condition}_trial_{trial}_agents.csv"
+    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
     if filepath.exists():
         return pd.read_csv(filepath)
     return None
@@ -207,7 +216,7 @@ def load_llm_decisions_with_prompts(agent_id: int) -> List[Dict]:
     LLM決定ログを読み込み、プロンプト情報も含める
     会話履歴をパースするために、USER PROMPTセクションも抽出する
     """
-    filepath = RESULT_DIR / "llm_decisions" / f"{agent_id}.txt"
+    filepath = get_result_dir() / "llm_decisions" / f"{agent_id}.txt"
     if not filepath.exists():
         return []
 
@@ -429,7 +438,7 @@ def analyze_all_agents():
     }
 
     # 各エージェントを分析
-    llm_decisions_dir = RESULT_DIR / "llm_decisions"
+    llm_decisions_dir = get_result_dir() / "llm_decisions"
     if not llm_decisions_dir.exists():
         print("LLM決定ログディレクトリが見つかりません")
         return None
@@ -438,7 +447,11 @@ def analyze_all_agents():
     print(f"分析対象: {len(agent_files)}エージェント")
 
     for agent_file in agent_files:
-        agent_id = int(agent_file.stem)
+        # 数値でないファイル名はスキップ
+        try:
+            agent_id = int(agent_file.stem)
+        except ValueError:
+            continue
 
         # エージェントの生存状態を取得
         agent_row = agents_df[agents_df['agent_id'] == agent_id]
@@ -724,7 +737,7 @@ def main():
         return
 
     # JSON出力
-    output_json_path = RESULT_DIR / "social_interaction_analysis.json"
+    output_json_path = get_result_dir() / "social_interaction_analysis.json"
 
     # defaultdictを通常のdictに変換し、numpy型をPython型に変換
     def convert_for_json(obj):
@@ -750,7 +763,7 @@ def main():
 
     # マークダウンレポート生成
     report = generate_report(results)
-    output_md_path = RESULT_DIR / "social_interaction_analysis.md"
+    output_md_path = get_result_dir() / "social_interaction_analysis.md"
     with open(output_md_path, 'w', encoding='utf-8') as f:
         f.write(report)
     print(f"レポート出力: {output_md_path}")
@@ -770,4 +783,13 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='社会的行動（TALK/CONTACT）の影響分析スクリプト')
+    parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
+    args = parser.parse_args()
+
+    RESULT_DIR = Path(args.log_dir)
+    if not RESULT_DIR.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+        sys.exit(1)
+
     main()

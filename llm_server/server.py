@@ -2115,11 +2115,34 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return response_payload
 
 
-def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
+def build_conversation_response_prompts(payload: Dict[str, Any]) -> tuple[str, str]:
     """
-    会話応答生成用のプロンプトを構築する。
+    会話応答生成用のsystem_promptとuser_promptを構築する。
     話しかけられた避難者が、相手にどう返答するかを決定するためのプロンプト。
+    意思決定プロンプト（build_system_prompt / build_user_prompt）のパターンに準拠。
     """
+    # ========================================
+    # system_prompt（静的）
+    # ========================================
+    system_prompt = """あなたは予期せぬ災害に直面した一般市民です。他の避難者から話しかけられました。
+与えられたペルソナに基づいて、その人物として自然に返答してください。
+
+【重要】
+- 家族のことが心配で、会話を急いで切り上げたいかもしれません
+- 自分の知っている情報があれば適切に共有してください
+- 自分も避難中で時間がない場合は、簡潔に答えてください
+
+【出力形式】JSON1つのみ出力:
+{
+  "response_message": "返答内容（口語的な日本語）",
+  "willing_to_share": true/false（情報を共有する意思があるか）,
+  "want_to_continue": true/false（会話を続けたいか。falseなら締めの言葉で返答）,
+  "reasoning": "この返答をした理由"
+}"""
+
+    # ========================================
+    # user_prompt（動的）
+    # ========================================
     lines = []
 
     persona = payload.get("persona", {})
@@ -2128,13 +2151,39 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
     current_action = payload.get("current_action", "不明")
     current_target = payload.get("current_target", "")
 
-    # 話しかけられた側の情報
-    lines.append("あなたは避難者です。他の避難者から話しかけられました。")
+    # A-1. ペルソナ情報
+    lines.append("【あなたのペルソナ】")
+    name = persona.get("name", "不明")
+    age_group = persona.get("age_group", "不明")
+    role = persona.get("role", "不明")
+    lines.append(f"{name}（{age_group}・{role}）")
+
+    mental_state = persona.get("mental_state")
+    if mental_state:
+        lines.append(f"心理状態: {mental_state}")
+
+    priority = persona.get("priority")
+    if priority:
+        lines.append(f"優先事項: {priority}")
+
+    past_disaster = persona.get("past_disaster_experience")
+    if past_disaster:
+        lines.append(f"災害経験: {past_disaster}")
+
+    physical_condition = persona.get("physical_condition")
+    if physical_condition and physical_condition != "健康":
+        lines.append(f"身体状態: {physical_condition}")
+
+    system_prompt_context = persona.get("system_prompt_context")
+    if system_prompt_context:
+        lines.append("")
+        lines.append(system_prompt_context)
     lines.append("")
-    lines.append("【あなたの情報】")
-    lines.append(f"名前: {persona.get('name', '不明')}")
-    lines.append(f"役割: {persona.get('role', '不明')}")
-    lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+
+    # A-2. あなたの状態
+    lines.append("【あなたの状態】")
+    stamina = payload.get("stamina", 1.0)
+    lines.append(f"体力: {stamina:.0%}")
 
     # 現在の行動
     action_desc = {
@@ -2145,18 +2194,125 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
         "FOLLOW": "他の避難者について行っている",
         "TALK": "他の避難者と会話中",
     }.get(current_action, current_action)
-
     lines.append(f"現在の行動: {action_desc}")
-    if current_target:
-        lines.append(f"目標避難所: {current_target}")
+
+    current_goal = payload.get("current_goal")
+    if current_goal:
+        lines.append(f"現在の目標: {current_goal}")
     lines.append("")
 
-    # 環境情報
+    # B. 状況
+    lines.append("【状況】")
     scenario_id = environment.get("scenario_id", "")
+    disaster_phase = environment.get("disaster_phase", "")
+
     if scenario_id == "shindo_7_tsunami":
-        lines.append("【状況】")
-        lines.append("震度7クラスの地震が発生し、津波警報が発令中です。")
+        if disaster_phase in ["Shaking", "InfoGap"]:
+            lines.append("強い地震が発生しました。まだ詳しい情報は入っていません。")
+        else:
+            lines.append("震度7クラスの地震が発生し、津波警報が発令中です。")
+    elif scenario_id == "shindo_6":
+        lines.append("強い揺れが発生しました。")
+    else:
+        lines.append("地震が発生しました。")
+
+    # Jアラート
+    has_received_j_alert = payload.get("has_received_j_alert", False)
+    last_j_alert_message = payload.get("last_j_alert_message", "")
+    if has_received_j_alert and last_j_alert_message:
+        lines.append(f"スマホの緊急速報: {last_j_alert_message}")
+
+    # 防災無線
+    has_heard_broadcast = payload.get("has_heard_broadcast", False)
+    last_broadcast_message = payload.get("last_broadcast_message", "")
+    if has_heard_broadcast and last_broadcast_message:
+        lines.append(f"防災無線: {last_broadcast_message}")
+    lines.append("")
+
+    # C. 現在位置
+    location_description = payload.get("location_description")
+    if location_description:
+        lines.append("【あなたの現在位置】")
+        lines.append(location_description)
         lines.append("")
+
+    # E-1. 長期目標
+    current_long_term_goal = payload.get("current_long_term_goal", {})
+    if current_long_term_goal:
+        primary_goal = current_long_term_goal.get("primary_goal")
+        if primary_goal and primary_goal != "未設定":
+            lines.append("【現在の長期目標】")
+            lines.append(f"主要目標: {primary_goal}")
+            secondary_goals = current_long_term_goal.get("secondary_goals", [])
+            if secondary_goals:
+                lines.append(f"副次目標: {', '.join(secondary_goals)}")
+            lines.append("")
+
+    # E-2. 中期計画
+    current_mid_term_plan = payload.get("current_mid_term_plan", {})
+    if current_mid_term_plan:
+        steps = current_mid_term_plan.get("steps", [])
+        if steps:
+            lines.append("【現在の中期計画】")
+            for idx, step in enumerate(steps, 1):
+                lines.append(f"{idx}. {step}")
+            lines.append("")
+
+    # E-3. 直近の行動履歴
+    action_history = payload.get("action_history", {})
+    recent_actions = action_history.get("recent_actions", [])
+    if recent_actions:
+        lines.append("【直近の行動】")
+        for action in recent_actions[:3]:
+            timestamp = action.get("timestamp", 0)
+            action_type = action.get("action_type", "不明")
+            reasoning = action.get("reasoning", "")
+            action_type_ja = {
+                "EVACUATE": "避難",
+                "STAY": "待機",
+                "SEARCH_FAMILY": "家族探索",
+                "CONTACT": "連絡",
+                "FOLLOW": "追従",
+                "TALK": "会話",
+            }.get(action_type, action_type)
+            line = f"- {timestamp:.0f}秒: {action_type_ja}"
+            if reasoning:
+                short_reasoning = reasoning[:40] + "..." if len(reasoning) > 40 else reasoning
+                line += f" - {short_reasoning}"
+            lines.append(line)
+        lines.append("")
+
+    # E-4. 直近の会話履歴
+    conversation_history = payload.get("conversation_history", {})
+    recent_conversations = conversation_history.get("recent_conversations", [])
+    if recent_conversations:
+        lines.append("【直近の会話履歴】")
+        for conv in recent_conversations[:5]:
+            partner_name = conv.get("partner_name", "不明")
+            my_message = conv.get("my_message", "")
+            partner_response = conv.get("partner_response", "")
+            lines.append(f"相手: {partner_name}")
+            if my_message:
+                lines.append(f"自分: {my_message}")
+            if partner_response:
+                lines.append(f"{partner_name}: {partner_response}")
+            lines.append("")
+
+    # E-5. 長期記憶
+    long_term_memories = payload.get("long_term_memories", [])
+    if long_term_memories:
+        lines.append("【あなたの記憶・知識】")
+        for mem in long_term_memories[:5]:
+            content = mem.get("content", "")
+            if content:
+                lines.append(f"- {content}")
+        lines.append("")
+
+    # ========================================
+    # 会話の状況（ここから会話固有の情報）
+    # ========================================
+    lines.append("---以下は会話の状況---")
+    lines.append("")
 
     # 話しかけてきた人の情報
     lines.append("【話しかけてきた人】")
@@ -2174,7 +2330,7 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
     lines.append(f"話題: {topic_desc}")
     lines.append("")
 
-    # ターン情報を追加（マルチターン会話対応）
+    # ターン情報
     turn_count = payload.get("turn_count", 1)
     if turn_count > 1:
         lines.append(f"これは相手との会話の{turn_count}回目のやり取りです。")
@@ -2184,26 +2340,9 @@ def build_conversation_response_prompt(payload: Dict[str, Any]) -> str:
         lines.append(
             "会話が長くなっています。区切りの良いところで終わりにしても構いません。"
         )
-        lines.append("")
 
-    # 指示
-    lines.append("あなたの立場で、この人にどう返答しますか？")
-    lines.append("自分の知っている情報を適切に共有してください。")
-    lines.append("ただし、自分も避難中で時間がない場合は、簡潔に答えてください。")
-    lines.append("")
-    lines.append("【重要】以下のJSON形式で回答してください:")
-    lines.append("{")
-    lines.append('  "response_message": "返答内容（口語的な日本語）",')
-    lines.append(
-        '  "willing_to_share": true または false（情報を共有する意思があるか）,'
-    )
-    lines.append(
-        '  "want_to_continue": true または false（会話を続けたいか。falseの場合は返答内容を締めの言葉にしてください）,'
-    )
-    lines.append('  "reasoning": "この返答をした理由"')
-    lines.append("}")
-
-    return "\n".join(lines)
+    user_prompt = "\n".join(lines)
+    return system_prompt, user_prompt
 
 
 async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2212,33 +2351,69 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
     話しかけられた避難者のLLMが返答を生成する。
     """
     request_id = payload.get("request_id", f"conv-{random.randint(0, 1_000_000)}")
+    persona = payload.get("persona", {})
+    incoming = payload.get("incoming_conversation", {})
 
     if OPENAI_CLIENT is None:
         # LLMが利用できない場合はデフォルト応答
-        return {
+        result = {
             "request_id": request_id,
             "response_message": "すみません、今は急いでいるので...",
             "willing_to_share": False,
             "want_to_continue": False,
             "reasoning": "LLM unavailable - default response",
         }
+        # ログ出力（デフォルト応答）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_response_default",
+            input_snapshot={
+                "initiator_name": incoming.get("initiator_name"),
+                "message": incoming.get("message"),
+                "topic": incoming.get("topic"),
+            },
+            output_snapshot=result,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
-    prompt = build_conversation_response_prompt(payload)
+    system_prompt, user_prompt = build_conversation_response_prompts(payload)
 
     try:
-        content = await _call_openai_with_retry(prompt)
+        content, _ = await _call_openai_with_retry(system_prompt, user_prompt)
         if content is None:
-            return {
+            result = {
                 "request_id": request_id,
                 "response_message": "すみません、今は急いでいるので...",
                 "willing_to_share": False,
                 "want_to_continue": False,
                 "reasoning": "LLM call failed - default response",
             }
+            # ログ出力（LLM失敗）
+            _log_decision(
+                evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+                request_id=request_id,
+                source="conversation_response_failed",
+                input_snapshot={
+                    "initiator_name": incoming.get("initiator_name"),
+                    "message": incoming.get("message"),
+                    "topic": incoming.get("topic"),
+                },
+                output_snapshot=result,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                experiment_id=payload.get("experiment_id"),
+                episode_id=payload.get("episode_id"),
+                episode_elapsed_time=payload.get("episode_elapsed_time"),
+            )
+            return result
 
         response = _safe_load_json(content)
 
-        return {
+        result = {
             "request_id": request_id,
             "response_message": response.get("response_message", "..."),
             "willing_to_share": response.get("willing_to_share", True),
@@ -2246,22 +2421,92 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
             "reasoning": response.get("reasoning", ""),
         }
 
+        # ログ出力（成功）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_response",
+            input_snapshot={
+                "initiator_name": incoming.get("initiator_name"),
+                "message": incoming.get("message"),
+                "topic": incoming.get("topic"),
+                "turn_count": payload.get("turn_count", 1),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+
+        return result
+
     except Exception as exc:
         print(f"[LLM SERVER] 会話応答生成で例外: {exc}")
-        return {
+        result = {
             "request_id": request_id,
             "response_message": "すみません、今は急いでいるので...",
             "willing_to_share": False,
             "want_to_continue": False,
             "reasoning": f"Exception: {exc}",
         }
+        # ログ出力（例外）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_response_exception",
+            input_snapshot={
+                "initiator_name": incoming.get("initiator_name"),
+                "message": incoming.get("message"),
+                "topic": incoming.get("topic"),
+                "exception": str(exc),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
 
-def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
+def build_family_contact_response_prompts(payload: Dict[str, Any]) -> tuple[str, str]:
     """
-    家族連絡応答生成用のプロンプトを構築する。
+    家族連絡応答生成用のsystem_promptとuser_promptを構築する。
     連絡を受けた家族メンバーが、送信者にどう返答するかを決定するためのプロンプト。
+    意思決定プロンプト（build_system_prompt / build_user_prompt）のパターンに準拠。
     """
+    # ========================================
+    # system_prompt（静的）
+    # ========================================
+    system_prompt = """あなたは予期せぬ災害に直面した一般市民です。家族から緊急連絡（メール）を受けました。
+与えられたペルソナに基づいて、その人物として自然に返信してください。
+
+【重要】
+- 家族を安心させたい、または不安を共有したいかもしれません
+- あなたの現在の状況を正直に伝えてください
+- 今後の行動予定も伝えてあげてください
+
+以下の点を含めて返信を作成してください:
+- あなたの現在の状況（無事かどうか、怪我はないか）
+- あなたの現在位置
+- 今後の行動予定（どこに避難するか、どう行動するか）
+
+【出力形式】JSON1つのみ出力:
+{
+  "response_message": "返信内容（メールの本文、口語的な日本語）",
+  "current_status": "無事/軽傷/重傷など現在の状況",
+  "current_location": "現在位置の説明",
+  "planned_action": "今後の行動予定",
+  "want_to_continue": true/false（やり取りを続けたいか）,
+  "reasoning": "この返信をした理由"
+}"""
+
+    # ========================================
+    # user_prompt（動的）
+    # ========================================
     lines = []
 
     persona = payload.get("persona", {})
@@ -2271,15 +2516,42 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
     current_target = payload.get("current_target", "")
     family_relationship = payload.get("family_relationship", "")
 
-    # 連絡を受けた家族の情報
-    lines.append("あなたは家族から緊急連絡（メール）を受けました。")
-    lines.append("")
-    lines.append("【あなたの情報】")
-    lines.append(f"名前: {persona.get('name', '不明')}")
-    lines.append(f"役割: {persona.get('role', '不明')}")
-    lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+    # A-1. ペルソナ情報
+    lines.append("【あなたのペルソナ】")
+    name = persona.get("name", "不明")
+    age_group = persona.get("age_group", "不明")
+    role = persona.get("role", "不明")
+    lines.append(f"{name}（{age_group}・{role}）")
+
     if family_relationship:
         lines.append(f"家族関係: {family_relationship}")
+
+    mental_state = persona.get("mental_state")
+    if mental_state:
+        lines.append(f"心理状態: {mental_state}")
+
+    priority = persona.get("priority")
+    if priority:
+        lines.append(f"優先事項: {priority}")
+
+    past_disaster = persona.get("past_disaster_experience")
+    if past_disaster:
+        lines.append(f"災害経験: {past_disaster}")
+
+    physical_condition = persona.get("physical_condition")
+    if physical_condition and physical_condition != "健康":
+        lines.append(f"身体状態: {physical_condition}")
+
+    system_prompt_context = persona.get("system_prompt_context")
+    if system_prompt_context:
+        lines.append("")
+        lines.append(system_prompt_context)
+    lines.append("")
+
+    # A-2. あなたの状態
+    lines.append("【あなたの状態】")
+    stamina = payload.get("stamina", 1.0)
+    lines.append(f"体力: {stamina:.0%}")
 
     # 現在の行動
     action_desc = {
@@ -2290,18 +2562,128 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
         "FOLLOW": "他の避難者について行っている",
         "TALK": "他の避難者と会話中",
     }.get(current_action, current_action)
-
     lines.append(f"現在の行動: {action_desc}")
+
     if current_target:
         lines.append(f"目標避難所: {current_target}")
+
+    current_goal = payload.get("current_goal")
+    if current_goal:
+        lines.append(f"現在の目標: {current_goal}")
     lines.append("")
 
-    # 環境情報
+    # B. 状況
+    lines.append("【状況】")
     scenario_id = environment.get("scenario_id", "")
+    disaster_phase = environment.get("disaster_phase", "")
+
     if scenario_id == "shindo_7_tsunami":
-        lines.append("【状況】")
-        lines.append("震度7クラスの地震が発生し、津波警報が発令中です。")
+        if disaster_phase in ["Shaking", "InfoGap"]:
+            lines.append("強い地震が発生しました。まだ詳しい情報は入っていません。")
+        else:
+            lines.append("震度7クラスの地震が発生し、津波警報が発令中です。")
+    elif scenario_id == "shindo_6":
+        lines.append("強い揺れが発生しました。")
+    else:
+        lines.append("地震が発生しました。")
+
+    # Jアラート
+    has_received_j_alert = payload.get("has_received_j_alert", False)
+    last_j_alert_message = payload.get("last_j_alert_message", "")
+    if has_received_j_alert and last_j_alert_message:
+        lines.append(f"スマホの緊急速報: {last_j_alert_message}")
+    lines.append("")
+
+    # C. 現在位置
+    location_description = payload.get("location_description")
+    if location_description:
+        lines.append("【あなたの現在位置】")
+        lines.append(location_description)
         lines.append("")
+
+    # D. 家族情報
+    family_members = payload.get("family_members", [])
+    if family_members:
+        lines.append("【あなたの家族情報】")
+        for member in family_members[:5]:
+            member_name = member.get("name", "不明")
+            relation = member.get("relation", "不明")
+            location = member.get("likely_location", "不明")
+            is_reunited = member.get("is_reunited", False)
+            if is_reunited:
+                lines.append(f"- {relation}: {member_name}（★合流済み★）")
+            else:
+                lines.append(f"- {relation}: {member_name}（{location}にいる可能性）")
+        lines.append("")
+
+    # 直近の家族からの返信
+    last_contact_message = payload.get("last_contact_message")
+    if last_contact_message:
+        lines.append("【直近の家族からの返信】")
+        lines.append(last_contact_message)
+        lines.append("")
+
+    # E-1. 長期目標
+    current_long_term_goal = payload.get("current_long_term_goal", {})
+    if current_long_term_goal:
+        primary_goal = current_long_term_goal.get("primary_goal")
+        if primary_goal and primary_goal != "未設定":
+            lines.append("【現在の長期目標】")
+            lines.append(f"主要目標: {primary_goal}")
+            secondary_goals = current_long_term_goal.get("secondary_goals", [])
+            if secondary_goals:
+                lines.append(f"副次目標: {', '.join(secondary_goals)}")
+            lines.append("")
+
+    # E-2. 中期計画
+    current_mid_term_plan = payload.get("current_mid_term_plan", {})
+    if current_mid_term_plan:
+        steps = current_mid_term_plan.get("steps", [])
+        if steps:
+            lines.append("【現在の中期計画】")
+            for idx, step in enumerate(steps, 1):
+                lines.append(f"{idx}. {step}")
+            lines.append("")
+
+    # E-3. 直近の行動履歴
+    action_history = payload.get("action_history", {})
+    recent_actions = action_history.get("recent_actions", [])
+    if recent_actions:
+        lines.append("【直近の行動】")
+        for action in recent_actions[:3]:
+            timestamp = action.get("timestamp", 0)
+            action_type = action.get("action_type", "不明")
+            reasoning = action.get("reasoning", "")
+            action_type_ja = {
+                "EVACUATE": "避難",
+                "STAY": "待機",
+                "SEARCH_FAMILY": "家族探索",
+                "CONTACT": "連絡",
+                "FOLLOW": "追従",
+                "TALK": "会話",
+            }.get(action_type, action_type)
+            line = f"- {timestamp:.0f}秒: {action_type_ja}"
+            if reasoning:
+                short_reasoning = reasoning[:40] + "..." if len(reasoning) > 40 else reasoning
+                line += f" - {short_reasoning}"
+            lines.append(line)
+        lines.append("")
+
+    # E-5. 長期記憶
+    long_term_memories = payload.get("long_term_memories", [])
+    if long_term_memories:
+        lines.append("【あなたの記憶・知識】")
+        for mem in long_term_memories[:5]:
+            content = mem.get("content", "")
+            if content:
+                lines.append(f"- {content}")
+        lines.append("")
+
+    # ========================================
+    # 連絡の状況（ここから連絡固有の情報）
+    # ========================================
+    lines.append("---以下は連絡の状況---")
+    lines.append("")
 
     # 連絡してきた家族の情報
     lines.append("【連絡してきた家族】")
@@ -2323,7 +2705,7 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
         lines.append(f"相手の行動: {sender_action_desc}")
     lines.append("")
 
-    # ターン情報を追加（マルチターン会話対応）
+    # ターン情報
     turn_count = payload.get("turn_count", 1)
     if turn_count > 1:
         lines.append(f"これは家族との連絡の{turn_count}回目のやり取りです。")
@@ -2333,28 +2715,9 @@ def build_family_contact_response_prompt(payload: Dict[str, Any]) -> str:
         lines.append(
             "やり取りが長くなっています。区切りの良いところで終わりにしても構いません。"
         )
-        lines.append("")
 
-    # 指示
-    lines.append("あなたはこの家族にメールで返信します。")
-    lines.append("以下の点を含めて、自然な返信を作成してください：")
-    lines.append("- あなたの現在の状況（無事かどうか、怪我はないか）")
-    lines.append("- あなたの現在位置")
-    lines.append("- 今後の行動予定（どこに避難するか、どう行動するか）")
-    lines.append("")
-    lines.append("【重要】以下のJSON形式で回答してください:")
-    lines.append("{")
-    lines.append('  "response_message": "返信内容（メールの本文、口語的な日本語）",')
-    lines.append('  "current_status": "無事/軽傷/重傷など現在の状況",')
-    lines.append('  "current_location": "現在位置の説明",')
-    lines.append('  "planned_action": "今後の行動予定",')
-    lines.append(
-        '  "want_to_continue": true または false（やり取りを続けたいか。falseの場合は返信内容を締めの言葉にしてください）,'
-    )
-    lines.append('  "reasoning": "この返信をした理由"')
-    lines.append("}")
-
-    return "\n".join(lines)
+    user_prompt = "\n".join(lines)
+    return system_prompt, user_prompt
 
 
 async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2363,10 +2726,12 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
     連絡を受けた家族のLLMが返答を生成する。
     """
     request_id = payload.get("request_id", f"fam-{random.randint(0, 1_000_000)}")
+    persona = payload.get("persona", {})
+    incoming = payload.get("incoming_contact", {})
 
     if OPENAI_CLIENT is None:
         # LLMが利用できない場合はデフォルト応答
-        return {
+        result = {
             "request_id": request_id,
             "response_message": "無事だよ。今は自宅付近にいる。様子を見ている。",
             "current_status": "無事",
@@ -2375,13 +2740,29 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "want_to_continue": False,
             "reasoning": "LLM unavailable - default response",
         }
+        # ログ出力（デフォルト応答）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="family_contact_response_default",
+            input_snapshot={
+                "sender_name": incoming.get("sender_name"),
+                "sender_relation": incoming.get("sender_relation"),
+                "message": incoming.get("message"),
+            },
+            output_snapshot=result,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
-    prompt = build_family_contact_response_prompt(payload)
+    system_prompt, user_prompt = build_family_contact_response_prompts(payload)
 
     try:
-        content = await _call_openai_with_retry(prompt)
+        content, _ = await _call_openai_with_retry(system_prompt, user_prompt)
         if content is None:
-            return {
+            result = {
                 "request_id": request_id,
                 "response_message": "無事だよ。今は自宅付近にいる。様子を見ている。",
                 "current_status": "無事",
@@ -2390,10 +2771,28 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
                 "want_to_continue": False,
                 "reasoning": "LLM call failed - default response",
             }
+            # ログ出力（LLM失敗）
+            _log_decision(
+                evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+                request_id=request_id,
+                source="family_contact_response_failed",
+                input_snapshot={
+                    "sender_name": incoming.get("sender_name"),
+                    "sender_relation": incoming.get("sender_relation"),
+                    "message": incoming.get("message"),
+                },
+                output_snapshot=result,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                experiment_id=payload.get("experiment_id"),
+                episode_id=payload.get("episode_id"),
+                episode_elapsed_time=payload.get("episode_elapsed_time"),
+            )
+            return result
 
         response = _safe_load_json(content)
 
-        return {
+        result = {
             "request_id": request_id,
             "response_message": response.get("response_message", "無事だよ。"),
             "current_status": response.get("current_status", "不明"),
@@ -2403,9 +2802,30 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "reasoning": response.get("reasoning", ""),
         }
 
+        # ログ出力（成功）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="family_contact_response",
+            input_snapshot={
+                "sender_name": incoming.get("sender_name"),
+                "sender_relation": incoming.get("sender_relation"),
+                "message": incoming.get("message"),
+                "turn_count": payload.get("turn_count", 1),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+
+        return result
+
     except Exception as exc:
         print(f"[LLM SERVER] 家族連絡応答生成で例外: {exc}")
-        return {
+        result = {
             "request_id": request_id,
             "response_message": "無事だよ。今は自宅付近にいる。",
             "current_status": "無事",
@@ -2414,25 +2834,205 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
             "want_to_continue": False,
             "reasoning": f"Exception: {exc}",
         }
+        # ログ出力（例外）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="family_contact_response_exception",
+            input_snapshot={
+                "sender_name": incoming.get("sender_name"),
+                "sender_relation": incoming.get("sender_relation"),
+                "message": incoming.get("message"),
+                "exception": str(exc),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
 
-def build_conversation_continuation_prompt(payload: Dict[str, Any]) -> str:
+def build_conversation_continuation_prompts(payload: Dict[str, Any]) -> tuple[str, str]:
     """
-    会話継続判断用のプロンプトを構築する。
+    会話継続判断用のsystem_promptとuser_promptを構築する。
     自分が会話を続けるかどうか、続ける場合は次の発言を生成する。
+    意思決定プロンプト（build_system_prompt / build_user_prompt）のパターンに準拠。
     """
+    # ========================================
+    # system_prompt（静的）
+    # ========================================
+    system_prompt = """あなたは予期せぬ災害に直面した一般市民です。他の避難者と会話中です。
+与えられたペルソナに基づいて、その人物として自然に行動してください。
+
+相手の発言を受けて、会話を続けるかどうか判断してください。
+続ける場合は次の発言を、終わる場合は締めの言葉を考えてください。
+
+【重要】
+- 家族のことが心配で、会話を急いで切り上げたいかもしれません
+- 避難中なので、長話は避けた方が良いかもしれません
+- 必要な情報が得られたら切り上げても構いません
+
+【出力形式】JSON1つのみ出力:
+{
+  "want_to_continue": true/false,
+  "message": "次の発言（続ける場合）または締めの言葉（終わる場合）",
+  "reasoning": "判断理由"
+}"""
+
+    # ========================================
+    # user_prompt（動的）
+    # ========================================
     lines = []
 
     persona = payload.get("persona", {})
     session = payload.get("session", {})
     partner_last_message = payload.get("partner_last_message", "")
+    environment = payload.get("environment", {})
 
-    lines.append("あなたは避難者です。他の避難者と会話中です。")
+    # A-1. ペルソナ情報
+    lines.append("【あなたのペルソナ】")
+    name = persona.get("name", "不明")
+    age_group = persona.get("age_group", "不明")
+    role = persona.get("role", "不明")
+    lines.append(f"{name}（{age_group}・{role}）")
+
+    mental_state = persona.get("mental_state")
+    if mental_state:
+        lines.append(f"心理状態: {mental_state}")
+
+    priority = persona.get("priority")
+    if priority:
+        lines.append(f"優先事項: {priority}")
+
+    past_disaster = persona.get("past_disaster_experience")
+    if past_disaster:
+        lines.append(f"災害経験: {past_disaster}")
+
+    physical_condition = persona.get("physical_condition")
+    if physical_condition and physical_condition != "健康":
+        lines.append(f"身体状態: {physical_condition}")
+
+    system_prompt_context = persona.get("system_prompt_context")
+    if system_prompt_context:
+        lines.append("")
+        lines.append(system_prompt_context)
     lines.append("")
-    lines.append("【あなたの情報】")
-    lines.append(f"名前: {persona.get('name', '不明')}")
-    lines.append(f"役割: {persona.get('role', '不明')}")
-    lines.append(f"年齢層: {persona.get('age_group', '不明')}")
+
+    # A-2. あなたの状態
+    lines.append("【あなたの状態】")
+    stamina = payload.get("stamina", 1.0)
+    lines.append(f"体力: {stamina:.0%}")
+
+    current_goal = payload.get("current_goal")
+    if current_goal:
+        lines.append(f"現在の目標: {current_goal}")
+    lines.append("")
+
+    # B. 状況
+    scenario_id = environment.get("scenario_id", "")
+    disaster_phase = environment.get("disaster_phase", "")
+    if scenario_id:
+        lines.append("【状況】")
+        if scenario_id == "shindo_7_tsunami":
+            if disaster_phase in ["Shaking", "InfoGap"]:
+                lines.append("強い地震が発生しました。まだ詳しい情報は入っていません。")
+            else:
+                lines.append("震度7クラスの地震が発生し、津波警報が発令中です。")
+        elif scenario_id == "shindo_6":
+            lines.append("強い揺れが発生しました。")
+        else:
+            lines.append("地震が発生しました。")
+
+        # Jアラート
+        has_received_j_alert = payload.get("has_received_j_alert", False)
+        last_j_alert_message = payload.get("last_j_alert_message", "")
+        if has_received_j_alert and last_j_alert_message:
+            lines.append(f"スマホの緊急速報: {last_j_alert_message}")
+        lines.append("")
+
+    # C. 現在位置
+    location_description = payload.get("location_description")
+    if location_description:
+        lines.append("【あなたの現在位置】")
+        lines.append(location_description)
+        lines.append("")
+
+    # E-1. 長期目標
+    current_long_term_goal = payload.get("current_long_term_goal", {})
+    if current_long_term_goal:
+        primary_goal = current_long_term_goal.get("primary_goal")
+        if primary_goal and primary_goal != "未設定":
+            lines.append("【現在の長期目標】")
+            lines.append(f"主要目標: {primary_goal}")
+            lines.append("")
+
+    # E-2. 中期計画
+    current_mid_term_plan = payload.get("current_mid_term_plan", {})
+    if current_mid_term_plan:
+        steps = current_mid_term_plan.get("steps", [])
+        if steps:
+            lines.append("【現在の中期計画】")
+            for idx, step in enumerate(steps, 1):
+                lines.append(f"{idx}. {step}")
+            lines.append("")
+
+    # E-3. 直近の行動履歴
+    action_history = payload.get("action_history", {})
+    recent_actions = action_history.get("recent_actions", [])
+    if recent_actions:
+        lines.append("【直近の行動】")
+        for action in recent_actions[:3]:
+            timestamp = action.get("timestamp", 0)
+            action_type = action.get("action_type", "不明")
+            reasoning = action.get("reasoning", "")
+            action_type_ja = {
+                "EVACUATE": "避難",
+                "STAY": "待機",
+                "SEARCH_FAMILY": "家族探索",
+                "CONTACT": "連絡",
+                "FOLLOW": "追従",
+                "TALK": "会話",
+            }.get(action_type, action_type)
+            line = f"- {timestamp:.0f}秒: {action_type_ja}"
+            if reasoning:
+                short_reasoning = reasoning[:40] + "..." if len(reasoning) > 40 else reasoning
+                line += f" - {short_reasoning}"
+            lines.append(line)
+        lines.append("")
+
+    # E-4. 直近の会話履歴
+    conversation_history = payload.get("conversation_history", {})
+    recent_conversations = conversation_history.get("recent_conversations", [])
+    if recent_conversations:
+        lines.append("【直近の会話履歴】")
+        for conv in recent_conversations[:5]:
+            partner_name = conv.get("partner_name", "不明")
+            my_message = conv.get("my_message", "")
+            partner_response = conv.get("partner_response", "")
+            lines.append(f"相手: {partner_name}")
+            if my_message:
+                lines.append(f"自分: {my_message}")
+            if partner_response:
+                lines.append(f"{partner_name}: {partner_response}")
+            lines.append("")
+
+    # E-5. 長期記憶
+    long_term_memories = payload.get("long_term_memories", [])
+    if long_term_memories:
+        lines.append("【あなたの記憶・知識】")
+        for mem in long_term_memories[:5]:
+            content = mem.get("content", "")
+            if content:
+                lines.append(f"- {content}")
+        lines.append("")
+
+    # ========================================
+    # 会話の状況（ここから会話固有の情報）
+    # ========================================
+    lines.append("---以下は会話の状況---")
     lines.append("")
 
     lines.append("【会話の状況】")
@@ -2457,20 +3057,9 @@ def build_conversation_continuation_prompt(payload: Dict[str, Any]) -> str:
         lines.append(
             "会話が長くなっています。区切りの良いところで終わりにしても構いません。"
         )
-        lines.append("")
 
-    lines.append("会話を続けますか？")
-    lines.append("続ける場合は次の発言を、終わる場合は締めの言葉を考えてください。")
-    lines.append("（避難中なので、長話は避けた方が良いかもしれません）")
-    lines.append("")
-    lines.append("【重要】以下のJSON形式で回答してください:")
-    lines.append("{")
-    lines.append('  "want_to_continue": true または false,')
-    lines.append('  "message": "次の発言（続ける場合）または締めの言葉（終わる場合）",')
-    lines.append('  "reasoning": "判断理由"')
-    lines.append("}")
-
-    return "\n".join(lines)
+    user_prompt = "\n".join(lines)
+    return system_prompt, user_prompt
 
 
 async def process_conversation_continuation(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2479,45 +3068,122 @@ async def process_conversation_continuation(payload: Dict[str, Any]) -> Dict[str
     自分が会話を続けるか判断し、続ける場合は次のメッセージを生成する。
     """
     request_id = payload.get("request_id", f"cont-{random.randint(0, 1_000_000)}")
+    persona = payload.get("persona", {})
+    session = payload.get("session", {})
+    partner_last_message = payload.get("partner_last_message", "")
 
     if OPENAI_CLIENT is None:
         # LLMが利用できない場合はデフォルト応答（会話終了）
-        return {
+        result = {
             "request_id": request_id,
             "want_to_continue": False,
             "message": "すみません、急いでいるのでこの辺で...",
             "reasoning": "LLM unavailable - default response",
         }
+        # ログ出力（デフォルト応答）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_continuation_default",
+            input_snapshot={
+                "partner_name": session.get("partner_name"),
+                "partner_last_message": partner_last_message,
+                "turn_count": session.get("turn_count", 1),
+            },
+            output_snapshot=result,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
-    prompt = build_conversation_continuation_prompt(payload)
+    system_prompt, user_prompt = build_conversation_continuation_prompts(payload)
 
     try:
-        content = await _call_openai_with_retry(prompt)
+        content, _ = await _call_openai_with_retry(system_prompt, user_prompt)
         if content is None:
-            return {
+            result = {
                 "request_id": request_id,
                 "want_to_continue": False,
                 "message": "すみません、急いでいるのでこの辺で...",
                 "reasoning": "LLM call failed - default response",
             }
+            # ログ出力（LLM失敗）
+            _log_decision(
+                evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+                request_id=request_id,
+                source="conversation_continuation_failed",
+                input_snapshot={
+                    "partner_name": session.get("partner_name"),
+                    "partner_last_message": partner_last_message,
+                    "turn_count": session.get("turn_count", 1),
+                },
+                output_snapshot=result,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                experiment_id=payload.get("experiment_id"),
+                episode_id=payload.get("episode_id"),
+                episode_elapsed_time=payload.get("episode_elapsed_time"),
+            )
+            return result
 
         response = _safe_load_json(content)
 
-        return {
+        result = {
             "request_id": request_id,
             "want_to_continue": response.get("want_to_continue", False),
             "message": response.get("message", "..."),
             "reasoning": response.get("reasoning", ""),
         }
 
+        # ログ出力（成功）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_continuation",
+            input_snapshot={
+                "partner_name": session.get("partner_name"),
+                "partner_last_message": partner_last_message,
+                "turn_count": session.get("turn_count", 1),
+                "topic": session.get("current_topic"),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+
+        return result
+
     except Exception as exc:
         print(f"[LLM SERVER] 会話継続判断で例外: {exc}")
-        return {
+        result = {
             "request_id": request_id,
             "want_to_continue": False,
             "message": "すみません、急いでいるのでこの辺で...",
             "reasoning": f"Exception: {exc}",
         }
+        # ログ出力（例外）
+        _log_decision(
+            evacuee_id=payload.get("evacuee_id") or persona.get("name"),
+            request_id=request_id,
+            source="conversation_continuation_exception",
+            input_snapshot={
+                "partner_name": session.get("partner_name"),
+                "partner_last_message": partner_last_message,
+                "turn_count": session.get("turn_count", 1),
+                "exception": str(exc),
+            },
+            output_snapshot=result,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            experiment_id=payload.get("experiment_id"),
+            episode_id=payload.get("episode_id"),
+            episode_elapsed_time=payload.get("episode_elapsed_time"),
+        )
+        return result
 
 
 async def _handle_single_message(

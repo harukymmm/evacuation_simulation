@@ -12,16 +12,25 @@ LLMエージェントの推論分析スクリプト
 """
 
 import os
+import sys
 import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import re
+import argparse
 from typing import Dict, List, Tuple, Optional
 
-# 実験結果のディレクトリ
-RESULT_DIR = Path("/Users/harukidoi/code/itolabo/simulation/evacuation_simulation/Logs/experiment_results/20260122_020101")
+# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
+RESULT_DIR = None
+
+def get_result_dir() -> Path:
+    """実験結果ディレクトリを取得"""
+    global RESULT_DIR
+    if RESULT_DIR is None:
+        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
+    return RESULT_DIR
 
 # 長期目標のカテゴリ定義（キーワードベース）
 GOAL_CATEGORIES = {
@@ -61,7 +70,7 @@ PLAN_CATEGORIES = {
 
 def load_agent_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
     """エージェントデータを読み込む"""
-    filepath = RESULT_DIR / f"{condition}_trial_{trial}_agents.csv"
+    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
     if filepath.exists():
         return pd.read_csv(filepath)
     return None
@@ -69,7 +78,7 @@ def load_agent_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
 
 def load_action_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
     """行動データを読み込む"""
-    filepath = RESULT_DIR / f"{condition}_trial_{trial}_actions.csv"
+    filepath = get_result_dir() / f"{condition}_trial_{trial}_actions.csv"
     if filepath.exists():
         return pd.read_csv(filepath)
     return None
@@ -77,7 +86,7 @@ def load_action_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
 
 def load_llm_decisions(agent_id: int) -> List[Dict]:
     """LLM決定ログを読み込む"""
-    filepath = RESULT_DIR / "llm_decisions" / f"{agent_id}.txt"
+    filepath = get_result_dir() / "llm_decisions" / f"{agent_id}.txt"
     if not filepath.exists():
         return []
 
@@ -392,10 +401,11 @@ def analyze_goal_transition_timing(condition: str = "Baseline-LLM", trial: int =
             transition_patterns[pattern] += 1
 
             # 時間帯別カウント
-            for i, (start, end) in enumerate(zip(time_bins[:-1], time_bins[1:])):
-                if start <= timestamp < end:
-                    transition_by_time[time_labels[i]][pattern] += 1
-                    break
+            if timestamp is not None:
+                for i, (start, end) in enumerate(zip(time_bins[:-1], time_bins[1:])):
+                    if start <= timestamp < end:
+                        transition_by_time[time_labels[i]][pattern] += 1
+                        break
 
             # 「安全確保」への転換タイミング
             if to_cat == "安全確保" and from_cat != "安全確保":
@@ -638,14 +648,14 @@ def main():
 
     output_converted = convert_for_json(results)
 
-    output_path = RESULT_DIR / "reasoning_analysis_results.json"
+    output_path = get_result_dir() / "reasoning_analysis_results.json"
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(output_converted, f, ensure_ascii=False, indent=2)
 
     print(f"\n結果を保存: {output_path}")
 
     # Markdown形式でも保存
-    md_path = RESULT_DIR / "reasoning_analysis_results.md"
+    md_path = get_result_dir() / "reasoning_analysis_results.md"
     with open(md_path, 'w', encoding='utf-8') as f:
         f.write(paper_content)
 
@@ -653,4 +663,13 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='LLMエージェントの推論分析スクリプト')
+    parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
+    args = parser.parse_args()
+
+    RESULT_DIR = Path(args.log_dir)
+    if not RESULT_DIR.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+        sys.exit(1)
+
     main()

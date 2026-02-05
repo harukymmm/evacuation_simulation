@@ -271,6 +271,12 @@ namespace LLM
         public ConversationRequest incoming_conversation;
         public string current_action;
         public string current_target;
+
+        // ログ用メタデータ
+        public string evacuee_id;         // 応答者のID
+        public string experiment_id;      // 実験ID
+        public int? episode_id;           // エピソードID
+        public float? episode_elapsed_time; // エピソード経過時間
     }
 
     /// <summary>
@@ -343,6 +349,12 @@ namespace LLM
         public string current_action;
         public string current_target;
         public string family_relationship; // 家族関係の説明
+
+        // ログ用メタデータ
+        public string evacuee_id;         // 応答者のID（家族）
+        public string experiment_id;      // 実験ID
+        public int? episode_id;           // エピソードID
+        public float? episode_elapsed_time; // エピソード経過時間
     }
 
     /// <summary>
@@ -386,6 +398,12 @@ namespace LLM
         public PersonaPayload persona;
         public ConversationSessionContext session;
         public string partner_last_message;       // 相手の最後の発言
+
+        // ログ用メタデータ
+        public string evacuee_id;                 // 判断者のID
+        public string experiment_id;              // 実験ID
+        public int? episode_id;                   // エピソードID
+        public float? episode_elapsed_time;       // エピソード経過時間
     }
 
     /// <summary>

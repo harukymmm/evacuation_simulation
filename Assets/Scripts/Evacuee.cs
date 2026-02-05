@@ -1629,6 +1629,15 @@ public class Evacuee : MonoBehaviour {
             // 自分が継続したいか判断（LLMで生成）
             var continuationResponse = await RequestConversationContinuationAsync(partnerLastMessage);
 
+            // デフォルト応答チェック（reasoningにLLM失敗の兆候がある場合）
+            if (!string.IsNullOrEmpty(continuationResponse?.reasoning) &&
+                (continuationResponse.reasoning.Contains("LLM unavailable") ||
+                 continuationResponse.reasoning.Contains("LLM call failed") ||
+                 continuationResponse.reasoning.Contains("Exception")))
+            {
+                LogDefaultResponseWarning("CONTACT継続判断", continuationResponse.reasoning);
+            }
+
             if (!continuationResponse.want_to_continue)
             {
                 // 自分は終了したい → 会話終了
@@ -1669,6 +1678,7 @@ public class Evacuee : MonoBehaviour {
     {
         if (DecisionClient == null)
         {
+            LogDefaultResponseWarning("CONTACT(家族)", "LLMが無効");
             return new LLM.FamilyContactResponse
             {
                 responder_id = target.agent_id.ToString(),
@@ -1681,6 +1691,11 @@ public class Evacuee : MonoBehaviour {
             };
         }
 
+        // 実験IDを取得
+        string experimentId = !string.IsNullOrEmpty(_env?.recordID)
+            ? _env.recordID.Replace("_", "").Replace("-", "_")
+            : DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
         // LLMリクエストを構築
         var llmRequest = new LLM.LLMFamilyContactResponseRequest
         {
@@ -1691,20 +1706,34 @@ public class Evacuee : MonoBehaviour {
             incoming_contact = contactRequest,
             current_action = "STAY", // シーン外の家族はデフォルトでSTAY
             current_target = "",
-            family_relationship = $"{PersonaName}の{target.relation}"
+            family_relationship = $"{PersonaName}の{target.relation}",
+            // ログ用メタデータ
+            evacuee_id = target.name, // 家族の名前をIDとして使用
+            experiment_id = experimentId,
+            episode_id = _env?.currentEpisodeId ?? 0,
+            episode_elapsed_time = _env?.CurrentTimeSec ?? 0f
         };
 
         var llmResponse = await DecisionClient.RequestFamilyContactResponseAsync(llmRequest);
+
+        // デフォルト応答チェック（reasoningにLLM失敗の兆候がある場合）
+        if (!string.IsNullOrEmpty(llmResponse?.reasoning) &&
+            (llmResponse.reasoning.Contains("LLM unavailable") ||
+             llmResponse.reasoning.Contains("LLM call failed") ||
+             llmResponse.reasoning.Contains("Exception")))
+        {
+            LogDefaultResponseWarning("CONTACT(家族)", llmResponse.reasoning);
+        }
 
         return new LLM.FamilyContactResponse
         {
             responder_id = target.agent_id.ToString(),
             responder_name = target.name,
-            response_message = llmResponse.response_message,
-            current_status = llmResponse.current_status,
-            current_location = llmResponse.current_location,
-            planned_action = llmResponse.planned_action,
-            want_to_continue = llmResponse.want_to_continue
+            response_message = llmResponse?.response_message ?? "無事だよ。今は自宅付近にいる。様子を見ている。",
+            current_status = llmResponse?.current_status ?? "無事",
+            current_location = llmResponse?.current_location ?? "自宅付近",
+            planned_action = llmResponse?.planned_action ?? "様子を見て避難する",
+            want_to_continue = llmResponse?.want_to_continue ?? false
         };
     }
 
@@ -1813,7 +1842,7 @@ public class Evacuee : MonoBehaviour {
         // 応答拒否判定: CONTACT中は即座に拒否応答を返す
         if (CurrentAction == LLM.ActionType.CONTACT || _isRespondingToFamilyContact)
         {
-            Debug.Log($"[Evacuee] {gameObject.name}: 現在電話中のため家族連絡に簡易応答を返します");
+            LogDefaultResponseWarning("CONTACT", "相手が連絡中", isBusyRejection: true);
             sender.OnFamilyContactResponseReceived(new LLM.ConversationResponse
             {
                 responder_id = EvacueeId,
@@ -1848,6 +1877,11 @@ public class Evacuee : MonoBehaviour {
 
             if (UseLLMDecision && DecisionClient != null)
             {
+                // 実験IDを取得
+                string experimentId = !string.IsNullOrEmpty(_env?.recordID)
+                    ? _env.recordID.Replace("_", "").Replace("-", "_")
+                    : DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
                 // LLMに応答生成をリクエスト
                 var llmRequest = new LLM.LLMFamilyContactResponseRequest
                 {
@@ -1868,22 +1902,37 @@ public class Evacuee : MonoBehaviour {
                     incoming_contact = request,
                     current_action = _actionBeforeFamilyContact.ToString(), // 連絡前の行動を送信
                     current_target = _targetShelterBeforeFamilyContact,
-                    family_relationship = $"{request.sender_name}の{request.sender_relation}の家族"
+                    family_relationship = $"{request.sender_name}の{request.sender_relation}の家族",
+                    // ログ用メタデータ
+                    evacuee_id = EvacueeId,
+                    experiment_id = experimentId,
+                    episode_id = _env?.currentEpisodeId ?? 0,
+                    episode_elapsed_time = _env?.CurrentTimeSec ?? 0f
                 };
 
                 var llmResponse = await DecisionClient.RequestFamilyContactResponseAsync(llmRequest);
+
+                // デフォルト応答チェック（reasoningにLLM失敗の兆候がある場合）
+                if (!string.IsNullOrEmpty(llmResponse?.reasoning) &&
+                    (llmResponse.reasoning.Contains("LLM unavailable") ||
+                     llmResponse.reasoning.Contains("LLM call failed") ||
+                     llmResponse.reasoning.Contains("Exception")))
+                {
+                    LogDefaultResponseWarning("CONTACT", llmResponse.reasoning);
+                }
 
                 response = new LLM.ConversationResponse
                 {
                     responder_id = EvacueeId,
                     responder_name = PersonaName,
-                    response_message = llmResponse.response_message,
+                    response_message = llmResponse?.response_message ?? "無事だよ。今避難中。そっちも気をつけて。",
                     willing_to_share = true
                 };
             }
             else
             {
                 // LLMが利用できない場合はデフォルト応答
+                LogDefaultResponseWarning("CONTACT", "LLMが無効");
                 response = new LLM.ConversationResponse
                 {
                     responder_id = EvacueeId,
@@ -2219,6 +2268,15 @@ public class Evacuee : MonoBehaviour {
             // 自分が継続したいか判断（LLMで生成）
             var continuationResponse = await RequestConversationContinuationAsync(partnerLastMessage);
 
+            // デフォルト応答チェック（reasoningにLLM失敗の兆候がある場合）
+            if (!string.IsNullOrEmpty(continuationResponse?.reasoning) &&
+                (continuationResponse.reasoning.Contains("LLM unavailable") ||
+                 continuationResponse.reasoning.Contains("LLM call failed") ||
+                 continuationResponse.reasoning.Contains("Exception")))
+            {
+                LogDefaultResponseWarning("TALK継続判断", continuationResponse.reasoning);
+            }
+
             if (!continuationResponse.want_to_continue)
             {
                 // 自分は終了したい → 終了メッセージを送って会話終了
@@ -2289,13 +2347,23 @@ public class Evacuee : MonoBehaviour {
             };
         }
 
+        // 実験IDを取得
+        string experimentId = !string.IsNullOrEmpty(_env?.recordID)
+            ? _env.recordID.Replace("_", "").Replace("-", "_")
+            : DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
         var request = new LLM.LLMConversationContinuationRequest
         {
             request_id = $"cont-{Guid.NewGuid():N}",
             request_type = "conversation_continuation",
             persona = BuildPersonaPayload(),
             session = _conversationSession,
-            partner_last_message = partnerLastMessage
+            partner_last_message = partnerLastMessage,
+            // ログ用メタデータ
+            evacuee_id = EvacueeId,
+            experiment_id = experimentId,
+            episode_id = _env?.currentEpisodeId ?? 0,
+            episode_elapsed_time = _env?.CurrentTimeSec ?? 0f
         };
 
         return await DecisionClient.RequestConversationContinuationAsync(request);
@@ -2344,7 +2412,7 @@ public class Evacuee : MonoBehaviour {
         // 応答拒否判定: TALK中は即座に拒否応答を返す
         if (CurrentAction == LLM.ActionType.TALK || _isRespondingToConversation)
         {
-            Debug.Log($"[Evacuee] {gameObject.name}: 現在会話中のため拒否応答を返します");
+            LogDefaultResponseWarning("TALK", "相手が会話中", isBusyRejection: true);
             var initiator = FindEvacueeById(request.initiator_id);
             if (initiator != null)
             {
@@ -2363,7 +2431,7 @@ public class Evacuee : MonoBehaviour {
         // 応答拒否判定: CONTACT中は即座に拒否応答を返す
         if (CurrentAction == LLM.ActionType.CONTACT || _isRespondingToFamilyContact)
         {
-            Debug.Log($"[Evacuee] {gameObject.name}: 現在電話中のため拒否応答を返します");
+            LogDefaultResponseWarning("TALK", "相手が連絡中", isBusyRejection: true);
             var initiator = FindEvacueeById(request.initiator_id);
             if (initiator != null)
             {
@@ -2403,6 +2471,11 @@ public class Evacuee : MonoBehaviour {
 
             if (UseLLMDecision && DecisionClient != null)
             {
+                // 実験IDを取得
+                string experimentId = !string.IsNullOrEmpty(_env?.recordID)
+                    ? _env.recordID.Replace("_", "").Replace("-", "_")
+                    : DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
                 // LLMに応答生成をリクエスト
                 var llmRequest = new LLM.LLMConversationResponseRequest
                 {
@@ -2412,13 +2485,27 @@ public class Evacuee : MonoBehaviour {
                     environment = BuildEnvironmentPayload(),
                     incoming_conversation = request,
                     current_action = _actionBeforeConversation.ToString(), // 会話前の行動を送信
-                    current_target = _targetShelterBeforeConversation
+                    current_target = _targetShelterBeforeConversation,
+                    // ログ用メタデータ
+                    evacuee_id = EvacueeId,
+                    experiment_id = experimentId,
+                    episode_id = _env?.currentEpisodeId ?? 0,
+                    episode_elapsed_time = _env?.CurrentTimeSec ?? 0f
                 };
 
                 var llmResponse = await DecisionClient.RequestConversationResponseAsync(llmRequest);
 
                 if (llmResponse != null)
                 {
+                    // デフォルト応答チェック（reasoningにLLM失敗の兆候がある場合）
+                    if (!string.IsNullOrEmpty(llmResponse.reasoning) &&
+                        (llmResponse.reasoning.Contains("LLM unavailable") ||
+                         llmResponse.reasoning.Contains("LLM call failed") ||
+                         llmResponse.reasoning.Contains("Exception")))
+                    {
+                        LogDefaultResponseWarning("TALK", llmResponse.reasoning);
+                    }
+
                     response = new LLM.ConversationResponse
                     {
                         responder_id = EvacueeId,
@@ -2431,12 +2518,14 @@ public class Evacuee : MonoBehaviour {
                 else
                 {
                     // LLMが失敗した場合はデフォルト応答
+                    LogDefaultResponseWarning("TALK", "LLM応答がnull");
                     response = GenerateDefaultConversationResponse(request);
                 }
             }
             else
             {
                 // LLMが無効な場合はデフォルト応答
+                LogDefaultResponseWarning("TALK", "LLMが無効");
                 response = GenerateDefaultConversationResponse(request);
             }
 
@@ -3831,12 +3920,29 @@ public class Evacuee : MonoBehaviour {
                 string evacueeRole = evacuee._persona?.role ?? "";
                 string evacueeAgeGroup = evacuee._persona?.age_group ?? "";
 
+                // 現在の行動を判定（応答中のフラグも考慮）
+                string currentActionStr;
+                if (evacuee._isRespondingToConversation)
+                {
+                    // 会話の応答者として対応中の場合はTALKとして表示
+                    currentActionStr = LLM.ActionType.TALK.ToString();
+                }
+                else if (evacuee._isRespondingToFamilyContact)
+                {
+                    // 家族連絡の応答者として対応中の場合はCONTACTとして表示
+                    currentActionStr = LLM.ActionType.CONTACT.ToString();
+                }
+                else
+                {
+                    currentActionStr = evacuee.CurrentAction.ToString();
+                }
+
                 nearbyList.Add(new NearbyEvacueePayload
                 {
                     id = evacueeId,
                     position = new Vector3Payload(evacueeObj.transform.position),
                     distance_meters = distance,
-                    current_action = evacuee.CurrentAction.ToString(),
+                    current_action = currentActionStr,
                     target_shelter_id = targetShelterId,
                     name = evacueeName,
                     role = evacueeRole,
@@ -4490,6 +4596,31 @@ public class Evacuee : MonoBehaviour {
             waitFrames++;
         }
 
+    }
+
+    /// <summary>
+    /// TALK/CONTACTのデフォルト応答時に警告を出力する
+    /// - 技術的問題（LLM利用不可、呼び出し失敗、例外）: 赤色警告
+    /// - 相手が会話中/連絡中（正常な拒否応答）: 黄色警告
+    /// </summary>
+    /// <param name="actionType">行動タイプ（TALK/CONTACT）</param>
+    /// <param name="reasoning">LLMからの理由フィールド</param>
+    /// <param name="isBusyRejection">相手が会話中/連絡中のための拒否かどうか</param>
+    private void LogDefaultResponseWarning(string actionType, string reasoning, bool isBusyRejection = false)
+    {
+        string agentName = gameObject?.name ?? "Unknown";
+
+        if (isBusyRejection)
+        {
+            // 黄色警告: 相手が会話中/連絡中（正常な動作）
+            Debug.LogWarning($"<color=yellow>[{actionType} DEFAULT] {agentName}: 相手が会話中/連絡中のためデフォルト応答</color>");
+        }
+        else
+        {
+            // 赤色警告: 技術的問題
+            string reason = string.IsNullOrEmpty(reasoning) ? "不明" : reasoning;
+            Debug.LogError($"<color=red>[{actionType} DEFAULT] {agentName}: デフォルト応答が返されました - 理由: {reason}</color>");
+        }
     }
 
     /// <summary>

@@ -10,26 +10,35 @@
 """
 
 import os
+import sys
 import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
 import re
+import argparse
 
-# 実験結果のディレクトリ
-RESULT_DIR = Path("/Users/harukidoi/code/itolabo/simulation/evacuation_simulation/Logs/experiment_results/20260122_020101")
+# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
+RESULT_DIR = None
+
+def get_result_dir() -> Path:
+    """実験結果ディレクトリを取得"""
+    global RESULT_DIR
+    if RESULT_DIR is None:
+        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
+    return RESULT_DIR
 
 def load_agent_data(condition: str, trial: int) -> pd.DataFrame:
     """エージェントデータを読み込む"""
-    filepath = RESULT_DIR / f"{condition}_trial_{trial}_agents.csv"
+    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
     if filepath.exists():
         return pd.read_csv(filepath)
     return None
 
 def load_action_data(condition: str, trial: int) -> pd.DataFrame:
     """行動データを読み込む"""
-    filepath = RESULT_DIR / f"{condition}_trial_{trial}_actions.csv"
+    filepath = get_result_dir() / f"{condition}_trial_{trial}_actions.csv"
     if filepath.exists():
         return pd.read_csv(filepath)
     return None
@@ -501,7 +510,7 @@ def main():
         'shelter_patterns': shelter
     }
 
-    output_path = RESULT_DIR / "qualitative_analysis_results.json"
+    output_path = get_result_dir() / "qualitative_analysis_results.json"
 
     # DataFrameやnumpy型をJSON変換可能な形式に
     def convert_for_json(obj):
@@ -525,4 +534,13 @@ def main():
     print(f"\n結果を保存: {output_path}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='論文のための定性的分析スクリプト')
+    parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
+    args = parser.parse_args()
+
+    RESULT_DIR = Path(args.log_dir)
+    if not RESULT_DIR.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+        sys.exit(1)
+
     main()
