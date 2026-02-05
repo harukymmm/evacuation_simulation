@@ -1,5 +1,468 @@
 # 変更点とその意図
 
+- 認知特性「慎重・人混み恐怖」を「慎重・人混み回避」に全体的に変更
+  - 修正ファイル: Assets/Config/personas.csv、Docs/Module/Persona.md、llm_server/analysis/aggregate_experiment_results.py、Docs/Paper.tex
+  - 意図: 「恐怖」という強い表現よりも「回避」の方が認知特性として自然で適切な表現であるため変更
+
+- ログ分析スクリプトをコマンドライン引数でログディレクトリを指定できるよう修正
+  - 修正ファイル: llm_server/analysis/aggregate_experiment_results.py, analyze_qualitative.py, analyze_reasoning.py, analyze_social_interaction.py, analyze_social_network.py
+  - 修正内容: ハードコードされたログディレクトリパスを削除し、argparseを使用してコマンドライン引数で受け取るよう変更
+  - 使用例: `python aggregate_experiment_results.py /path/to/Logs/experiment_results/20260125_014206`
+  - 意図: 異なる実験結果ディレクトリに対して分析を実行可能にする
+  - バグ修正: analyze_reasoning.pyでtimestampがNoneの場合のエラー、analyze_social_interaction.pyで非数値ファイル名のスキップ処理追加
+  - バグ修正: aggregate_experiment_results.pyの表6で避難場所がハードコードされており実際のデータが表示されない問題を修正。全避難場所を人数順で表示するよう変更
+  - バグ修正: aggregate_experiment_results.pyの表7でルールベースエージェントの避難先分類が全て「指定避難所」とハードコードされていた問題を修正。表6と同様に津波避難地域の判定を適用
+
+- llm_server内のログ分析用スクリプトをanalysisディレクトリに整理
+  - 移動ファイル: aggregate_experiment_results.py, analyze_qualitative.py, analyze_reasoning.py, analyze_social_interaction.py, analyze_social_network.py
+  - 移動先: llm_server/analysis/
+  - 意図: サーバー本体と分析用スクリプトを分離し、ディレクトリ構成を整理
+
+- TALK/CONTACT行動でデフォルト応答が返された場合の警告表示を追加
+  - 修正ファイル: Assets/Scripts/Evacuee.cs
+  - 修正内容:
+    - `LogDefaultResponseWarning()` ヘルパーメソッドを追加
+    - 技術的問題（LLM利用不可、LLM呼び出し失敗、例外発生）: 赤色警告（Debug.LogError）
+    - 相手が会話中/連絡中のための拒否応答: 黄色警告（Debug.LogWarning）
+    - 会話応答、家族連絡応答、会話継続判断の各処理でreasoningフィールドをチェック
+  - 意図: LLMが正常に応答を生成できなかった場合を視覚的に識別できるようにし、デバッグを容易にする
+
+- TALK/CONTACT行動のLLM呼び出しログを実験ログディレクトリに出力するよう修正
+  - 修正ファイル: llm_server/server.py, Assets/Scripts/LLM/LLMActionMessages.cs, Assets/Scripts/Evacuee.cs
+  - 修正内容:
+    - process_conversation_response, process_family_contact_response, process_conversation_continuation の各関数に `_log_decision()` 呼び出しを追加
+    - LLMConversationResponseRequest, LLMFamilyContactResponseRequest, LLMConversationContinuationRequest にログ用メタデータフィールド（evacuee_id, experiment_id, episode_id, episode_elapsed_time）を追加
+    - Evacuee.csの各リクエスト構築箇所でメタデータを設定
+  - 意図: 意思決定ログと同様に、TALK/CONTACT行動のLLM呼び出し履歴を実験結果ディレクトリに出力し、会話応答の分析を可能にする
+
+- 会話応答・家族連絡応答・会話継続判断のLLMプロンプトを修正し、ペルソナに基づいた多様な応答を生成可能に
+  - 修正ファイル: llm_server/server.py
+  - 修正内容:
+    - `_call_openai_with_retry()` 関数が2引数（system_prompt, user_prompt）を必須としているが、3箇所で1引数で呼び出されていた問題を修正
+    - `build_conversation_response_prompts()`: system_promptとuser_promptを分離、ペルソナ・災害状況・行動履歴・会話履歴を追加
+    - `build_family_contact_response_prompts()`: 同上、さらに家族情報を追加
+    - `build_conversation_continuation_prompts()`: 同上、会話応答と同じパターンで実装
+  - 意図: 従来はTypeErrorにより全てデフォルト応答（「すみません、今は急いでいるので...」「無事だよ。今は自宅付近にいる。」）が返されていたが、ペルソナに基づいた多様な応答が生成されるようになった
+
+- 周囲の避難者情報で会話・連絡応答者の行動状態が正しく反映されない問題を修正
+  - 修正ファイル: Assets/Scripts/Evacuee.cs
+  - 修正内容: GetNearbyEvacuees関数で、会話応答中（_isRespondingToConversation）や家族連絡応答中（_isRespondingToFamilyContact）のエージェントについて、CurrentActionではなくそれぞれTALK/CONTACTとして行動状態を返すように修正
+  - 意図: TALK行動実行時のプロンプトで周囲の避難者が連絡行動をとっているかを正確に判断できるようにする
+
+- aggregate_experiment_results.pyの出力先をLogs実験結果ディレクトリに変更
+  - 修正ファイル: llm_server/aggregate_experiment_results.py
+  - 変更内容: Markdown表の出力先を`Docs/Tables/`から`Logs/experiment_results/{experiment_id}/`に変更
+  - 生成ファイル: Logs/experiment_results/20260122_020101/Table_20260122.md
+  - 意図: 実験結果に関連するすべてのファイル（CSV、JSON、Markdown）を同一ディレクトリにまとめ、管理を容易にする
+
+- 実験結果20260122_020101に対する定性的分析を実施
+  - 追加ファイル:
+    - llm_server/analyze_qualitative.py: 定性的分析スクリプト
+    - llm_server/analyze_social_network.py: 社会的相互作用分析スクリプト
+    - Logs/experiment_results/20260122_020101/qualitative_analysis_results.json: 分析結果（JSON）
+    - Logs/experiment_results/20260122_020101/social_network_analysis.json: ネットワーク分析結果（JSON）
+    - Logs/experiment_results/20260122_020101/qualitative_analysis_results.md: 分析結果まとめ（Markdown）
+  - 分析内容:
+    - 避難失敗者の類型化（完全待機型35.1%、家族優先型27.8%、追従迷走型26.8%、遅延開始型3.1%）
+    - LLM推論パターン分析（失敗者の待機理由、様子見→避難への転換点）
+    - 認知特性別プロファイル（冷静・合理的97.1%避難完了 vs 慎重・人混み恐怖50.4%）
+    - 社会的相互作用分析（FOLLOW行動の認知特性別分布、生存率との関係）
+    - 避難所選択パターン（LLMは2箇所に集中、ルールベースは分散）
+    - 時間軸での行動変化（避難ピークは2-5分、後半はSTAY増加）
+  - 意図: 論文の定量的分析を補強する定性的分析を追加し、LLMエージェントの人間らしさをより具体的に示す
+
+- Table_20260122.mdおよび表生成スクリプトの認知特性を修正
+  - 修正ファイル: Docs/Tables/Table_20260122.md, llm_server/aggregate_experiment_results.py
+  - 変更内容:
+    - 表8, 9, 13, 14, 18, 24, 29, 34の認知特性を、実装に存在しない古い認知特性（同調性・集団追従、同調性・パニック気味、正常性バイアス・楽観的）から、personas.csvに実際に定義されている認知特性（楽観的・自己信頼型、社交的・周囲配慮型、不安傾向・サポート希求型）に修正
+    - aggregate_experiment_results.pyのMENTAL_STATESリストを新しい認知特性に更新
+    - 旧認知特性「正常性バイアス・楽観的」用のハイライト処理を削除
+    - 表29の社会的行動特性の定義を新しい認知特性に合わせて更新
+    - 修正対象の認知特性とエージェント数: 楽観的・自己信頼型(125人)、社交的・周囲配慮型(80人)、不安傾向・サポート希求型(20人)
+  - 意図: 認知特性の実装変更により、表とスクリプトに存在しない認知特性が含まれていたため、実際のpersonas.csvの定義と整合させた
+
+- aggregate_experiment_results.pyにコマンドライン引数対応を追加
+  - 修正箇所: llm_server/aggregate_experiment_results.py: main() L333-345, generate_markdown_tables() L503
+  - 変更内容: 実験ディレクトリIDをコマンドライン引数で指定可能に変更。出力ファイル名も動的に生成
+  - 意図: 複数の実験結果を同一スクリプトで処理可能にするため
+
+- 実験結果Table_20260122.mdを生成
+  - 生成ファイル: Docs/Tables/Table_20260122.md
+  - データソース: Logs/experiment_results/20260122_020101/
+  - 意図: 20260122実験結果を表形式で整理
+
+- Table_20260122.mdに追加分析表（表31-38）を追加
+  - 修正ファイル: Docs/Tables/Table_20260122.md
+  - 追加内容:
+    - 表31: LLM行動選択時の信頼度分析（行動タイプ別のconfidence統計）
+    - 表32: 避難失敗者の詳細分析（避難行動未開始者の割合等）
+    - 表33: 家族探索行動と避難成功率の関係（search_family_count > 0 vs 0の比較）
+    - 表34: 認知特性別の避難失敗者分布（mental_state別の失敗者数）
+    - 表35: 最終標高と生存の関係（final_elevation区間別のsurvived統計）
+    - 表36: 実験条件別 危険区間滞在率と生存率（全8条件比較）
+    - 表37: 標高区間別エージェント分布（全条件比較）
+    - 表38: 認知バイアス・情報戦略が生存率に与える影響（ベースラインとの差分）
+  - 意図: agents.csv/actions.csvに存在するが従来の表で活用されていなかったフィールド（confidence, search_family_count, final_elevation, survived）を分析し、LLMエージェントの避難失敗要因を詳細に可視化
+
+- BuildingCategoryにCommercialカテゴリを追加
+  - 修正箇所: Assets/Scripts/BuildingCategorizer.cs
+  - 変更内容:
+    - BuildingCategory enumにCommercialを追加
+    - Categorize()メソッドで「商業施設」をCommercialカテゴリに分類するよう変更（従来はOfficeに含まれていた）
+    - GetCategoryDisplayName()にCommercialの表示名「商業施設」を追加
+  - 意図: 仕様書（Persona.md）ではCommercialが定義済みだったが実装に存在せず、family_groups.csvでspawn_categoryにCommercialを指定した場合にOtherにフォールバックされていた問題を修正
+
+- 長期記憶（RAG）検索クエリの改善
+  - 修正箇所: llm_server/server.py: process_payload() L1760-1793
+  - 変更内容:
+    - 検索クエリを避難者の長期目標（primary_goal）と中期計画（steps[0]）から構築するよう変更
+    - 目標・計画が未設定の場合はシナリオに応じた文章形式のフォールバッククエリを使用
+    - 類似度閾値を0.7から0.5に引き下げ
+  - 意図: 従来のキーワード羅列（"津波 避難 地震 高台"）では文章形式のmemories.jsonとの類似度が低く、検索結果が0件だった問題を修正。避難者の状況に即した長期記憶を取得可能に
+
+- 実験3の追加警告メッセージを変更
+  - 修正箇所: Assets/Scripts/Evacuee.cs L3745-3749
+  - 変更内容: 「東日本大震災を思い出してください。想定を過信せず、より高い場所を目指してください。」→「想定を過信せず、より高い場所を目指してください。」
+  - 意図: 特定の災害を想起させる表現を避けるため
+
+- ストレス関連フィールドをプロンプトとログから削除
+  - 修正箇所:
+    - llm_server/server.py: build_user_prompt() L516-536（プロンプト）
+    - llm_server/server.py: handle_evac_decision() L1818-1827（ログ）
+  - 変更内容:
+    - プロンプトから「ストレス: X」「ストレス要因: X」を削除、「体力: X%」のみ表示
+    - ログからstress_label, stress_reasonを除外
+  - 意図: ストレス関連情報は避難判断に必須ではなく、プロンプトのトークン削減とシンプル化のため
+
+- 未使用フィールドをログから除外
+  - 修正箇所: llm_server/server.py: handle_evac_decision() L1818-1827
+  - 変更内容: input_snapshotのself_stateから未使用フィールド（energy_level, energy_label, injuries, injury_notes, stress_level, stress_label, stress_reason）を除外
+  - 意図: プロンプトで使用していないフィールドがログに含まれていたため、ログサイズ削減と可読性向上のために除外
+
+- long_term_goal/mid_term_planのUnity返却とログ記録を追加
+  - 修正箇所: llm_server/server.py: handle_evac_decision() L1890-1897, L1911-1931
+  - 変更内容:
+    - 8-A: response_payloadにlong_term_goal, mid_term_plan, should_update_goal, should_update_planを追加
+    - 8-B: output_snapshotにlong_term_goal, mid_term_planを追加（ログ記録用）
+    - 8-C: output_snapshotに行動別追加フィールドを追加（SEARCH_FAMILY: target_family_member, CONTACT: contact_target/contact_message, FOLLOW: target_evacuee_id, TALK: talk_target_id/talk_topic/talk_message）
+  - 意図: LLMが出力したlong_term_goal/mid_term_planがUnityに返却されず「主要目標: 未設定」と表示されていた問題を修正。これにより「判断の一貫性について」セクションが正しく機能する。また、全行動タイプの追加フィールドをログに記録し分析可能に
+
+- 判断の一貫性セクション追加（目標: 避難率93%→70-85%）
+  - 修正箇所: llm_server/server.py: build_user_prompt() L1033-1041
+  - 変更内容: E-2.5として「判断の一貫性について」セクションを追加。長期目標または中期計画が設定されている場合に表示
+  - 意図: 警報発表後にSTAYからEVACUATEへ即座に切り替わる行動を抑制し、前回の判断理由との整合性を考慮させることで未避難率を現実の21%に近づける
+
+- heuristicフォールバック改善とペルソナ災害経験の強調（目標: heuristic発生0件、避難率70-85%）
+  - 修正箇所:
+    - llm_server/server.py: build_system_prompt()、build_user_prompt()、call_openai()、handle_evac_decision()
+    - Docs/Module/prompt.md: 仕様書を更新
+  - 変更内容:
+    - 修正5-A': システムプロンプトにEVACUATEの完全例を追加、selected_shelter_idに「※必須」明示
+    - 修正5-A: EVACUATEでshelter_idがない場合、heuristic_selectionで自動補完（heuristicフォールバック防止）
+    - 修正5-B: FOLLOW/TALKで必須フィールドがない場合、STAYに変更（heuristicフォールバック防止）
+    - 修正5-D: heuristicフォールバック時にdisaster_phaseに応じてSTAY/EVACUATEを分岐（Shaking/InfoGap→STAY）
+    - 修正6: ペルソナの災害経験を「【あなたの過去の経験から】」セクションとして強調表示
+  - 意図: 実験結果（20260121_164425）でheuristicフォールバックが24回発生（うちT=0で10件以上）していた問題を修正。必須フィールド不足時のフォールバック処理を改善し、LLM判断を最大限尊重。また、避難率92.5%を70-85%に近づけるため、ペルソナの過去の災害経験を強調表示し、正常性バイアスの自然な再現を促進
+
+- より現実的な避難行動再現のためのプロンプト改善（目標: 避難開始時間4分→10-15分、避難率92.5%→70-85%）
+  - 修正箇所:
+    - llm_server/server.py: build_system_prompt()、build_user_prompt()、handle_evac_decision()
+    - Docs/Module/prompt.md: 仕様書を更新
+  - 変更内容:
+    - 修正1: 避難先候補をフェーズ連動（Shaking/InfoGapでは「まだ情報がなく、どこに避難すべきかはっきりしません」と表示）
+    - 修正2: 今いる場所の様子をフェーズ連動（Shaking/InfoGapでは津波リスク情報を非表示）
+    - 修正3: 情報状況セクション追加（Shaking/InfoGapで「まだ何が起きているのかわかりません」等を表示）
+    - 修正4: long_term_goal/mid_term_planの出力を強制（「※省略不可」を明記）
+    - 修正4-B: LLMが文字列で返した場合、server.py側でLongTermGoalPayload/MidTermPlanPayloadオブジェクト形式に自動変換
+  - 意図: LLMログ分析により、T=0でも避難先候補が明確に表示されていたこと、long_term_goalが出力されずSTAYの継続意図が保存されていないことを特定。現実の避難行動データ（即時避難28%、平均避難開始19分）に近づけるため、Shaking/InfoGapフェーズでの情報制限と目標設定の強制を実装
+
+- 災害フェーズ連動によるプロンプト情報開示の段階化（避難率改善）
+  - 修正箇所:
+    - llm_server/server.py: build_system_prompt()のセクションB
+    - Docs/Module/prompt.md: 仕様書を更新
+  - 変更内容:
+    - 状況描写（B-1.5）: disaster_phaseに基づいてフェーズ別の描写に変更
+      - Shaking: 「非常に強い揺れが長く続き、身動きが取れませんでしたが、ようやく収まりました。」（揺れ直後の状況確認タイミングとして設定）
+      - InfoGap: 「揺れは収まりましたが、停電しているようで、テレビもつきません。」
+      - WarningIssued以降: 「津波警報が発令されているようです。」
+    - Jアラート（B-3）: WarningIssued以降のフェーズでのみ表示
+    - 防災行政無線（B-4）: WarningIssued以降のフェーズでのみ表示
+    - 行政からの追加情報（B-6）: WarningIssued以降のフェーズでのみ表示
+    - 例文: EVACUATE→STAYに変更（揺れ直後は状況確認が自然なため）
+    - 注: 周囲の状況（F-1）は実際のエージェント行動データとの矛盾を避けるためフェーズ連動から除外
+  - 意図: scenario.csvの定義（T=0はShaking、T=240でWarningIssued）に基づき、T=0時点で津波警報情報が表示されていた問題を修正。これにより初回EVACUATE率を下げ、より現実的な避難行動パターン（直後避難57%、用事後避難31%、切迫避難11%）の再現を目指す
+
+- OpenAI APIレートリミットエラーの種類判別機能を追加
+  - 修正箇所:
+    - llm_server/server.py: `_classify_rate_limit_error()`, `_get_rate_limit_description()`, `_call_openai_with_retry()`を修正
+    - Assets/Scripts/LLM/LLMActionMessages.cs: `LLMErrorInfo`クラスを追加、`LLMEvacDecisionResponse`に`llm_error`フィールドを追加
+    - Assets/Scripts/Evacuee.cs: `ApplyLLMDecision()`でエラー情報を検出し`Debug.LogError`で出力
+  - 変更内容:
+    - RPM（リクエスト/分）、TPM（トークン/分）、RPD（リクエスト/日）の3種類のレートリミットを判別
+    - エラー発生時にUnityのConsoleに赤色警告で種類と日本語説明を表示
+  - 意図: レートリミットエラーの原因を特定しやすくし、デバッグを効率化
+
+- 正常性バイアスおよび楽観的・自己信頼型ペルソナの避難率改善
+  - 修正箇所:
+    - llm_server/server.py: `_get_normalcy_bias_prompt()`と`_get_conformity_bias_prompt()`から「バイアス」表現を削除、`_get_combined_bias_prompt()`を新規追加
+    - scripts/generate_personas.py: 楽観的・自己信頼型のテンプレートを改善
+    - Assets/Config/personas.csv: 125人のpriority「様子見・現状維持」→「状況判断・自己決定」、system_prompt_contextを緩和
+    - Docs/Module/prompt.md: 仕様書を更新（複合バイアス条件を追加）
+  - 変更内容:
+    - 正常性バイアスプロンプト: 「あなたは正常性バイアスの影響を強く受けています」→「あなたは以下のような経験や考え方を持っています」
+    - 同調バイアスプロンプト: 「あなたは同調バイアスの影響を受けています」→「あなたは以下のような考え方を持っています」
+    - 複合バイアスプロンプト: 2つのプロンプトを連結する代わりに、統合された自然な表現の専用関数を追加
+    - 楽観的・自己信頼型ペルソナ: 避難抑制的な表現を緩和し、状況変化への対応余地を追加
+  - 目標: Exp2-2避難率8%→40-60%、楽観的・自己信頼型避難率10%→40-70%
+  - 意図: LLMが「バイアス」という言葉に過剰反応しないよう、自然な経験・考え方として記述。避難抑制の強度を緩和しつつ人間らしい傾向は維持
+
+- CS0414警告の修正（未使用フィールドの削除）
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: `_hasEverSavedLogs`フィールドを削除
+    - Assets/Scripts/RuleBasedDecisionMaker.cs: `_hasContactedFamily`フィールドを削除
+  - 意図: コンパイル警告の解消
+
+- FOLLOW行動選択率抑制のためのプロンプト改善（目標: 58%→15-25%）
+  - 修正箇所:
+    - llm_server/server.py: build_system_prompt(), セクションF-1, セクションF-4, _get_conformity_bias_prompt()
+    - Docs/Module/prompt.md: 対応するセクションを更新
+  - 変更内容:
+    - システムプロンプト: 「周りの人の行動に流される」→「情報が不足すると判断に迷い、様子を見てしまう」
+    - セクションF-1: 「周辺の避難者」→「周囲の状況」に変更、名前・目標避難所を非表示、役割・年齢層・行動状態のみ表示
+    - 行動選択肢: 提示順序をEVACUATE優先・FOLLOW最後に変更、説明文を中立的に修正
+    - 同調バイアスプロンプト: 強度を緩和し主体的判断の余地を残す表現に変更
+  - 意図: 現実の避難行動との乖離を改善。LLMに指示を与えるのではなく、状況認識に基づく自律的判断を促す設計に変更
+
+- 実験結果(20260121_025302)からtable.mdを生成し、避難率低下の原因を分析
+  - 修正箇所:
+    - llm_server/aggregate_experiment_results.py: 実験ディレクトリパスを更新
+    - Logs/experiment_results/20260121_025302/table.md: 新規作成
+    - Docs/Tables/Table_20260121.md: 新規作成
+  - 意図: 実験結果の可視化と原因分析のため
+
+- 400人分の家族情報を補完（agent_id 101-500）
+  - 修正箇所:
+    - Assets/Config/families.csv: 893行を追加（合計1087行）
+  - 生成内容:
+    - self行: 400行（全員必須）
+    - 配偶者行: 233行（夫119、妻114）
+    - 子供行: 112行
+    - 親行: 148行（父62、母86）
+  - 家族パターン生成ルール:
+    - 10代: 70%両親あり、20%片親、10%単身
+    - 20代: 40%単身、30%親同居、30%既婚
+    - 30-50代: 60%既婚＋子供、25%既婚のみ、15%単身
+    - 60代: 50%既婚、30%単身、20%既婚＋成人子供
+    - 70-80代: 60%既婚、40%単身
+  - 意図: 全500人分のペルソナに対して家族情報を完備し、LLMエージェントがSEARCH_FAMILY行動を適切に選択できるようにするため
+
+- ユーザープロンプトセクションB（WHAT: 災害）を改善し、情報の論理的整理を実施
+  - 修正箇所:
+    - llm_server/server.py: build_user_prompt()のセクションB部分を改善
+    - Docs/Module/prompt.md: セクションB・Cの仕様を更新
+  - 変更内容:
+    - B-1状況: 行動指示を削除（指示はシステムプロンプトで行う）、体感表現のみに変更（数値は警報で）
+    - B-2現在の災害状況→災害フェーズ: 1-2行に簡潔化
+    - B-3Jアラート: 震度・津波高さを含める（現実の情報取得プロセスを再現）
+    - C-0この地域について: 地域説明・標高範囲をセクションBからCに移動（「場所の特性」として分類）
+  - 意図: 情報の論理的整理と現実の情報取得プロセスに近い構造にすることで判断精度を向上させる
+
+- ペルソナの認知特性（mental_state）からバイアス系の名称を中立的な性格特性に変更
+  - 修正箇所:
+    - Assets/Config/personas.csv: mental_stateカラム（6列目）とsystem_prompt_contextカラム（8列目）を更新
+  - 変更内容:
+    - 「正常性バイアス・楽観的」(125人) → 「楽観的・自己信頼型」
+    - 「同調性・集団追従」(80人) → 「社交的・周囲配慮型」
+    - 「同調性・パニック気味」(20人) → 「不安傾向・サポート希求型」
+  - system_prompt_contextも対応する中立的な表現に更新:
+    - 楽観的・自己信頼型: 「あなたは楽観的な性格で、自分の判断に自信を持っています。過度に心配せず、状況を前向きに捉えます。」
+    - 社交的・周囲配慮型: 「あなたは周囲の状況をよく観察し、他者と足並みを揃えることを意識します。」
+    - 不安傾向・サポート希求型: 「あなたは不安を感じやすく、誰かと一緒にいると安心します。一人での判断は苦手です。」
+  - 意図: 実験2のBiasCondition（正常性バイアス/同調バイアス強制適用）と、ペルソナ固有の認知特性が二重に適用される問題を解消するため。認知特性は「性格」、BiasConditionは「認知バイアス」として明確に分離した
+
+- ユーザープロンプトセクションA（WHO: 自分自身）を改善し、トークン効率を向上
+  - 修正箇所:
+    - llm_server/server.py: build_user_prompt()のセクションA部分を改善
+    - Docs/Module/prompt.md: セクションAの仕様を更新
+  - 変更内容:
+    - A-1ペルソナ情報: 名前・年齢・役割を1行に統合、土地勘フィールドを削除（居住歴で代替）、家族概要を削除（セクションDと重複）
+    - A-2あなたの状態: エネルギー指標を削除（体力と重複）、移動速度を1行に統合
+  - 意図: 重複情報の排除によりトークン効率と判断精度を向上させる
+
+- LLMシステムプロンプトを改善し、トークン効率を向上（約500トークン削減）
+  - 修正箇所:
+    - llm_server/server.py: build_system_prompt()関数を改善
+    - Docs/Module/prompt.md: 仕様書を更新、削除項目の理由を追記
+  - 変更内容:
+    - 人間らしい反応の説明を7項目から3項目に圧縮（ペルソナ・状態で表現可能な4項目を削除）
+    - JSON出力例を6つの完全例から1つの完全例＋行動別追加フィールド表に変更
+  - 削除した項目と理由:
+    - 「パニックや混乱で判断力が鈍る」→ペルソナの心理状態フィールドで表現
+    - 「土地勘がなく、どこに逃げればいいかわからない」→ペルソナの土地勘フィールドで表現
+    - 「貴重品や思い出の品を取りに戻りたくなる」→行動選択肢に該当アクションがなく混乱を招く
+    - 「疲労や体力の限界を感じる」→ユーザープロンプトの体力(スタミナ)として数値で表現
+  - 意図: LLMが一貫して状況を把握できる構造にし、トークン効率と判断精度を向上させる
+
+- has_smartphoneカラムのCSV読み込み機能を実装し、年齢層・役割に応じたスマートフォン所持率を設定
+  - 修正箇所:
+    - Assets/Scripts/PersonaData.cs: LoadPersonas()にhas_smartphone（fields[16]）の読み込み処理を追加
+    - Assets/Config/personas.csv: has_smartphoneカラムを追加（17列目）
+  - スマートフォン非所持の設定ルール（2024年の統計データに基づく）:
+    - 80代: 約20%をfalse（9人）
+    - 70代: 約10%をfalse（7人）
+    - 小学生: 約50%をfalse（19人）
+    - その他: 全員true
+  - 結果: 500人中35人がスマートフォン非所持（Jアラートを受信しない）
+  - 意図: has_smartphoneフィールドがCSVから読み込まれていなかった実装漏れを修正し、現実的なスマートフォン所持率を反映させるため
+
+- 実験結果（20260120_002733）の5トライアル平均を計算するスクリプトと結果表を作成
+  - 新規作成:
+    - llm_server/aggregate_experiment_results.py: 8条件×5トライアルのデータを集計し、平均値を計算するPythonスクリプト
+    - Logs/experiment_results/20260120_002733/averaged/: 集計CSVファイル（7ファイル）
+      - condition_averages.csv: 条件別の基本指標平均
+      - action_ratios_averaged.csv: 行動選択分布の平均
+      - mental_state_by_condition.csv: 認知特性×条件別の避難完了率
+      - social_interactions_averaged.csv: 社会的相互作用の集計
+      - evacuation_locations_averaged.csv: 避難先別の平均人数
+      - evacuation_start_times.csv: 避難開始時刻の分析
+      - stay_behavior.csv: STAY行動の分析
+    - Docs/Tables/Table_20260120.md: 5トライアル平均に基づく全30表（Table.mdと同形式）
+  - 意図: 実験結果の再現性を担保するため、複数トライアルの平均値で表を作成
+
+- デバッグ用ログ（[DEBUG-...]形式）を削除
+  - 修正箇所:
+    - Assets/Scripts/ExperimentConfig.cs: [DEBUG-EXPCONFIG]形式のDebug.LogErrorを削除
+    - Assets/Scripts/SimulationMetrics.cs: [DEBUG-METRICS]形式のDebug.LogErrorを削除
+    - Assets/Scripts/Evacuee.cs: [DEBUG-EVACUEE]形式のDebug.LogErrorを削除
+  - 意図: デバッグ用ログの役目が終わったため、コードをクリーンアップ
+
+- ログファイル名にepisode_Nではなくtrial_N（条件内での試行番号）を使用するように変更
+  - 問題: ファイル名が「Baseline-LLM_episode_0」のような形式で、グローバルなエピソード番号が使われていたため、各条件の何回目の試行かがわかりにくかった
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: _pendingTrialNumber / _capturedTrialNumberフィールドを追加（試行番号の事前設定・キャプチャ用）
+    - Assets/Scripts/SimulationMetrics.cs: SetPendingCondition()にtrialNumberパラメータを追加
+    - Assets/Scripts/SimulationMetrics.cs: CaptureCurrentTrialNumber()メソッドを追加
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeStart()で試行番号もキャプチャするように修正
+    - Assets/Scripts/SimulationMetrics.cs: SaveEpisodeLogs/SaveEpisodeSummary/SaveAgentMetricsのファイル名をepisode_Nからtrial_Nに変更
+    - Assets/Scripts/SimulationMetrics.cs: EpisodeSummaryにtrialNumber/conditionIdフィールドを追加、CSVにも出力
+    - Assets/Scripts/ExperimentConfig.cs: CurrentTrialNumber/TotalTrialsプロパティを追加
+    - Assets/Scripts/ExperimentConfig.cs: ApplyCondition()で試行番号をSetPendingConditionに渡すように変更
+    - Assets/Scripts/ExperimentConfig.cs: OnTrialEnd()で次の試行番号をSetPendingConditionで通知するように変更
+  - 意図: ファイル名から「この条件の何回目の試行か」が一目でわかるようにし、実験結果の整理を容易にする
+  - 新ファイル名形式: `{conditionId}_trial_{trialNumber}_{type}.csv`（例: `Baseline-LLM_trial_1_summary.csv`）
+
+- ログファイル名が次の条件にズレる問題を完全修正（制御フロー整理）
+  - 問題: All-Experiments実行時、エピソード2のファイル名が「Exp1-B」ではなく「Exp2-2」として保存される等、ファイル名が1つズレていた
+  - 原因: OnEpisodeEnd()がFinalizeAndSaveEpisodeLogs()を呼び出し、その後ExperimentConfig.OnTrialEnd()が再度呼び出すことで、タイミング競合が発生。さらにSetPendingCondition()の呼び出しタイミングが不適切で、_pendingConditionIdが正しく適用されなかった
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeEnd()でExperimentConfig.Instance存在時はFinalizeAndSaveEpisodeLogs()を呼び出さないように変更（ExperimentConfigからの明示的呼び出しに一元化）
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeStart()で_evacuationRecords > 0 && usePendingConditionの場合、_pendingConditionIdをクリアせずに保持するロジックを追加
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeStart()で_conditionCaptured=true時も、新しいpending conditionがあれば再キャプチャするロジックを追加
+    - Assets/Scripts/ExperimentConfig.cs: ApplyCondition()内でSetPendingCondition()を呼び出すように変更（OnConditionComplete()からの呼び出しを移動）
+    - Assets/Scripts/ExperimentConfig.cs: OnTrialEnd()でSimulationMetrics.Instance ?? _simulationMetricsのフォールバックを追加
+  - 意図: ExperimentConfigからのログ保存呼び出しを一元化し、条件IDの事前設定タイミングを適切に制御することで、イベント順序に依存しない安定したファイル名付けを実現
+
+- ログファイル名が次の条件にズレる問題を完全修正（事前設定方式）
+  - 問題: All-Experiments実行時、エピソード2以降のファイル名が1つズレる（episode_2がExp2-2として保存される等）
+  - 原因: OnEpisodeStart()で条件IDをキャプチャする時点では、既にExperimentConfig.OnConditionComplete()内でApplyCondition()が実行されており、次の条件に切り替わった後だった
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: _pendingConditionId / _pendingAgentTypeフィールドを追加（次のエピソード用に事前設定される条件ID）
+    - Assets/Scripts/SimulationMetrics.cs: SetPendingCondition()メソッドを追加（ExperimentConfigから条件切り替え前に呼び出し）
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeStart()で_pendingConditionIdが設定されている場合はそれを優先的に使用するように変更
+    - Assets/Scripts/ExperimentConfig.cs: OnConditionComplete()でApplyCondition()の前にSimulationMetrics.SetPendingCondition()を呼び出し
+  - 意図: 条件切り替え前に次のエピソードの条件IDをSimulationMetricsに事前通知することで、OnEpisodeStart()の呼び出しタイミングに依存せず正しいファイル名でログを保存する
+
+- OnEpisodeStartでの早期クリアによるメトリクス消失問題を修正（全エピソード対応・再修正）
+  - 問題: RecordEvacuation()で記録されるが、2エピソード目以降でCSV保存時にevacuated_agents=0になる
+  - 原因: OnEpisodeStart()がFinalizeAndSaveEpisodeLogs()より先に呼ばれ、_evacuationRecords.Clear()で全レコードが消去されていた
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeStart()で未保存レコードがある場合、先にFinalizeAndSaveEpisodeLogs()を呼び出す
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeEnd()で経過時間・条件ID・エージェントタイプを先にキャプチャ
+    - FinalizeAndSaveEpisodeLogs()の最後でレコードをクリア（次のエピソードに備える）
+  - 意図: イベント呼び出し順序に依存せず、未保存のレコードがあれば先に保存してから次のエピソードを開始することで全エピソードで正しくメトリクスを保存する
+
+- メトリクス記録失敗の原因特定のためのデバッグログを追加
+  - 問題: 複数回の修正を試みてもevacuated_agents=0、action_type=すべて0.0000のまま
+  - 追加箇所:
+    - Assets/Scripts/SimulationMetrics.cs: Awake()にシングルトン初期化確認ログ
+    - Assets/Scripts/SimulationMetrics.cs: RecordEvacuation()に呼び出し確認・EnableMetrics状態・記録カウントログ
+    - Assets/Scripts/SimulationMetrics.cs: RecordActionWithHierarchy()に呼び出し確認・EnableMetrics状態・記録カウントログ
+    - Assets/Scripts/Evacuee.cs: Evacuation()に呼び出し確認・isEvacuating状態・キャパシティ確認ログ
+    - Assets/Scripts/Evacuee.cs: RecordEvacuationToMetrics()にInstance取得状態・EnvManager取得状態ログ
+    - Assets/Scripts/Evacuee.cs: RequestRuleBasedDecision()に呼び出し確認・metrics取得状態ログ
+  - ログ形式: `[DEBUG-METRICS]`と`[DEBUG-EVACUEE]`プレフィックス付き、Debug.LogError（赤色警告）で表示
+  - 意図: Consoleでフィルタリングしやすく、メトリクス記録がどの段階で失敗しているかを可視化して問題箇所を特定するため
+
+- 避難完了・行動記録がCSVに保存されない問題を修正（SimulationMetricsシングルトン化）
+  - 問題: evacuation_rate>0なのにevacuated_agents=0、action_type=すべて0.0000になる
+  - 原因: EvacueeからFindFirstObjectByType<SimulationMetrics>()でSimulationMetricsを取得しようとするが、nullが返されてメトリクス記録がスキップされていた
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: シングルトンパターンを追加（static Instance プロパティ）
+    - Assets/Scripts/SimulationMetrics.cs: Awake()でInstance設定と重複チェック
+    - Assets/Scripts/Evacuee.cs: 全てのFindFirstObjectByType<SimulationMetrics>()呼び出しをSimulationMetrics.Instance ?? FindFirstObjectByType<SimulationMetrics>()に変更
+    - Assets/Scripts/Evacuee.cs: RecordEvacuationToMetricsで_envがnullの場合にFindFirstObjectByTypeでフォールバック取得
+  - 意図: シングルトンパターンで確実にSimulationMetricsにアクセスできるようにし、メトリクス記録の失敗を防止する
+
+- エピソード切り替え時にログが不完全になる問題を修正（エピソード状態マシン導入）
+  - 問題: バッチ実験でエピソードが切り替わる際、elapsed_timeとevacuation_rate以外のメトリクスがCSVに保存されない
+  - 原因: OnEndEpisodeイベント発火後、ExperimentConfig.OnTrialEnd()がログ保存直後にOnEpisodeBegin()を呼び出し、Evacueeの破棄が先に実行される可能性があった
+  - 修正箇所:
+    - Assets/Scripts/ShelterEnvManager.cs: EpisodeState列挙型（Idle/Running/Ending/ReadyForReset）を追加
+    - Assets/Scripts/ShelterEnvManager.cs: CurrentEpisodeStateプロパティを追加
+    - Assets/Scripts/ShelterEnvManager.cs: SignalEpisodeFinalized()メソッドを追加（ログ保存完了通知）
+    - Assets/Scripts/ShelterEnvManager.cs: OnEpisodeBegin()に状態チェックを追加（ReadyForResetまたはIdleのみ許可）
+    - Assets/Scripts/ShelterEnvManager.cs: FixedUpdate()で終了検知時に状態をEndingに変更
+    - Assets/Scripts/ShelterEnvManager.cs: currentEpisodeId++をOnEpisodeBegin()に移動
+    - Assets/Scripts/ExperimentConfig.cs: OnTrialEnd()でFinalizeAndSaveEpisodeLogs()後にSignalEpisodeFinalized()を呼び出し
+  - 意図: ログ保存が完全に完了するまでリセット処理をブロックし、メトリクスの消失を防止する
+
+- バッチ実験時のログファイル名・agent_typeが次の条件の値になる不具合を修正（再修正）
+  - 問題: All-Experiments実行時、ログファイル名が1つ後ろの条件名になる（Baseline-LLMの結果がExp1-Bとして保存される）
+  - 前回の修正（OnEpisodeEndでのキャプチャ）では解決しなかった理由: イベントハンドラの実行順序がUnityのスクリプト実行順序に依存し、ExperimentConfig.OnTrialEndがSimulationMetrics.OnEpisodeEndより先に実行されていた
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs: FinalizeAndSaveEpisodeLogs()公開メソッドを追加
+    - Assets/Scripts/SimulationMetrics.cs: OnEpisodeEndからFinalizeAndSaveEpisodeLogsを呼び出し（フォールバック）
+    - Assets/Scripts/SimulationMetrics.cs: _fullLogsSavedフラグで二重保存を防止
+    - Assets/Scripts/ExperimentConfig.cs: OnTrialEnd内でOnConditionComplete前にSimulationMetrics.FinalizeAndSaveEpisodeLogs()を明示的に呼び出し
+  - 意図: ExperimentConfigから明示的にログ保存を呼び出しつつ、非バッチモードでもOnEpisodeEnd経由で保存できるようにする
+
+- SimulationMetricsのCSV出力で一部メトリクスが取得できない問題を修正
+  - 問題: evacuation_rate=0.76なのにevacuated_agents=0、action_type=すべて0.0000となる
+  - 原因1: RecordEvacuationのcompletedInTime条件（evacuationTime <= 1800）が厳密すぎて、1800.01秒の記録が除外されていた
+  - 原因2: RuleBasedエージェントの初回行動がRecordActionで記録されていなかった
+  - 原因3: EpisodeSummary/AgentMetricsに計算された生存率データがCSV出力に含まれていなかった
+  - 修正箇所:
+    - Assets/Scripts/SimulationMetrics.cs 行698: completedInTime条件を常にtrueに変更（RecordEvacuationは避難成功時のみ呼ばれるため）
+    - Assets/Scripts/Evacuee.cs 行140: _firstRuleBasedActionRecordedフラグを追加
+    - Assets/Scripts/Evacuee.cs 行619-631: RequestRuleBasedDecision内で初回行動を確実に記録
+    - Assets/Scripts/Evacuee.cs 行426-427: ResetForNewEpisode内でフラグをリセット
+    - Assets/Scripts/SimulationMetrics.cs 行959-964: SaveEpisodeSummaryに生存率関連メトリクス（survival_rate, survived_agents, tsunami_height, information_strategy）を追加
+    - Assets/Scripts/SimulationMetrics.cs 行1023-1040: SaveAgentMetricsに生存判定フィールド（survived, final_elevation, survival_location）を追加
+  - 意図: CSVに出力される避難完了者数・行動記録・生存率データを正しく記録し、実験分析に必要なデータを完全に取得できるようにするため
+
+- バッチ実験時のログファイル名・agent_typeが次の条件の値になる不具合を修正
+  - 問題: All-Experiments実行時、ログファイル名が1つ後ろの条件名になる（Baseline-LLMの結果がExp1-Bとして保存される等）
+  - 原因: OnConditionComplete内でApplyCondition→OnEpisodeBeginが連続で呼ばれ、次エピソードのOnStartEpisodeが前エピソードのOnEndEpisodeハンドラ完了前に発火。OnEpisodeStartでキャプチャした_capturedConditionIdが次の条件で上書きされていた
+  - 修正箇所: Assets/Scripts/SimulationMetrics.cs
+  - 修正内容: 条件ID・エージェントタイプのキャプチャをOnEpisodeStartからOnEpisodeEndの冒頭に移動
+  - 意図: ログ保存直前に正しい条件情報をキャプチャし、イベント発火順序の問題を回避するため
+
+- ルールベースエージェントのアクション記録が行われない問題を修正
+  - 問題: 1-B実験（ルールベース）でactions.csvが空になり、first_evacuate_time=-1.00となる
+  - 原因: ExperimentConfig.Instanceの初期化タイミングとMoveToNearestShelterでの記録漏れ
+  - 修正箇所:
+    - Assets/Scripts/Evacuee.cs 行468-482: ExperimentConfig.Instanceがnullの場合のフォールバック処理を追加
+    - Assets/Scripts/Evacuee.cs 行3761-3789: MoveToNearestShelter()にSimulationMetrics.RecordAction()呼び出しを追加
+  - 意図: エージェントタイプ設定が確実に適用され、フォールバック時もアクションが記録されるようにするため
+
+- Table.mdの実験2セクションをPaper.texと整合するよう修正
+  - 問題: Table.mdでは「同一ペルソナ複数試行」、Paper.texでは「認知バイアス条件別」として記述が異なっていた
+  - 修正箇所: Docs/Table.md 行101-212
+  - 見出しを「実験2: 人間行動モデリングの検証（同一ペルソナ複数試行）」から「実験2: 認知バイアスが避難行動に与える影響」に変更
+  - 「試行1〜4」を「条件1〜4」（ベースライン、正常性バイアス、同調バイアス、複合）に変更
+  - 表の列名・説明文を認知バイアス条件に対応するよう修正
+  - 意図: Table.mdとPaper.texの実験記述を整合させるため
+
 - 避難完了後のLLMレスポンス適用時に発生する警告ログを修正
   - `Evacuee.cs`: `ApplyLLMDecision()`メソッドの冒頭でGameObjectのアクティブ状態をチェックし、非アクティブな場合は静かにスキップする処理を追加
   - 意図: 避難完了でGameObjectが非アクティブ化された後にLLMレスポンスが到着した際の不要な警告ログを抑制するため
@@ -22,22 +485,6 @@
   - `prompt.md`, `server.py`: TALKの例のconfidenceを0.5→0.7に変更
   - `prompt.md`, `server.py`: TALKの例のreasoningを「土地勘がないので地元の人に聞くのが一番確実だ」に改善
   - 意図: LLMがTALKを「消極的な選択」ではなく「有効な情報収集手段」として認識しやすくするため
-
-- Paper.mdの「結果と考察」セクションを精緻化（重要な知見への絞り込みとRQへの明示的回答）
-  - 実験1: 避難先の具体的場所名・人数の羅列を削除、社会的行動の創発と正常性バイアスの再現に焦点化
-  - 実験2: 試行1〜4の個別数値を平均・標準偏差に圧縮、認知特性と一貫性の関係を強調
-  - 実験3: 詳細数値を削除し、切迫感（+6pt）と具体性（-4pt）の主効果および正常性バイアス者への影響（-26.1pt）に絞り込み
-  - 総合考察: 序論の4つのリサーチクエスチョンへの明示的回答を追加
-  - 従来ルールベースモデルとの比較（確率分布による遅延時間vs認知プロセスの再現）を追加
-  - 意図: 情報過多を解消し、論文として有意義な知見に絞り込み深く考察する構成に変更するため
-
-- Paper.mdの「結果と考察」セクション（236行目〜343行目）を実験データに基づいて全面書き換え
-  - 実験1〜3の構成を明確化し、各実験に「結果」「考察」サブセクションを設置
-  - Table.mdの30表から具体的な数値データを参照して記述（避難完了率、平均避難時間、認知特性別分析等）
-  - 削除した記述: 500体エージェント（実際は100体）、N=10試行（実際は4試行）、震度/津波高さ条件比較（未実施）、RAGセクション（実験データなし）、コミュニケーション機能有無比較（未実施）
-  - 修正した実験3の構成: 3条件→2×2マトリクス（4条件: 切迫感×具体性）に変更
-  - 主要知見: 切迫感を高めると避難完了率+6pt、具体性を高めると-4pt、正常性バイアス者への具体情報は26.1pt低下を招く
-  - 意図: 仮記述であった「結果と考察」を、実験ログ（20260113_220000）とTable.mdのデータに基づく正確な記述に置き換えるため
 
 - Table.mdを20260113_220000実験結果に基づいて全面更新
   - 実験1: LLMエージェント（79.0%）vsルールベース（99.0%）の比較結果を更新
@@ -95,28 +542,12 @@
   - `Evacuee.cs`: 経路計算確認用コルーチン`CheckPathAfterSetDestination()`を追加（`hasPath`、`pathStatus`、`remainingDistance`を1フレーム後に確認）
   - 意図: EVACUATEを選択しているのに移動しない問題の原因を特定するため。目的地設定の成否、経路計算の成否、isStopped状態の変化を追跡可能にする
 
-- 実験3（情報提供戦略の検証）の結果に基づき、Paper.mdとTable.mdを更新
-  - Paper.md: 「情報提供戦略の検証」セクションを実験結果に基づいて全面改訂
-  - Table.md: 表20〜27を追加（実験条件設計、情報条件別の基本指標・行動選択・避難開始時刻・認知特性別避難完了率・社会的相互作用・避難先選択分布・主要知見まとめ）
-  - 意図: 実験3（条件A〜D: 情報の具体性×切迫感の2×2デザイン）のログデータに基づく定量的分析結果を論文に反映するため
-  - 主要知見: 切迫感を高めた条件Bが最も高い避難完了率（81%）を達成、具体性のみを高めた条件Cは避難完了率が低下（73%）、正常性バイアス者には切迫感のある表現が効果的
-
-- 実験2（人間行動モデリングの検証）の結果に基づき、Paper.mdとTable.mdを更新
-  - Paper.md: 「人間行動モデリングの検証」セクションを追加し、同一ペルソナ4回試行の結果と考察を記述
-  - Table.md: 表11〜19を追加（試行間での基本指標比較、行動選択分布、認知特性別分析等）
-  - 意図: 実験2のログデータに基づく定量的分析結果を論文に反映するため
-
 - 避難完了記録のタイミングを修正し、evacuated_agentsとevacuation_rateの不整合を解消
   - `Shelter.cs`: OnTriggerEnterから`RecordEvacuationToMetrics`の呼び出しを削除
   - `TsunamiEvacuationArea.cs`: 同様に`RecordEvacuationToMetrics`の呼び出しを削除
   - `Evacuee.cs`: `RecordEvacuationToMetrics`メソッドを追加し、`Evacuation()`と`EvacuationToArea()`で避難が実際に成功した時点（`SetActive(false)`の直前）で記録
   - 意図: 以前はShelter/TsunamiEvacuationAreaで`currentCapacity > 0`チェック後に記録し、Evacueeで再度チェックして非アクティブ化していたため、同一フレームで複数エージェントが到達した際にレースコンディションが発生し、記録数と非アクティブ化数が不一致になっていた。記録処理をEvacueeの避難成功時点に一元化することで、`evacuatedAgents`と`EvacuationRate`（非アクティブ化数から計算）が常に一致するようになった
 
-- 実験1（基本性能の検証）の結果に基づき、Paper.mdの「結果と考察」セクションを更新
-  - 実験1-A（エージェント駆動型）と実験1-B（ルールベース）の比較結果を記述
-  - 避難完了率77% vs 44%、認知特性別の避難行動差異、社会的相互作用の発生状況を報告
-  - 意図: 実験データに基づく具体的な数値と分析を論文に反映するため
-  - 注: summary.csvのevacuated_agentsとevacuation_rateに不整合があったため、agents.csvから正確な数値を取得
 - Table.mdを新規作成し、実験結果の表を10個作成
   - 表1: 避難シミュレーション基本指標の比較
   - 表2: 行動選択の分布
@@ -290,7 +721,7 @@
   - シーン外家族: サーバー側でペルソナに基づき応答を生成（1往復で終了）
   - LLMプロンプトでシーン外家族を「この地域外にいる家族（探索の対象外、連絡は可能）」として表示
 - 実験計画書（Experiment.md）を新規作成
-  - Paper.mdで定義された実験1〜3の詳細な実行手順を記載
+  - 定義された実験1〜3の詳細な実行手順を記載
   - 各実験の目的、条件、測定指標、期待される結果を整理
   - 実装面での課題（ルールベースエージェント、認知バイアス制御、情報提供条件切り替え）を特定
   - 意図: 実験の準備と実行を体系的に進めるためのガイドラインを提供
@@ -373,3 +804,11 @@
 - 実験ログ（20260113_201741）に基づくtable.mdを作成
   - `Logs/experiment_results/20260113_201741/table.md`: 12個の表を作成（全エピソードサマリー、基本指標、行動分布、避難先分布、認知特性別分析、社会的相互作用、試行間比較、主要知見）
   - 意図: 実験結果のCSVデータを読みやすい表形式にまとめ、分析結果を整理するため
+
+- 認知特性別避難完了率の分析スクリプトを新規作成（analyze_cognitive_completion_rates.py）
+  - 修正内容: Baseline-LLMとExp1-B（ルールベース）の5トライアル分のagents.csvデータを読み込み、7つの認知特性別の避難完了率を計算するスクリプトを作成。各認知特性の避難完了数・総数・完了率を集計し、LLMとルールベースの比較分析結果を表形式で出力
+  - 意図: 実験結果20260125_014206ディレクトリにおけるLLMエージェントとルールベースエージェントの認知特性別パフォーマンスを定量的に比較分析し、各認知特性における両アプローチの強みと課題を明確化する
+
+- 認知特性別避難完了率の分析結果ドキュメントを作成（Logs/experiment_results/20260125_014206/cognitive_completion_rates_analysis.md）
+  - 修正内容: Baseline-LLMとルールベース（Exp1-B）の認知特性別避難完了率の詳細分析結果をまとめたマークダウンドキュメントを作成。7つの認知特性別の完了率、LLM vs ルールベースの比較分析、主要知見、考察、今後の改善方向を体系的に記述
+  - 意図: 分析結果を視覚的にわかりやすく文書化し、LLMの強み（不安傾向・サポート希求型で+38.00%）と課題（慎重・人混み恐怖で-39.20%）、ルールベースの強みと課題を明確に示すことで、今後のモデル改善の方向性を提示する
