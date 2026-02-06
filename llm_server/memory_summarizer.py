@@ -75,42 +75,5 @@ def get_recent_contacts(
     return contact_history[-max_count:]
 
 
-def should_summarize(action_history_payload: Dict[str, Any]) -> bool:
-    """
-    行動履歴を要約すべきかどうかを判定
-
-    注意: この関数は互換性のために残していますが、
-    新しい実装ではLLMによる要約を行わないため常にFalseを返します。
-
-    Args:
-        action_history_payload: ActionHistoryPayloadの辞書表現
-
-    Returns:
-        常にFalse（LLM要約は無効化）
-    """
-    return False
-
-
-# 以下は後方互換性のために残す（使用しない）
-async def summarize_action_history(
-    openai_client,
-    model: str,
-    action_history: List[Dict[str, Any]],
-    existing_summary: Optional[str] = None
-) -> Optional[str]:
-    """
-    過去の行動履歴を要約する（後方互換性のためのスタブ）
-
-    注意: この関数は互換性のために残していますが、
-    新しい実装ではLLMによる要約を行わないためNoneを返します。
-
-    Args:
-        openai_client: OpenAI APIクライアント（使用しない）
-        model: 使用するモデル名（使用しない）
-        action_history: 要約対象の行動履歴リスト（使用しない）
-        existing_summary: 既存の要約（使用しない）
-
-    Returns:
-        常にNone（LLM要約は無効化）
-    """
-    return None
+# 注意: should_summarize() と summarize_action_history() は
+# LLM要約が無効化されたため削除されました（2026-02-06）

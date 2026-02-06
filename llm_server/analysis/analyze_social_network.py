@@ -14,29 +14,7 @@ from collections import defaultdict
 import re
 import argparse
 
-# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
-RESULT_DIR = None
-
-def get_result_dir() -> Path:
-    """実験結果ディレクトリを取得"""
-    global RESULT_DIR
-    if RESULT_DIR is None:
-        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
-    return RESULT_DIR
-
-def load_agent_data(condition: str, trial: int) -> pd.DataFrame:
-    """エージェントデータを読み込む"""
-    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
-    if filepath.exists():
-        return pd.read_csv(filepath)
-    return None
-
-def load_action_data(condition: str, trial: int) -> pd.DataFrame:
-    """行動データを読み込む"""
-    filepath = get_result_dir() / f"{condition}_trial_{trial}_actions.csv"
-    if filepath.exists():
-        return pd.read_csv(filepath)
-    return None
+from utils import set_result_dir, get_result_dir, load_agent_data, load_action_data
 
 def analyze_follow_network(condition: str = "Baseline-LLM", trial: int = 1):
     """
@@ -334,9 +312,10 @@ if __name__ == "__main__":
     parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
     args = parser.parse_args()
 
-    RESULT_DIR = Path(args.log_dir)
-    if not RESULT_DIR.exists():
-        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+    result_dir = Path(args.log_dir)
+    if not result_dir.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {result_dir}")
         sys.exit(1)
 
+    set_result_dir(result_dir)
     main()

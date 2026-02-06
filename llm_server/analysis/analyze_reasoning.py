@@ -22,15 +22,13 @@ import re
 import argparse
 from typing import Dict, List, Tuple, Optional
 
-# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
-RESULT_DIR = None
-
-def get_result_dir() -> Path:
-    """実験結果ディレクトリを取得"""
-    global RESULT_DIR
-    if RESULT_DIR is None:
-        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
-    return RESULT_DIR
+from utils import (
+    set_result_dir,
+    get_result_dir,
+    load_agent_data,
+    load_action_data,
+    load_llm_decisions,
+)
 
 # 長期目標のカテゴリ定義（キーワードベース）
 GOAL_CATEGORIES = {
@@ -66,65 +64,6 @@ PLAN_CATEGORIES = {
         "ついていく", "一緒に", "周り", "他の人", "従う"
     ]
 }
-
-
-def load_agent_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
-    """エージェントデータを読み込む"""
-    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
-    if filepath.exists():
-        return pd.read_csv(filepath)
-    return None
-
-
-def load_action_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
-    """行動データを読み込む"""
-    filepath = get_result_dir() / f"{condition}_trial_{trial}_actions.csv"
-    if filepath.exists():
-        return pd.read_csv(filepath)
-    return None
-
-
-def load_llm_decisions(agent_id: int) -> List[Dict]:
-    """LLM決定ログを読み込む"""
-    filepath = get_result_dir() / "llm_decisions" / f"{agent_id}.txt"
-    if not filepath.exists():
-        return []
-
-    decisions = []
-    current_json = ""
-    in_json = False
-
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
-
-    # JSONブロックを抽出（================で区切られている）
-    blocks = content.split("=" * 80)
-
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
-
-        # JSONの開始を探す
-        if block.startswith("{"):
-            try:
-                # 最初の}で終わる完全なJSONを見つける
-                json_end = block.find("\n\n")
-                if json_end == -1:
-                    json_end = len(block)
-                json_str = block[:json_end].strip()
-
-                # 不完全なJSONを修正（閉じ括弧がない場合）
-                open_braces = json_str.count('{')
-                close_braces = json_str.count('}')
-                json_str += '}' * (open_braces - close_braces)
-
-                data = json.loads(json_str)
-                decisions.append(data)
-            except json.JSONDecodeError:
-                continue
-
-    return decisions
 
 
 def categorize_goal(goal_text: str) -> str:
@@ -667,9 +606,10 @@ if __name__ == "__main__":
     parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
     args = parser.parse_args()
 
-    RESULT_DIR = Path(args.log_dir)
-    if not RESULT_DIR.exists():
-        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+    result_dir = Path(args.log_dir)
+    if not result_dir.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {result_dir}")
         sys.exit(1)
 
+    set_result_dir(result_dir)
     main()

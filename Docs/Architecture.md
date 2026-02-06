@@ -110,6 +110,7 @@ PLATEAUの床面積データを用いて、避難所の収容人数を算出：
 | **空間情報管理** | PLATEAU建物・避難所の高速検索、地形・危険区域の判定 |
 | **LLM通信** | Pythonサーバーとの非同期WebSocket通信 |
 | **実験制御** | 実験条件の設定、結果の計測・CSV出力 |
+| **定数管理** | SimulationConstants.csによるシミュレーション定数の一元管理 |
 
 ### 4.2 Python側（意思決定サーバー）
 
@@ -119,6 +120,10 @@ PLATEAUの床面積データを用いて、避難所の収容人数を算出：
 | **記憶管理** | 避難者ごとの地域知識・過去の経験の保持（RAG方式） |
 | **データ検証** | Pydanticによる入出力データの型安全性確保 |
 | **LLM連携** | OpenAI APIへの問い合わせ |
+| **ロギング** | logger.pyによる統一的なログ出力 |
+| **設定管理** | config.pyによるマジックナンバーの一元管理 |
+| **ユーティリティ** | utils/descriptions.pyによる説明文生成の共通化 |
+| **分析ツール** | analysis/utils.pyによるデータ読み込みの共通化 |
 
 ---
 
@@ -546,3 +551,75 @@ LLMに「今何をすべきか」だけでなく「最終的に何を達成し�
 ### 16.8 海抜に基づく生存判定
 
 2011年東日本大震災の実際の生存データに基づき、「津波の高さの2倍以上の海抜」を生存ラインとして設定。PLATEAUのDEM（数値標高モデル）データを活用。
+
+---
+
+## 17. モジュール構成
+
+### 17.1 Python側（llm_server/）
+
+```text
+llm_server/
+├── server.py              # メインサーバー（WebSocket、プロンプト生成、LLM呼び出し）
+├── logger.py              # 統一ロギング基盤
+├── config.py              # 設定・定数管理（標高、距離、容量、速度閾値）
+├── memory_manager.py      # 長期記憶・地域知識の管理
+├── memory_summarizer.py   # 記憶要約機能
+├── models.py              # Pydanticデータモデル
+│
+├── utils/
+│   ├── __init__.py
+│   └── descriptions.py    # 説明文生成（速度、距離、標高、容量）
+│
+├── analysis/
+│   ├── utils.py                      # 共通ユーティリティ（データ読み込み）
+│   ├── analyze_social_interaction.py # 社会的相互作用分析
+│   ├── analyze_reasoning.py          # 推論分析
+│   ├── analyze_qualitative.py        # 定性分析
+│   ├── analyze_social_network.py     # ソーシャルネットワーク分析
+│   └── analyze_shelter_selection.py  # 避難所選択分析
+│
+└── tests/
+    ├── __init__.py
+    ├── test_descriptions.py  # 説明文生成のテスト
+    └── test_config.py        # 設定値のテスト
+```
+
+### 17.2 Unity側（Assets/Scripts/）
+
+```text
+Assets/Scripts/
+├── Evacuee.cs                 # 避難者の行動制御（メインクラス）
+├── SimulationConstants.cs     # シミュレーション定数の一元管理
+├── ShelterManagerComponent.cs # 避難所管理
+├── ExperimentController.cs    # 実験制御
+└── ...
+```
+
+### 17.3 設定・定数の管理方針
+
+| 言語 | ファイル | 管理対象 |
+|------|----------|----------|
+| Python | config.py | 標高閾値、距離閾値、容量閾値、速度閾値 |
+| C# | SimulationConstants.cs | スタミナ、通信、社会的行動、履歴、LLM意思決定の定数 |
+
+### 17.4 ロギング方針
+
+| 言語 | 方式 | 説明 |
+|------|------|------|
+| Python | logger.py | 標準loggingモジュールベース。`[モジュール名] レベル: メッセージ` 形式 |
+| C# | Unity Debug.Log | Unityのデバッグログ機能を使用 |
+
+### 17.5 テスト方針
+
+| 言語 | フレームワーク | テスト対象 |
+|------|----------------|------------|
+| Python | pytest | 説明文生成関数、設定値の妥当性 |
+| C# | Unity Test Runner | （今後追加予定） |
+
+**テスト実行方法:**
+
+```bash
+cd llm_server
+python -m pytest tests/ -v
+```

@@ -1,5 +1,103 @@
 # 変更点とその意図
 
+## 2026-02-06 ファイル構成の改善（フェーズ7）
+
+プロジェクト全体のファイル構成を整理し、可読性と保守性を向上させた。
+
+### 7.1 Docsディレクトリの整理
+
+- **新規ディレクトリ作成**
+  - `Docs/Planning/Archive/` - 旧計画書のアーカイブ
+  - `Docs/Guides/` - 使用ガイド
+
+- **計画書のアーカイブ**
+  - 移動ファイル: `ImplementationPlan.md`, `SimplifiedImplementationPlan.md`, `ActionPlan.md`, `Plan.md`, `1221_ToDo.md`, `implementation_roadmap.md`, `Priority.md`, `progress_report_dec10_onwards.md`
+  - 移動先: `Docs/Planning/Archive/`
+  - 意図: 複数存在していた計画書を整理し、どれが最新か明確化
+
+- **READMEドキュメントの移動**
+  - `Assets/Scripts/AlertSystem_README.md` → `Docs/Guides/AlertSystem.md`
+  - `Assets/Scripts/EmergencyBroadcastSpeaker_README.md` → `Docs/Guides/EmergencyBroadcastSpeaker.md`
+  - `Assets/Scripts/EnvironmentalContextProvider_README.md` → `Docs/Guides/EnvironmentalContextProvider.md`
+  - 意図: コードファイルとドキュメントの混在を解消
+
+### 7.2 プロジェクトルートの整理
+
+- **分析スクリプトの移動**
+  - `analyze_cognitive_completion_rates.py` → `llm_server/analysis/`
+  - 意図: 分析スクリプトを統一ディレクトリに集約
+
+### 最終的なDocs構造
+
+```text
+Docs/
+├── Module/                  # 機能仕様書（変更なし）
+├── Planning/Archive/        # 旧計画書（新規）
+├── Guides/                  # 使用ガイド（新規）
+├── Tables/                  # 実験結果（変更なし）
+├── Architecture.md
+├── ChangeLog.md
+├── Experiment.md
+└── FutureWork.md
+```
+
+---
+
+## 2026-02-06 コードベースリファクタリング
+
+以下のリファクタリングを実施し、コードの保守性・可読性を向上させた。
+
+### フェーズ1: インフラ整備
+
+- **Pythonロギング基盤の導入**
+  - 新規ファイル: `llm_server/logger.py`
+  - 修正ファイル: `llm_server/server.py`, `llm_server/memory_manager.py`
+  - 内容: print()ベースのログ出力をloggingモジュールベースに統一（約33箇所）
+  - 意図: ログレベル制御、ファイル出力、タイムスタンプ付加を可能に
+
+- **分析ユーティリティの共通化**
+  - 新規ファイル: `llm_server/analysis/utils.py`
+  - 修正ファイル: `llm_server/analysis/analyze_*.py` (5ファイル)
+  - 内容: 重複していたデータ読み込み関数を統合
+  - 意図: DRY原則に従い、保守性を向上
+
+### フェーズ2: 定数・設定の整理
+
+- **Python設定モジュールの作成**
+  - 新規ファイル: `llm_server/config.py`
+  - 修正ファイル: `llm_server/server.py`
+  - 内容: マジックナンバー（標高閾値、距離閾値等）を設定クラスに集約
+  - 意図: 設定値の一元管理、変更時の影響範囲を限定
+
+- **C#定数クラスの整理**
+  - 新規ファイル: `Assets/Scripts/SimulationConstants.cs`
+  - 修正ファイル: `Assets/Scripts/Evacuee.cs`
+  - 内容: Evacuee.cs内の定数をSimulationConstantsへ移動
+  - 意図: 定数の一元管理、他クラスからの参照を容易に
+
+### フェーズ3: 説明関数の分離
+
+- **説明関数のモジュール化**
+  - 新規ファイル: `llm_server/utils/__init__.py`, `llm_server/utils/descriptions.py`
+  - 内容: 速度/距離/標高/収容能力の説明関数を独立モジュールに分離
+  - 意図: server.pyの責務を軽減、テスタビリティ向上
+
+### フェーズ5: クリーンアップ
+
+- **非推奨コードの削除**
+  - 修正ファイル: `llm_server/memory_summarizer.py`
+  - 内容: 未使用の `should_summarize()`, `summarize_action_history()` 関数を削除
+  - 意図: コードベースのスリム化、混乱の防止
+
+### フェーズ6: テスト基盤の追加
+
+- **Pythonユニットテストの追加**
+  - 新規ファイル: `llm_server/tests/__init__.py`, `llm_server/tests/test_descriptions.py`, `llm_server/tests/test_config.py`, `llm_server/pytest.ini`
+  - 内容: 45件のテストケースを追加
+  - 意図: リグレッション防止、リファクタリング時の安全性確保
+
+---
+
 - 認知特性「慎重・人混み恐怖」を「慎重・人混み回避」に全体的に変更
   - 修正ファイル: Assets/Config/personas.csv、Docs/Module/Persona.md、llm_server/analysis/aggregate_experiment_results.py、Docs/Paper.tex
   - 意図: 「恐怖」という強い表現よりも「回避」の方が認知特性として自然で適切な表現であるため変更

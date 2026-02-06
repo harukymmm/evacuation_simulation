@@ -22,15 +22,7 @@ import re
 import argparse
 from typing import Dict, List, Tuple, Optional
 
-# 実験結果のディレクトリ（デフォルト値、コマンドライン引数で上書き可能）
-RESULT_DIR = None
-
-def get_result_dir() -> Path:
-    """実験結果ディレクトリを取得"""
-    global RESULT_DIR
-    if RESULT_DIR is None:
-        raise ValueError("RESULT_DIR が設定されていません。コマンドライン引数でログディレクトリを指定してください。")
-    return RESULT_DIR
+from utils import set_result_dir, get_result_dir, load_agent_data
 
 # 会話返答のカテゴリ定義（キーワードベース）- 拡充版
 RESPONSE_CATEGORIES = {
@@ -103,14 +95,6 @@ GOAL_CATEGORIES = {
         "落ち着", "待", "様子を見", "静観", "冷静", "慌てず", "焦らず"
     ]
 }
-
-
-def load_agent_data(condition: str, trial: int) -> Optional[pd.DataFrame]:
-    """エージェントデータを読み込む"""
-    filepath = get_result_dir() / f"{condition}_trial_{trial}_agents.csv"
-    if filepath.exists():
-        return pd.read_csv(filepath)
-    return None
 
 
 def parse_conversation_history(user_prompt: str) -> List[Dict]:
@@ -787,9 +771,10 @@ if __name__ == "__main__":
     parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
     args = parser.parse_args()
 
-    RESULT_DIR = Path(args.log_dir)
-    if not RESULT_DIR.exists():
-        print(f"エラー: 指定されたディレクトリが存在しません: {RESULT_DIR}")
+    result_dir = Path(args.log_dir)
+    if not result_dir.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {result_dir}")
         sys.exit(1)
 
+    set_result_dir(result_dir)
     main()

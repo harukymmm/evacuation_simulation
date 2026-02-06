@@ -24,6 +24,22 @@ from memory_summarizer import (
     get_recent_contacts,
 )
 from memory_manager import initialize_memory_manager, get_memory_manager
+from logger import get_logger
+from config import (
+    ElevationConfig,
+    DistanceConfig,
+    CapacityConfig,
+    SpeedConfig,
+)
+from utils.descriptions import (
+    get_speed_description as _get_speed_description,
+    get_distance_description as _get_distance_description,
+    get_elevation_description as _get_elevation_description,
+    get_capacity_description as _get_capacity_description,
+)
+
+# ロガーの初期化
+logger = get_logger(__name__)
 
 
 load_dotenv()
@@ -82,13 +98,13 @@ def load_scenario_context() -> Optional[Dict[str, Any]]:
         try:
             with open(context_path, "r", encoding="utf-8") as f:
                 _scenario_context = json.load(f)
-            print(f"[LLM SERVER] シナリオコンテキスト読み込み完了: {context_path}")
+            logger.info(f"シナリオコンテキスト読み込み完了: {context_path}")
         except Exception as e:
-            print(f"[LLM SERVER] シナリオコンテキスト読み込みエラー: {e}")
+            logger.error(f"シナリオコンテキスト読み込みエラー: {e}")
             _scenario_context = None
     else:
-        print(
-            f"[LLM SERVER] シナリオコンテキストファイルが見つかりません: {context_path}"
+        logger.warning(
+            f"シナリオコンテキストファイルが見つかりません: {context_path}"
         )
     return _scenario_context
 
@@ -103,21 +119,21 @@ def _get_speed_description(speed_multiplier: float) -> str:
     Returns:
         自信に関する表現（例: "徒歩での移動に自信があります"、"徒歩での移動には自信がありません"）
     """
-    if speed_multiplier > 1.0:
+    if speed_multiplier > SpeedConfig.NORMAL:
         # 速い場合（自信がある）
-        if speed_multiplier <= 1.2:
+        if speed_multiplier <= SpeedConfig.SLIGHTLY_FAST:
             return "徒歩での移動に自信があります"
-        elif speed_multiplier <= 1.5:
+        elif speed_multiplier <= SpeedConfig.FAST:
             return "徒歩での移動に十分な自信があります"
-        elif speed_multiplier <= 2.0:
+        elif speed_multiplier <= SpeedConfig.VERY_FAST:
             return "徒歩での移動に非常に自信があります"
         else:
             return "徒歩での移動に極めて自信があります"
-    elif speed_multiplier < 1.0:
+    elif speed_multiplier < SpeedConfig.NORMAL:
         # 遅い場合（自信がない）
-        if speed_multiplier >= 0.8:
+        if speed_multiplier >= SpeedConfig.SLIGHTLY_SLOW:
             return "徒歩での移動には少し不安があります"
-        elif speed_multiplier >= 0.5:
+        elif speed_multiplier >= SpeedConfig.SLOW:
             return "徒歩での移動には自信がありません"
         else:
             return "徒歩での移動には全く自信がありません"
@@ -128,27 +144,27 @@ def _get_speed_description(speed_multiplier: float) -> str:
 
 def _get_distance_description(distance_m: float, walking_time: float) -> str:
     """距離を感覚的な表現に変換する"""
-    if distance_m <= 200:
+    if distance_m <= DistanceConfig.VERY_CLOSE:
         return "すぐ近く"
-    elif distance_m <= 500:
+    elif distance_m <= DistanceConfig.SHORT_WALK:
         return "歩いて数分"
-    elif distance_m <= 1000:
-        return f"歩いて10分くらい"
-    elif distance_m <= 2000:
-        return f"歩いて20分くらい"
-    elif distance_m <= 3000:
-        return f"歩いて30分くらい"
+    elif distance_m <= DistanceConfig.TEN_MINUTE_WALK:
+        return "歩いて10分くらい"
+    elif distance_m <= DistanceConfig.TWENTY_MINUTE_WALK:
+        return "歩いて20分くらい"
+    elif distance_m <= DistanceConfig.THIRTY_MINUTE_WALK:
+        return "歩いて30分くらい"
     else:
         return f"かなり遠い（歩いて{int(walking_time)}分以上）"
 
 
 def _get_elevation_description(elevation_m: float) -> str:
     """海抜を感覚的な表現に変換する"""
-    if elevation_m >= 30:
+    if elevation_m >= ElevationConfig.HIGH_GROUND:
         return "高台"
-    elif elevation_m >= 20:
+    elif elevation_m >= ElevationConfig.MODERATE_HEIGHT:
         return "やや高い場所"
-    elif elevation_m >= 10:
+    elif elevation_m >= ElevationConfig.SLIGHT_HEIGHT:
         return "少し高い場所"
     else:
         return "低地"
@@ -171,11 +187,11 @@ def _get_capacity_description(current_capacity: int, max_capacity: int) -> str:
             return "ほぼ満員"
 
     # max_capacityがない場合は残り人数で判断
-    if current_capacity >= 500:
+    if current_capacity >= CapacityConfig.VERY_LARGE:
         return "まだ余裕がある"
-    elif current_capacity >= 100:
+    elif current_capacity >= CapacityConfig.LARGE:
         return "それなりに受け入れ可能"
-    elif current_capacity >= 30:
+    elif current_capacity >= CapacityConfig.SMALL:
         return "あまり余裕がない"
     else:
         return "ほぼ満員"
@@ -858,14 +874,14 @@ def build_user_prompt(
 
     # デバッグログ: environmental_contextの有無を確認
     if env_context is None:
-        print("[LLM SERVER] WARNING: environmental_context is None")
+        logger.warning("environmental_context is None")
     elif not env_context.get("nearby_buildings"):
-        print(
-            f"[LLM SERVER] WARNING: environmental_context exists but nearby_buildings is empty or None: {env_context}"
+        logger.warning(
+            f"environmental_context exists but nearby_buildings is empty or None: {env_context}"
         )
     else:
-        print(
-            f"[LLM SERVER] INFO: environmental_context received with {len(env_context.get('nearby_buildings', []))} buildings"
+        logger.debug(
+            f"environmental_context received with {len(env_context.get('nearby_buildings', []))} buildings"
         )
 
     # C-3. 今いる場所の様子
@@ -1519,7 +1535,7 @@ def _build_agent_input(payload: Dict[str, Any]) -> Optional[AgentInput]:
             }
         )
     except ValidationError as exc:  # pragma: no cover - logging only
-        print(f"[LLM SERVER] AgentInput validation failed: {exc}")
+        logger.warning(f"AgentInput validation failed: {exc}")
         return None
 
 
@@ -1536,7 +1552,7 @@ def _classify_rate_limit_error(error_message: str) -> str:
     error_str = str(error_message).upper()
 
     # デバッグ: 実際のエラーメッセージを出力
-    print(f"[LLM SERVER] RateLimitError message for classification: {error_message}")
+    logger.debug(f"RateLimitError message for classification: {error_message}")
 
     # RPM (リクエスト/分) のパターン
     if (
@@ -1639,13 +1655,13 @@ async def _call_openai_with_retry(
             }
             if attempt < max_retries:
                 delay = base_delay * (2**attempt)  # exponential backoff
-                print(
-                    f"[LLM SERVER] RateLimitError ({limit_type}: {limit_description}), retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})"
+                logger.warning(
+                    f"RateLimitError ({limit_type}: {limit_description}), retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})"
                 )
                 await asyncio.sleep(delay)
             else:
-                print(
-                    f"[LLM SERVER] RateLimitError ({limit_type}: {limit_description}), max retries exceeded: {e}"
+                logger.error(
+                    f"RateLimitError ({limit_type}: {limit_description}), max retries exceeded: {e}"
                 )
         except (APIError, APIConnectionError) as e:
             last_exception = e
@@ -1657,15 +1673,15 @@ async def _call_openai_with_retry(
             }
             if attempt < max_retries:
                 delay = base_delay * (2**attempt)
-                print(
-                    f"[LLM SERVER] API error, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries}): {e}"
+                logger.warning(
+                    f"API error, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries}): {e}"
                 )
                 await asyncio.sleep(delay)
             else:
-                print(f"[LLM SERVER] API error, max retries exceeded: {e}")
+                logger.error(f"API error, max retries exceeded: {e}")
         except Exception as e:
             # その他の例外はリトライしない
-            print(f"[LLM SERVER] Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None, {
                 "error_type": "UnexpectedError",
                 "error_message": str(e),
@@ -1706,8 +1722,8 @@ async def call_openai(
             if "selected_shelter_id" not in decision:
                 # shelter_idがない場合は最寄りの避難所を自動選択（heuristicフォールバック防止）
                 decision["selected_shelter_id"] = heuristic_selection(payload)
-                print(
-                    f"[LLM SERVER] EVACUATE行動のshelter_idを自動補完: {decision['selected_shelter_id']}"
+                logger.info(
+                    f"EVACUATE行動のshelter_idを自動補完: {decision['selected_shelter_id']}"
                 )
             return decision, system_prompt, user_prompt, None
 
@@ -1717,8 +1733,8 @@ async def call_openai(
             # FOLLOWの場合はtarget_evacuee_idが必要（2026-01-21改善: ない場合はSTAYに変更）
             if action_type == "FOLLOW":
                 if "target_evacuee_id" not in decision:
-                    print(
-                        f"[LLM SERVER] FOLLOW行動だがtarget_evacuee_idがありません、STAYに変更: {decision}"
+                    logger.warning(
+                        f"FOLLOW行動だがtarget_evacuee_idがありません、STAYに変更: {decision}"
                     )
                     decision["action_type"] = "STAY"
                     reasoning = decision.get("reasoning", "")
@@ -1734,8 +1750,8 @@ async def call_openai(
                         missing.append("talk_target_id")
                     if "talk_message" not in decision:
                         missing.append("talk_message")
-                    print(
-                        f"[LLM SERVER] TALK行動だが{', '.join(missing)}がありません、STAYに変更: {decision}"
+                    logger.warning(
+                        f"TALK行動だが{', '.join(missing)}がありません、STAYに変更: {decision}"
                     )
                     decision["action_type"] = "STAY"
                     reasoning = decision.get("reasoning", "")
@@ -1764,15 +1780,15 @@ async def call_openai(
             if decision.get("should_update_goal"):
                 goal = decision.get("long_term_goal")
                 if goal and not goal.get("primary_goal"):
-                    print(
-                        f"[LLM SERVER] WARNING: should_update_goal=true but long_term_goal.primary_goal is missing"
+                    logger.warning(
+                        "should_update_goal=true but long_term_goal.primary_goal is missing"
                     )
 
             if decision.get("should_update_plan"):
                 plan = decision.get("mid_term_plan")
                 if plan and not plan.get("steps"):
-                    print(
-                        f"[LLM SERVER] WARNING: should_update_plan=true but mid_term_plan.steps is missing"
+                    logger.warning(
+                        "should_update_plan=true but mid_term_plan.steps is missing"
                     )
 
             return decision, system_prompt, user_prompt, None
@@ -1783,7 +1799,7 @@ async def call_openai(
             return decision, system_prompt, user_prompt, None
 
     except Exception as exc:  # pragma: no cover
-        print(f"[LLM SERVER] OpenAI呼び出しで例外: {exc}")
+        logger.error(f"OpenAI呼び出しで例外: {exc}")
     return None, system_prompt, user_prompt, None
 
 
@@ -1868,7 +1884,7 @@ def _log_decision(
                 fp.write(user_prompt)
                 fp.write("\n\n")
     except Exception as exc:  # pragma: no cover
-        print(f"[LLM SERVER] failed to write log: {exc}")
+        logger.error(f"failed to write log: {exc}")
 
 
 async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1931,25 +1947,25 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             if memories:
                 payload["long_term_memories"] = memories
-                print(f"[LLM SERVER] 長期記憶を{len(memories)}件取得しました")
+                logger.info(f"長期記憶を{len(memories)}件取得しました")
 
         except Exception as e:
-            print(f"[LLM SERVER] 長期記憶検索でエラー: {e}")
+            logger.error(f"長期記憶検索でエラー: {e}")
 
     # デバッグログ: 受信したペイロードのキーを確認
-    print(f"[LLM SERVER] Received payload keys: {list(payload.keys())}")
+    logger.debug(f"Received payload keys: {list(payload.keys())}")
     if "environmental_context" in payload:
         env_ctx = payload["environmental_context"]
         if env_ctx:
-            print(
-                f"[LLM SERVER] environmental_context type: {type(env_ctx)}, keys: {list(env_ctx.keys()) if isinstance(env_ctx, dict) else 'N/A'}"
+            logger.debug(
+                f"environmental_context type: {type(env_ctx)}, keys: {list(env_ctx.keys()) if isinstance(env_ctx, dict) else 'N/A'}"
             )
         else:
-            print(
-                f"[LLM SERVER] environmental_context is present but value is: {env_ctx}"
+            logger.debug(
+                f"environmental_context is present but value is: {env_ctx}"
             )
     else:
-        print("[LLM SERVER] environmental_context NOT in payload")
+        logger.debug("environmental_context NOT in payload")
 
     agent_input = _build_agent_input(payload)
 
@@ -2443,7 +2459,7 @@ async def process_conversation_response(payload: Dict[str, Any]) -> Dict[str, An
         return result
 
     except Exception as exc:
-        print(f"[LLM SERVER] 会話応答生成で例外: {exc}")
+        logger.error(f"会話応答生成で例外: {exc}")
         result = {
             "request_id": request_id,
             "response_message": "すみません、今は急いでいるので...",
@@ -2824,7 +2840,7 @@ async def process_family_contact_response(payload: Dict[str, Any]) -> Dict[str, 
         return result
 
     except Exception as exc:
-        print(f"[LLM SERVER] 家族連絡応答生成で例外: {exc}")
+        logger.error(f"家族連絡応答生成で例外: {exc}")
         result = {
             "request_id": request_id,
             "response_message": "無事だよ。今は自宅付近にいる。",
@@ -3158,7 +3174,7 @@ async def process_conversation_continuation(payload: Dict[str, Any]) -> Dict[str
         return result
 
     except Exception as exc:
-        print(f"[LLM SERVER] 会話継続判断で例外: {exc}")
+        logger.error(f"会話継続判断で例外: {exc}")
         result = {
             "request_id": request_id,
             "want_to_continue": False,
@@ -3229,18 +3245,18 @@ async def handler(websocket: websockets.WebSocketServerProtocol) -> None:
 async def main() -> None:
     global _memory_initialized
 
-    print(f"[LLM SERVER] starting on ws://{SERVER_HOST}:{SERVER_PORT}")
+    logger.info(f"starting on ws://{SERVER_HOST}:{SERVER_PORT}")
 
     # 長期記憶（RAG）の初期化
     if OPENAI_CLIENT and not _memory_initialized:
-        print("[LLM SERVER] 長期記憶（RAG）を初期化中...")
+        logger.info("長期記憶（RAG）を初期化中...")
         memory_manager = await initialize_memory_manager(OPENAI_CLIENT)
         if memory_manager and memory_manager.is_initialized:
             _memory_initialized = True
             stats = memory_manager.get_statistics()
-            print(f"[LLM SERVER] 長期記憶初期化完了: {stats}")
+            logger.info(f"長期記憶初期化完了: {stats}")
         else:
-            print("[LLM SERVER] 長期記憶の初期化に失敗しました（RAG機能は無効）")
+            logger.warning("長期記憶の初期化に失敗しました（RAG機能は無効）")
 
     # ping_timeout を延長（デフォルト20秒 → 120秒）
     # LLM API呼び出しが長時間かかる場合の接続切断を防ぐ

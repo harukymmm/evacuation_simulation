@@ -6,11 +6,13 @@
 
 import pandas as pd
 import json
+import sys
+import argparse
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
 
-LOG_DIR = Path("Logs/experiment_results/20260125_014206")
+from utils import set_result_dir, get_result_dir, load_agent_data
 
 # 実験3の条件マッピング
 EXP3_CONDITIONS = {
@@ -19,13 +21,6 @@ EXP3_CONDITIONS = {
     "Exp3-C": "条件C（具体性高）",
     "Exp3-D": "条件D（両方高）"
 }
-
-def load_agent_data(condition, trial):
-    """指定条件・トライアルのエージェントデータを読み込み"""
-    file_path = LOG_DIR / f"{condition}_trial_{trial}_agents.csv"
-    if not file_path.exists():
-        return None
-    return pd.read_csv(file_path)
 
 def analyze_shelter_selection_by_elevation(condition, num_trials=5):
     """標高別の避難所選択割合を分析"""
@@ -194,7 +189,7 @@ def main():
         'comparison_table': comparison_table.to_dict('records')
     }
 
-    output_file = LOG_DIR / "shelter_selection_analysis.json"
+    output_file = get_result_dir() / "shelter_selection_analysis.json"
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
 
@@ -228,4 +223,14 @@ def main():
     print("\\end{table}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='避難所選択の分析スクリプト')
+    parser.add_argument('log_dir', type=str, help='分析対象のログディレクトリパス')
+    args = parser.parse_args()
+
+    result_dir = Path(args.log_dir)
+    if not result_dir.exists():
+        print(f"エラー: 指定されたディレクトリが存在しません: {result_dir}")
+        sys.exit(1)
+
+    set_result_dir(result_dir)
     main()

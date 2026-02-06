@@ -13,6 +13,10 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from openai import AsyncOpenAI
 
+from logger import get_logger
+
+logger = get_logger(__name__)
+
 # デフォルトの設定
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 1536
@@ -53,7 +57,7 @@ class MemoryManager:
             成功した場合True
         """
         if not os.path.exists(json_path):
-            print(f"[MemoryManager] 記憶ファイルが見つかりません: {json_path}")
+            logger.warning(f"記憶ファイルが見つかりません: {json_path}")
             return False
 
         try:
@@ -61,27 +65,27 @@ class MemoryManager:
                 self.memories = json.load(f)
 
             if not self.memories:
-                print("[MemoryManager] 記憶データが空です")
+                logger.warning("記憶データが空です")
                 return False
 
-            print(f"[MemoryManager] {len(self.memories)}件の記憶を読み込みました")
+            logger.info(f"{len(self.memories)}件の記憶を読み込みました")
 
             # ベクトル化
             if self.openai:
                 await self._vectorize_memories()
                 self.is_initialized = True
-                print(f"[MemoryManager] ベクトル化完了（{self.embeddings.shape if self.embeddings is not None else 'N/A'}）")
+                logger.info(f"ベクトル化完了（{self.embeddings.shape if self.embeddings is not None else 'N/A'}）")
             else:
-                print("[MemoryManager] OpenAIクライアントがないため、ベクトル化をスキップ")
+                logger.warning("OpenAIクライアントがないため、ベクトル化をスキップ")
                 self.is_initialized = False
 
             return True
 
         except json.JSONDecodeError as e:
-            print(f"[MemoryManager] JSONパースエラー: {e}")
+            logger.error(f"JSONパースエラー: {e}")
             return False
         except Exception as e:
-            print(f"[MemoryManager] 記憶読み込みエラー: {e}")
+            logger.error(f"記憶読み込みエラー: {e}")
             return False
 
     async def _vectorize_memories(self):
@@ -99,7 +103,7 @@ class MemoryManager:
             )
             self.embeddings = np.array([d.embedding for d in response.data])
         except Exception as e:
-            print(f"[MemoryManager] ベクトル化エラー: {e}")
+            logger.error(f"ベクトル化エラー: {e}")
             self.embeddings = None
 
     async def _get_embedding(self, text: str) -> Optional[np.ndarray]:
@@ -128,7 +132,7 @@ class MemoryManager:
             self._embedding_cache[text] = embedding
             return embedding
         except Exception as e:
-            print(f"[MemoryManager] 埋め込み取得エラー: {e}")
+            logger.error(f"埋め込み取得エラー: {e}")
             return None
 
     async def search(
@@ -272,7 +276,7 @@ async def initialize_memory_manager(
             sample_path = str(base_dir / "data" / "memories_sample.json")
             if os.path.exists(sample_path):
                 memories_path = sample_path
-                print(f"[MemoryManager] サンプルファイルを使用: {memories_path}")
+                logger.info(f"サンプルファイルを使用: {memories_path}")
 
     _memory_manager = MemoryManager(openai_client)
 
@@ -280,13 +284,13 @@ async def initialize_memory_manager(
         success = await _memory_manager.load_memories(memories_path)
         if success:
             stats = _memory_manager.get_statistics()
-            print(f"[MemoryManager] 初期化完了 - 統計: {stats}")
+            logger.info(f"初期化完了 - 統計: {stats}")
             return _memory_manager
         else:
-            print("[MemoryManager] 記憶の読み込みに失敗しました")
+            logger.warning("記憶の読み込みに失敗しました")
     else:
-        print(f"[MemoryManager] 記憶ファイルが見つかりません: {memories_path}")
-        print("[MemoryManager] RAG機能は無効化されます")
+        logger.warning(f"記憶ファイルが見つかりません: {memories_path}")
+        logger.warning("RAG機能は無効化されます")
 
     return _memory_manager
 

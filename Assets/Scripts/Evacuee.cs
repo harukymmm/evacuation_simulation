@@ -57,14 +57,14 @@ public class Evacuee : MonoBehaviour {
     [Header("Speed Choice")]
     public LLM.SpeedChoice CurrentSpeedChoice = LLM.SpeedChoice.NORMAL;
 
-    // 体力管理の定数
-    private const float STAMINA_THRESHOLD_FAST = 0.3f;      // 急ぎ足に必要な最低体力
-    private const float STAMINA_THRESHOLD_RUN = 0.5f;       // 走るに必要な最低体力
-    private const float STAMINA_DRAIN_FAST = 0.02f;         // 急ぎ足: 2%/秒
-    private const float STAMINA_DRAIN_RUN = 0.05f;          // 走る: 5%/秒
-    private const float STAMINA_RECOVERY_SLOW = 0.01f;      // ゆっくり: 1%/秒回復
-    private const float STAMINA_RECOVERY_STOP = 0.03f;      // 停止中: 3%/秒回復
-    private const float STAMINA_DRAIN_ELDERLY_MULT = 1.5f;  // 高齢者消費倍率
+    // 体力管理の定数（SimulationConstants.Staminaへの参照）
+    private static float STAMINA_THRESHOLD_FAST => SimulationConstants.Stamina.THRESHOLD_FAST;
+    private static float STAMINA_THRESHOLD_RUN => SimulationConstants.Stamina.THRESHOLD_RUN;
+    private static float STAMINA_DRAIN_FAST => SimulationConstants.Stamina.DRAIN_FAST;
+    private static float STAMINA_DRAIN_RUN => SimulationConstants.Stamina.DRAIN_RUN;
+    private static float STAMINA_RECOVERY_SLOW => SimulationConstants.Stamina.RECOVERY_SLOW;
+    private static float STAMINA_RECOVERY_STOP => SimulationConstants.Stamina.RECOVERY_STOP;
+    private static float STAMINA_DRAIN_ELDERLY_MULT => SimulationConstants.Stamina.ELDERLY_MULTIPLIER;
 
     // 速度係数マッピング
     private static readonly Dictionary<LLM.SpeedChoice, float> SpeedChoiceMultipliers = new Dictionary<LLM.SpeedChoice, float>
@@ -75,16 +75,11 @@ public class Evacuee : MonoBehaviour {
         { LLM.SpeedChoice.RUN, 2.0f }
     };
 
-    // 会話・連絡のラグ時間（シミュレーション秒）
-    // TALK: 発話時間も含めて5秒（往復で10秒程度）
-    // CONTACT: 電話/メール送受信で3秒（往復で6秒程度）
-    private const float CONVERSATION_MESSAGE_LAG_SEC = 5.0f;
-    private const float CONTACT_MESSAGE_LAG_SEC = 3.0f;
-    // 注意: タイムアウトはシミュレーション時間で計測される
-    // TimeScale=7の場合、シミュレーション70秒 = 実時間10秒
-    // LLM応答には実時間で5-10秒程度必要なため、TimeScale考慮して設定
-    private const float CONVERSATION_TIMEOUT_SEC = 70.0f;  // 会話応答タイムアウト（TimeScale=7で実時間10秒相当）
-    private const float CONTACT_TIMEOUT_SEC = 105.0f;      // 連絡応答タイムアウト（TimeScale=7で実時間15秒相当）
+    // 会話・連絡のラグ時間（SimulationConstants.Communicationへの参照）
+    private static float CONVERSATION_MESSAGE_LAG_SEC => SimulationConstants.Communication.CONVERSATION_MESSAGE_LAG_SEC;
+    private static float CONTACT_MESSAGE_LAG_SEC => SimulationConstants.Communication.CONTACT_MESSAGE_LAG_SEC;
+    private static float CONVERSATION_TIMEOUT_SEC => SimulationConstants.Communication.CONVERSATION_TIMEOUT_SEC;
+    private static float CONTACT_TIMEOUT_SEC => SimulationConstants.Communication.CONTACT_TIMEOUT_SEC;
 
     // 日本語名マッピング
     private static readonly Dictionary<LLM.SpeedChoice, string> SpeedChoiceNames = new Dictionary<LLM.SpeedChoice, string>
@@ -126,7 +121,7 @@ public class Evacuee : MonoBehaviour {
     private string _lastContactTarget;       // 直近で連絡を試みた家族
     private string _lastContactMessage;      // 直近で送信したメール本文
     private int _consecutiveContactCount = 0; // 連続CONTACT回数
-    private const int MAX_CONSECUTIVE_CONTACT = 5; // 連続CONTACTの上限（セッション間）
+    private static int MAX_CONSECUTIVE_CONTACT => SimulationConstants.Communication.MAX_CONSECUTIVE_CONTACT;
     private bool _contactCooldown = false; // CONTACT上限後の一時禁止フラグ
     // CONTACT応答状態（家族から連絡を受けた側の状態管理）
     private bool _isRespondingToFamilyContact = false;
@@ -137,8 +132,8 @@ public class Evacuee : MonoBehaviour {
     private FamilyMember _searchFamilyTarget;        // 現在探索中の家族メンバー
     private Evacuee _searchFamilyTargetEvacuee;      // 探索対象がシーン内に存在する場合のEvacuee参照
     private float _lastSearchFamilyCheck = 0f;       // 最後に座標更新した時刻
-    private const float SEARCH_FAMILY_CHECK_INTERVAL = 10f; // 座標更新間隔（秒）
-    private const float FAMILY_REUNION_DISTANCE = 10f; // 合流判定距離（メートル）
+    private static float SEARCH_FAMILY_CHECK_INTERVAL => SimulationConstants.Social.SEARCH_FAMILY_CHECK_INTERVAL;
+    private static float FAMILY_REUNION_DISTANCE => SimulationConstants.Social.FAMILY_REUNION_DISTANCE;
 
     [Header("RuleBased Action Recording")]
     private bool _firstRuleBasedActionRecorded = false; // RuleBasedエージェントの初回行動が記録されたか
@@ -146,22 +141,22 @@ public class Evacuee : MonoBehaviour {
     [Header("Follow Action")]
     private Evacuee _followTarget;           // 追従対象の避難者
     private LLM.ActionType _followTargetLastAction; // 追従対象の前回の行動（行動変更検知用）
-    private float _followDistance = 5f;      // 追従距離（メートル）- 密集防止のため拡大
-    private float _followCheckInterval = 1f; // 追従チェック間隔（秒）
+    private float _followDistance = SimulationConstants.Social.FOLLOW_DISTANCE;
+    private float _followCheckInterval = SimulationConstants.Social.FOLLOW_CHECK_INTERVAL;
     private float _lastFollowCheck = 0f;     // 最後に追従チェックした時刻
-    private const float FOLLOW_SEARCH_RADIUS = 30f; // 周辺避難者検索半径（メートル）
+    private static float FOLLOW_SEARCH_RADIUS => SimulationConstants.Social.FOLLOW_SEARCH_RADIUS;
     private List<Evacuee> _followers = new List<Evacuee>(); // この避難者を追従しているFOLLOWERのリスト
 
     [Header("Information Diffusion")]
-    private float _informationDiffusionCheckInterval = 1f; // 情報伝播チェック間隔（秒）
+    private float _informationDiffusionCheckInterval = SimulationConstants.Social.INFORMATION_DIFFUSION_CHECK_INTERVAL;
     private float _lastInformationDiffusionCheck = 0f;     // 最後に情報伝播チェックした時刻
 
     [Header("Talk Action")]
     private List<LLM.ConversationLogEntry> _conversationHistory = new List<LLM.ConversationLogEntry>();
     private int _consecutiveTalkCount = 0;
-    private const int MAX_CONSECUTIVE_TALK = 5;         // 連続TALKの上限（セッション間）
-    private const int MAX_CONVERSATION_TURNS = 10;      // 1セッション内のターン上限
-    private const int MAX_CONVERSATION_HISTORY = 5;
+    private static int MAX_CONSECUTIVE_TALK => SimulationConstants.Communication.MAX_CONSECUTIVE_TALK;
+    private static int MAX_CONVERSATION_TURNS => SimulationConstants.Communication.MAX_CONVERSATION_TURNS;
+    private static int MAX_CONVERSATION_HISTORY => SimulationConstants.Communication.MAX_CONVERSATION_HISTORY;
     private TaskCompletionSource<LLM.ConversationResponse> _conversationResponseTCS;
     // TALK応答状態（話しかけられた側の状態管理）
     private bool _isRespondingToConversation = false;
@@ -180,7 +175,7 @@ public class Evacuee : MonoBehaviour {
     private List<LLM.ActionHistoryEntry> _actionHistory = new List<LLM.ActionHistoryEntry>();
     private string _summarizedActionHistory = null;          // 要約済み行動履歴
     private int _totalActionCount = 0;                       // 総行動回数
-    private const int MAX_ACTION_HISTORY = 5;                // 保持する行動履歴の最大件数
+    private static int MAX_ACTION_HISTORY => SimulationConstants.History.MAX_ACTION_HISTORY;
 
     [Header("Alert / Broadcast State")]
     private bool _hasHeardBroadcast = false;     // 行政無線の放送を聞いたか
