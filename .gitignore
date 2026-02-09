@@ -188,6 +188,12 @@ mono_crash.*
 *.csproj.user
 *.sln.DotSettings
 
+Paper.md
+Paper.log
+Paper.fls
+Paper.fdb_latexmk
+避難場所調査.md
+
 # ML-Agents additional files
 results/*/run_logs/
 results/*/events.out.tfevents.*

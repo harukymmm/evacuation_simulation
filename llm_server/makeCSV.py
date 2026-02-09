@@ -16,7 +16,6 @@ ARCHETYPES = {
     "MANAGER": {
         "role": "施設管理者",
         "speed_range": (1.1, 1.3),
-        "stairs": "allowed",
         "mental": "冷静・分析的",
         "priority": "他者の誘導と安全確認",
         "prompt": "あなたは責任感の強い施設管理者です。自身の避難よりも、逃げ遅れた人がいないかの確認や、他者の誘導を最優先します。パニックに陥らず、常に情報を分析し、全体にとって最も合理的なルートを選択してください。"
@@ -24,7 +23,6 @@ ARCHETYPES = {
     "NORMAL_BIAS": {
         "role": "一般社員/住民",
         "speed_range": (0.9, 1.1),
-        "stairs": "allowed",
         "mental": "正常性バイアス・楽観的",
         "priority": "荷物・現状維持",
         "prompt": "あなたは状況を過小評価する傾向があります。「ただの訓練か誤報だろう」と考え、避難開始を遅らせます。周囲が動いていても、まずは自分の荷物をまとめたり、SNSを確認することを優先してください。"
@@ -32,7 +30,6 @@ ARCHETYPES = {
     "PARENT": {
         "role": "保護者",
         "speed_range": (0.8, 1.0), # 子供を探すため足が止まりがち
-        "stairs": "allowed",
         "mental": "焦燥・目的外行動",
         "priority": "家族の捜索と保護",
         "prompt": "あなたは家族（子供など）とはぐれてしまった保護者です。あなたの最優先事項は「避難」ではなく「家族を見つけること」です。家族がいる可能性のある場所へ向かうためなら、避難経路を逆走することも厭いません。合流するまでは非常に焦っています。"
@@ -40,15 +37,13 @@ ARCHETYPES = {
     "ELDERLY": {
         "role": "高齢者",
         "speed_range": (0.4, 0.6),
-        "stairs": "forbidden",
         "mental": "慎重・人混み恐怖",
         "priority": "平坦なルート・転倒防止",
-        "prompt": "あなたは足腰に不安のある高齢者です（杖使用など）。移動速度は遅く、階段の上り下りは不可能です。転倒を極端に恐れているため、最短ルートであっても人が密集している場所や、段差のある場所は避けてください。"
+        "prompt": "あなたは足腰に不安のある高齢者です（杖使用など）。移動速度は遅いです。転倒を極端に恐れているため、最短ルートであっても人が密集している場所や、段差のある場所は避けてください。"
     },
     "FOLLOWER": {
         "role": "学生/若者",
         "speed_range": (0.9, 1.2),
-        "stairs": "allowed",
         "mental": "同調性・パニック気味",
         "priority": "集団への追従",
         "prompt": "あなたはパニックになりやすく、自分の判断に自信がありません。非常口の表示よりも、「多くの人が走っていく方向」を信じてついていきます。周囲が走れば走り、周囲が叫べば不安になります。"
@@ -124,7 +119,6 @@ def generate_personas(count=500):
             archetype["role"],
             age_group,
             speed,
-            archetype["stairs"],
             archetype["mental"],
             archetype["priority"],
             archetype["prompt"]
@@ -138,7 +132,7 @@ def generate_personas(count=500):
 # ==========================================
 
 output_file = "fukushima_evacuation_personas_500.csv"
-header = ["agent_id", "name", "role", "age_group", "speed_multiplier", "stairs_usage", "mental_state", "priority", "system_prompt_context"]
+header = ["agent_id", "name", "role", "age_group", "speed_multiplier", "mental_state", "priority", "system_prompt_context"]
 personas = generate_personas(500)
 
 with open(output_file, mode="w", encoding="utf-8", newline="") as f:

@@ -1,0 +1,92 @@
+[
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間小学校は海抜約20mに位置し、津波避難ビルとして指定されています。収容人数は約500人です。",
+    "metadata": {"location": "豊間小学校", "elevation": 20}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "薄磯海岸沿いは津波浸水想定区域です。地震発生時は速やかに高台へ避難してください。",
+    "metadata": {"area": "薄磯海岸", "hazard_type": "tsunami"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "国道6号線は緊急車両優先道路に指定されており、災害時は一般車両の通行が制限されます。",
+    "metadata": {"road": "国道6号線", "restriction": "emergency_priority"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間地区には3つの避難所があります：豊間小学校、豊間公民館、豊間中学校。いずれも高台に位置しています。",
+    "metadata": {"area": "豊間地区", "shelter_count": 3}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海岸から500m以内の地域では、津波到達まで約10分と想定されています。早期避難が必須です。",
+    "metadata": {"distance_from_coast": 500, "tsunami_arrival_time": 10}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 1,
+    "content": "私は施設管理者として働いています。緊急時には他者の誘導を優先し、最後に避難するのが私の役割です。",
+    "metadata": {"role": "facility_manager", "priority": "guide_others"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 2,
+    "content": "私は高齢の母と同居しています。避難時は母を連れて行く必要があり、移動速度は通常より遅くなります。",
+    "metadata": {"family": "elderly_mother", "mobility": "slow"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 3,
+    "content": "私は地元の漁師です。海の状況には敏感で、潮の引き方で津波の前兆を察知できることがあります。",
+    "metadata": {"occupation": "fisherman", "skill": "tsunami_detection"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 4,
+    "content": "私は小学校の教師です。地震が起きたら、まず生徒たちの安全を確認してから自分の避難を考えます。",
+    "metadata": {"occupation": "teacher", "priority": "student_safety"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 5,
+    "content": "私は妊娠中で、長距離を歩くのが困難です。最寄りの避難所への避難を優先します。",
+    "metadata": {"condition": "pregnant", "mobility": "limited"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 1,
+    "content": "2011年の震災では、津波が想定より早く到達しました。「まだ大丈夫」という油断が命取りになることを学びました。",
+    "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 2,
+    "content": "前回の地震では、避難所が混雑して入れなかった経験があります。複数の避難先を把握しておくことが重要です。",
+    "metadata": {"event": "previous_earthquake", "lesson": "multiple_shelters"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 3,
+    "content": "津波警報が出ても避難しない人を何人も見ました。声をかけて一緒に逃げることで、命が救われることがあります。",
+    "metadata": {"event": "tsunami_warning", "lesson": "community_evacuation"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 4,
+    "content": "以前の避難訓練で、高齢者が階段を上れずに立ち往生していました。バリアフリーの避難経路を確認しておくべきです。",
+    "metadata": {"event": "evacuation_drill", "lesson": "accessibility"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 5,
+    "content": "車で避難しようとして渋滞に巻き込まれた経験があります。徒歩での避難の方が確実な場合が多いです。",
+    "metadata": {"event": "car_evacuation", "lesson": "walk_over_drive"}
+  }
+]

@@ -1,0 +1,164 @@
+[
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間中学校は高台にあって、津波のときはあそこに逃げればいい。海抜30mくらいあるし、体育館も校庭も広いから安心だ。",
+    "metadata": {"location": "豊間中学校", "elevation": 30, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "江名小学校も避難所になってる。海抜25mくらいで、建物も頑丈だから津波が来ても大丈夫だろう。",
+    "metadata": {"location": "江名小学校", "elevation": 25, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "江名公民館はバリアフリーだから、足の悪い人やお年寄りはあそこがいい。海抜20mくらいある。",
+    "metadata": {"location": "江名公民館", "elevation": 20, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "健登師記念会館は薄磯から近いし、しっかりした建物だ。海抜22mくらいあったはず。",
+    "metadata": {"location": "健登師記念会館", "elevation": 22, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "望洋荘は海から離れた高台にある。海抜28mくらいだから、津波のときは安全だと思う。",
+    "metadata": {"location": "望洋荘", "elevation": 28, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "諏訪神社は昔から津波のときに逃げる場所として知られてる。海抜35mくらいの高台だ。",
+    "metadata": {"location": "諏訪神社", "elevation": 35, "category": "shelter"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "中田山は海抜40mもある高台だ。広いから何人でも逃げられる。津波のときはとにかくあそこを目指せばいい。",
+    "metadata": {"location": "中田山", "elevation": 40, "category": "tsunami_evacuation_area"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "薄磯の海岸沿いは津波が来たら浸水する場所だ。海抜10m以下は危ないから、地震があったらすぐに高台へ逃げないと。",
+    "metadata": {"area": "薄磯海岸", "hazard_type": "tsunami", "category": "hazard"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "県道382号線は海抜5mもない低い場所を通ってる。津波のときにあの道を使って逃げるのは危険だ。",
+    "metadata": {"road": "県道382号線", "hazard_type": "low_elevation", "category": "hazard"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "国道6号線は災害のとき緊急車両が優先だから、車で逃げようとしても渋滞で動けなくなる。歩いた方がいい。",
+    "metadata": {"road": "国道6号線", "restriction": "emergency_priority", "category": "traffic"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海岸から500m以内にいたら、津波が来るまで10分くらいしかない。揺れが収まったらすぐに逃げないと間に合わない。",
+    "metadata": {"distance_from_coast": 500, "tsunami_arrival_time": 10, "category": "time_constraint"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "足の悪い人やお年寄りは江名公民館に逃げるといい。バリアフリーだから移動しやすい。",
+    "metadata": {"target_group": "elderly", "to": "江名公民館", "category": "route"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間漁港の周りは一番危ない場所だ。海抜が低いから津波が真っ先に来る。地震があったら絶対に近づいちゃだめだ。",
+    "metadata": {"location": "豊間漁港", "hazard_type": "tsunami", "category": "hazard"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "消防団の人たちは地震があったら5分くらいで巡回を始める。サイレンや拡声器で避難を呼びかけてくれるから、聞こえたら従った方がいい。",
+    "metadata": {"organization": "消防団", "category": "emergency_response"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "この地区では災害のとき、近所同士で声を掛け合うことになってる。一人暮らしのお年寄りとかは特に心配だから。",
+    "metadata": {"organization": "自治会", "category": "community"}
+  },
+  {
+    "memory_type": "social_knowledge",
+    "agent_id": null,
+    "content": "平日の昼間はこの辺りにいるのはお年寄りと子供、主婦が多い。若い人は街に出てるから、逃げるときは助け合わないと。",
+    "metadata": {"category": "demographic", "time": "weekday_daytime"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の震災のとき、豊間地区には8m以上の津波が来た。海岸から500mも内陸まで浸水して、たくさんの人が亡くなった。",
+    "metadata": {"event": "2011_tsunami", "year": 2011, "category": "historical"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波のとき「ここまで津波は来ない」と思って逃げなかった人が大勢いた。過去の経験を信じすぎちゃだめだ。とにかく早く逃げることが大事。",
+    "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波は最初の波が小さかったから、「もう大丈夫」と思って家に戻った人がいた。でも第2波、第3波で犠牲になった。津波は何度も来る。",
+    "metadata": {"event": "2011_tsunami", "lesson": "multiple_waves", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "2011年の津波のとき車で逃げようとした人が渋滞に巻き込まれて、逃げ遅れた。津波のときは歩いて逃げた方がいい。",
+    "metadata": {"event": "2011_tsunami", "lesson": "walk_over_drive", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "家族を探しに戻ったり、貴重品を取りに戻ったりして亡くなった人がいた。一度逃げ始めたら絶対に戻っちゃだめだ。",
+    "metadata": {"event": "2011_tsunami", "lesson": "no_return", "category": "lesson"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "津波警報が出ても逃げない人を何人も見た。声をかけて一緒に逃げれば、助かる命がある。",
+    "metadata": {"lesson": "community_evacuation", "category": "lesson"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "「津波てんでんこ」って言葉がある。まず自分の命を守って、家族とは高台で会おうってことだ。",
+    "metadata": {"category": "local_wisdom"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "津波は一回で終わりじゃない。何度も来るから、一度引いても安心しちゃだめだ。警報が解除されるまで高台にいないと。",
+    "metadata": {"category": "local_wisdom"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海の水が急に引いたら、大きな津波が来る前触れだ。海が見えるところにいたら、すぐに逃げないと。",
+    "metadata": {"category": "warning_sign"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "防災無線は古くなってるから、場所によっては聞こえないこともある。無線が聞こえなくても、大きな揺れがあったら自分で判断して逃げた方がいい。",
+    "metadata": {"category": "infrastructure"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": null,
+    "content": "震度6以上だと停電になることが多い。でもスマホのエリアメールは届くかもしれないから、確認した方がいい。",
+    "metadata": {"category": "infrastructure"}
+  }
+]

@@ -70,22 +70,25 @@ public class EnvManagerEditor : Editor
         
         int shelterCount = GameObject.FindGameObjectsWithTag("Shelter").Length;
         int constShelterCount = 0;
-        
-        try
-        {
-            constShelterCount = GameObject.FindGameObjectsWithTag("ConstShelter").Length;
-        }
-        catch
-        {
-            // ConstShelterタグが存在しない場合は0
-        }
-        
+        int schoolCount = 0;
+        int preschoolCount = 0;
+        int tsunamiAreaCount = 0;
+
+        try { constShelterCount = GameObject.FindGameObjectsWithTag("ConstShelter").Length; } catch { }
+        try { schoolCount = GameObject.FindGameObjectsWithTag("School").Length; } catch { }
+        try { preschoolCount = GameObject.FindGameObjectsWithTag("PreSchool").Length; } catch { }
+        try { tsunamiAreaCount = GameObject.FindGameObjectsWithTag("TsunamiEvacuationArea").Length; } catch { }
+
         EditorGUILayout.LabelField($"・Shelterタグ: {shelterCount}個", EditorStyles.miniLabel);
         EditorGUILayout.LabelField($"・ConstShelterタグ: {constShelterCount}個", EditorStyles.miniLabel);
-        EditorGUILayout.LabelField($"・合計: {shelterCount + constShelterCount}個", EditorStyles.miniLabel);
-        
+        EditorGUILayout.LabelField($"・Schoolタグ: {schoolCount}個（避難所として動作）", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"・PreSchoolタグ: {preschoolCount}個（安全地帯として動作）", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"・TsunamiEvacuationAreaタグ: {tsunamiAreaCount}個", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"・合計避難所: {shelterCount + constShelterCount + schoolCount}個", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"・合計安全地帯: {tsunamiAreaCount + preschoolCount}個", EditorStyles.miniLabel);
+
         // 警告表示
-        if (shelterCount + constShelterCount == 0)
+        if (shelterCount + constShelterCount + schoolCount == 0)
         {
             EditorGUILayout.Space(5);
             EditorGUILayout.HelpBox(

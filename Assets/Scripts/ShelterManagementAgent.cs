@@ -60,6 +60,13 @@ public class ShelterManagementAgent : Agent {
     }
 
     public void OnEndEpisode() {
+        // AlwaysActivateAllSheltersが有効な場合はログ生成をスキップ
+        if (AlwaysActivateAllShelters)
+        {
+            ActionLogs.Clear();
+            return;
+        }
+
         // データの保存とActionLogsの初期化
         // 避難所の建物IDを取得
         string[] shelterIds = new string[ShelterCandidates.Length];
@@ -97,7 +104,11 @@ public class ShelterManagementAgent : Agent {
 
         // 避難所候補地のリストを巡回し、各避難所候補地の位置情報と収容可能人数を入力
         foreach(GameObject shelter in ShelterCandidates) {
-            sensor.AddObservation(shelter.transform.GetChild(0).gameObject.transform.position);
+            // 子オブジェクトがある場合はその位置、ない場合は親オブジェクトの位置を観測
+            Transform targetTransform = shelter.transform.childCount > 0
+                ? shelter.transform.GetChild(0)
+                : shelter.transform;
+            sensor.AddObservation(targetTransform.position);
             sensor.AddObservation(shelter.GetComponent<Shelter>().currentCapacity);
         }
 

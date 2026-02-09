@@ -8,6 +8,9 @@ TagManager:
   - SpawnPos
   - ConstShelter
   - Evacuee
+  - TsunamiEvacuationArea
+  - School
+  - PreSchool
   layers:
   - Default
   - TransparentFX

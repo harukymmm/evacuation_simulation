@@ -1,0 +1,286 @@
+{
+  "version": "1.0",
+  "region": {
+    "name": "いわき市豊間地区",
+    "type": "coastal_residential",
+    "description": "福島県いわき市沿岸部の住宅地。太平洋に面し、海岸線から内陸に向かって緩やかな傾斜がある。",
+    "geography": {
+      "coast_distance_range": "100m〜1500m",
+      "elevation_range": "海抜0m〜35m",
+      "terrain": "東側が海、西側が丘陵地。海岸沿いは平坦だが、内陸に向かうにつれて傾斜がきつくなる。"
+    },
+    "population": {
+      "total": "約3000人",
+      "elderly_ratio": "約30%",
+      "weekday_daytime_note": "働き盛りの世代は市街地へ通勤中。地区には高齢者・主婦・幼児が多い。"
+    },
+    "major_landmarks": [
+      "豊間中学校（高台）",
+      "江名小学校（高台）",
+      "諏訪神社（高台）",
+      "中田山（津波避難地域）",
+      "豊間漁港（海岸沿い）",
+      "県道382号線（海岸通り）",
+      "国道6号線"
+    ]
+  },
+  "infrastructure": {
+    "power": {
+      "normal_status": "電力供給正常",
+      "earthquake_impact": "震度6以上で停電の可能性が高い"
+    },
+    "communication": {
+      "mobile_coverage": "良好（主要キャリア対応）",
+      "landline_availability": "ほとんどの家庭に固定電話あり",
+      "earthquake_impact": "基地局損傷や回線輻輳により繋がりにくくなる可能性"
+    },
+    "broadcast_system": {
+      "type": "防災行政無線（屋外スピーカー）",
+      "coverage": "地区全域",
+      "reliability": "老朽化により一部不鳴動の可能性あり"
+    }
+  },
+  "evacuation_training_knowledge": {
+    "description": "避難訓練を受けた住民が持つ知識。has_evacuation_training=trueの場合のみプロンプトに追加",
+    "principles": [
+      "津波警報発表時は直ちに高台へ避難する",
+      "海抜20m以上の場所を目指す",
+      "車での避難は原則禁止（渋滞を招くため）",
+      "避難所に行けない場合は近くの頑丈な建物の3階以上へ（垂直避難）",
+      "避難開始後は絶対に家に戻らない（忘れ物を取りに戻って命を落とす例が多い）",
+      "可能であれば、近くにいる高齢者や体の不自由な方の避難を手伝う"
+    ],
+    "time_awareness": {
+      "tsunami_arrival_estimate": "地震発生から約30分",
+      "recommended_evacuation_start": "揺れが収まったら直ちに避難開始",
+      "critical_note": "第1波が小さくても油断しない。第2波・第3波で急激に波高が上がることがある。"
+    },
+    "designated_shelters": [
+      {
+        "name": "望洋荘",
+        "type": "secondary",
+        "elevation_m": 25,
+        "capacity": 231,
+        "features": ["RC造", "福祉避難所として機能", "要配慮者優先"],
+        "access_notes": "高台の特別養護老人ホーム。高齢者・障害者とその介助者向け"
+      },
+      {
+        "name": "薄磯団地",
+        "type": "primary",
+        "elevation_m": 20,
+        "capacity": 307,
+        "features": ["RC造", "津波避難ビル", "垂直避難可能", "屋上開放"],
+        "access_notes": "復興公営住宅。海岸近くでも上層階への垂直避難で安全確保"
+      },
+      {
+        "name": "健登師記念会館",
+        "type": "secondary",
+        "elevation_m": 6.1,
+        "capacity": 25,
+        "features": ["公民館", "生活避難所向け"],
+        "access_notes": "海抜6.1mと低い。大津波警報時は不適。津波警報解除後の生活避難所向け"
+      },
+      {
+        "name": "豊間中学校",
+        "type": "primary",
+        "elevation_m": 30,
+        "capacity": 500,
+        "features": ["RC造", "津波避難ビル", "体育館", "広い校庭", "ヘリポート可"],
+        "access_notes": "震災後に高台移転。広域防災拠点として機能"
+      },
+      {
+        "name": "豊間団地",
+        "type": "primary",
+        "elevation_m": 25,
+        "capacity": 683,
+        "features": ["RC造", "津波避難ビル", "地区最大の収容力"],
+        "access_notes": "豊間地区最大の避難施設。夜間の逃げ遅れ時に有効"
+      },
+      {
+        "name": "沼ノ内団地",
+        "type": "primary",
+        "elevation_m": 20,
+        "capacity": 153,
+        "features": ["RC造", "津波避難ビル", "垂直避難可能"],
+        "access_notes": "沼ノ内地区の垂直避難の核"
+      },
+      {
+        "name": "江名公民館",
+        "type": "secondary",
+        "elevation_m": 15,
+        "capacity": 100,
+        "features": ["公民館", "物資集積拠点"],
+        "access_notes": "発災直後より復旧期の拠点向け。津波警報中は高台優先"
+      },
+      {
+        "name": "江名小学校",
+        "type": "primary",
+        "elevation_m": 25,
+        "capacity": 500,
+        "features": ["RC造", "体育館", "広い校庭", "貯水槽あり"],
+        "access_notes": "江名地区の主要避難拠点。断水時も生活用水確保可能"
+      }
+    ],
+    "tsunami_evacuation_areas": [
+      {
+        "name": "諏訪神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 30,
+        "capacity": 60,
+        "features": ["高台", "地盤が良好", "液状化リスク低"],
+        "access_notes": "地元で古くから津波避難場所として知られている"
+      },
+      {
+        "name": "八幡神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 33,
+        "features": ["高台", "一次避難場所"],
+        "access_notes": "近隣住民の一次避難場所。警報解除後は拠点避難所へ移動"
+      },
+      {
+        "name": "八坂神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 11,
+        "features": ["急峻な高台", "極小規模"],
+        "access_notes": "逃げ遅れた高齢者のための最後の砦。健常者は豊間公園へ"
+      },
+      {
+        "name": "豊間公園",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 30,
+        "capacity": 20500,
+        "features": ["広大な高台公園", "収容制限なし", "ヘリポート可", "車中泊スペース"],
+        "access_notes": "豊間地区の最終防衛ライン。第一に目指すべき避難場所"
+      },
+      {
+        "name": "金倉稲荷神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 22.8,
+        "capacity": 44,
+        "features": ["高台", "L2津波にも安全"],
+        "access_notes": "薄磯南作地区の安否確認拠点"
+      },
+      {
+        "name": "薄井神社",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 85,
+        "features": ["高台", "石段で堅固"],
+        "access_notes": "薄磯三反田地区の鎮守。パニック抑制効果も期待"
+      },
+      {
+        "name": "沼ノ内弁財天",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 200,
+        "features": ["高台", "視界良好"],
+        "access_notes": "沼ノ内地区の主力避難場所"
+      },
+      {
+        "name": "中田山",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 35,
+        "capacity": 1000,
+        "features": ["自然地形", "建物倒壊リスクなし", "サバイバルルート"],
+        "access_notes": "照明・雨風をしのぐ設備なし。懐中電灯・雨具必携"
+      },
+      {
+        "name": "江名幼稚園",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 25,
+        "capacity": 50,
+        "features": ["高台", "平坦な園庭"],
+        "access_notes": "日中は園児優先。夜間・休日は地域住民に開放"
+      },
+      {
+        "name": "小泉工業",
+        "type": "tsunami_evacuation_area",
+        "elevation_m": 27.6,
+        "capacity": 30,
+        "features": ["民間事業所", "最高レベルの海抜"],
+        "access_notes": "L2津波でも安全。従業員と近隣数世帯向け"
+      }
+    ],
+    "shelter_categories": {
+      "vertical_evacuation": ["薄磯団地", "豊間団地", "沼ノ内団地", "豊間中学校", "江名小学校"],
+      "welfare_shelter": ["望洋荘"],
+      "terrain_evacuation": ["諏訪神社", "八幡神社", "八坂神社", "豊間公園", "金倉稲荷神社", "薄井神社", "沼ノ内弁財天", "中田山"],
+      "life_support_shelter": ["健登師記念会館", "江名公民館"]
+    },
+    "evacuation_phases": {
+      "immediate_0_30min": {
+        "description": "発災直後（0〜30分）：高さを稼ぐ",
+        "recommended": ["豊間公園", "中田山", "小泉工業", "諏訪神社"]
+      },
+      "tsunami_30min_6h": {
+        "description": "津波到達〜浸水期：RC造で待機",
+        "recommended": ["豊間団地", "薄磯団地", "豊間中学校"]
+      },
+      "rescue_6h_days": {
+        "description": "救助・復旧期：広域避難所",
+        "recommended": ["豊間中学校", "豊間公園", "江名小学校"]
+      },
+      "recovery_days_months": {
+        "description": "生活再建期：拠点避難所",
+        "recommended": ["望洋荘", "健登師記念会館", "江名公民館"]
+      }
+    },
+    "known_hazards": [
+      {
+        "area": "海岸から500m以内",
+        "risk": "津波到達まで約10分と推定。最優先で避難が必要。"
+      },
+      {
+        "area": "県道382号線（海岸通り）",
+        "risk": "海抜5m以下の低地を通る。津波時は通行危険。"
+      },
+      {
+        "area": "豊間漁港周辺",
+        "risk": "最も危険な区域。発災後は立ち入り禁止。"
+      },
+      {
+        "area": "海抜10m以下の住宅地",
+        "risk": "2011年の津波では浸水した区域。避難対象。"
+      }
+    ]
+  },
+  "known_hazards": [
+    {
+      "area": "海岸から500m以内",
+      "risk": "津波到達まで約10分と推定。最優先で避難が必要。"
+    },
+    {
+      "area": "県道382号線（海岸通り）",
+      "risk": "海抜5m以下の低地を通る。津波時は通行危険。"
+    },
+    {
+      "area": "豊間漁港周辺",
+      "risk": "最も危険な区域。発災後は立ち入り禁止。"
+    },
+    {
+      "area": "海抜10m以下の住宅地",
+      "risk": "2011年の津波では浸水した区域。避難対象。"
+    }
+  ],
+  "local_knowledge": {
+    "historical_events": [
+      {
+        "year": 2011,
+        "event": "東日本大震災",
+        "impact": "津波により甚大な被害。死者・行方不明者多数。",
+        "lessons": [
+          "「ここまで来ない」という過信が多くの犠牲者を出した",
+          "引き波が始まったら数分以内に大波が来る",
+          "車で避難しようとして渋滞に巻き込まれた人が多かった"
+        ]
+      }
+    ],
+    "local_sayings": [
+      "津波てんでんこ（各自がまず自分の命を守る）",
+      "地震があったら高台へ",
+      "津波は繰り返し来る。一度引いても戻るな"
+    ]
+  }
+}

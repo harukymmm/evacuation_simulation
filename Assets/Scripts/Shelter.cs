@@ -13,10 +13,13 @@ public class Shelter : MonoBehaviour{
     [Header("避難所情報")]
     [Tooltip("避難所の表示名（例: 豊間小学校）")]
     public string displayName = ""; // 表示名
-    
+
     [Tooltip("避難所の説明（例: 海抜20m、耐震構造）")]
     [TextArea(2, 4)]
     public string description = ""; // 説明文
+
+    [Tooltip("避難所の海抜（メートル）。0の場合はY座標から自動計算")]
+    public float elevationMeters = 0f; // 海抜（メートル）
     
     [Header("収容情報")]
     [Tooltip("trueの場合、PLATEAUの床面積データから自動計算します")]
@@ -64,20 +67,26 @@ public class Shelter : MonoBehaviour{
     public AcceptRejected onRejected;
 
     private EnvManager _env;
-    
+
     // NavMesh上の位置キャッシュ（パフォーマンス最適化のため）
     private Vector3? _cachedNavMeshPosition = null;
     private bool _navMeshPositionCalculated = false;
 
+    // 収容状況ログ用：最後に出力した閾値（残りキャパシティが75%, 50%, 25%, 5%を下回った時）
+    private int _lastLoggedThreshold = 100;
+
     void Start() {
         _env = GetComponentInParent<EnvManager>();
-        _env.OnEndEpisode += (float _) => {
+        _env.OnEndEpisode += (float _, float __) => {
             // 環境側のエピソード終了時に収容人数をリセット
             NowAccCount = 0;
             // NavMeshキャッシュもリセット
             _navMeshPositionCalculated = false;
             _cachedNavMeshPosition = null;
-            Debug.Log($"[Shelter] {gameObject.name}: エピソード終了 - 収容人数をリセットしました。MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
+            // 収容状況ログ閾値もリセット（100%からスタート）
+            _lastLoggedThreshold = 100;
+            string shelterDisplayName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
+            Debug.Log($"[Shelter] {shelterDisplayName}: エピソード終了 - 収容人数をリセットしました。MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
         };
         
         // 初期値をログ出力
@@ -190,6 +199,22 @@ public class Shelter : MonoBehaviour{
     }
 
     /// <summary>
+    /// 避難所の海抜（メートル）を取得
+    /// elevationMetersが設定されている場合はその値を返し、
+    /// 0の場合はY座標を海抜として返す
+    /// </summary>
+    /// <returns>海抜（メートル）</returns>
+    public float GetElevation()
+    {
+        if (elevationMeters > 0f)
+        {
+            return elevationMeters;
+        }
+        // elevationMetersが設定されていない場合はY座標を使用
+        return transform.position.y;
+    }
+
+    /// <summary>
     /// ShelterPoint（子オブジェクト）のNavMesh上の位置を取得
     /// キャッシュを使用してパフォーマンスを最適化
     /// </summary>
@@ -251,21 +276,62 @@ public class Shelter : MonoBehaviour{
     /// </summary>
     /// <param name="other"></param>
     void OnTriggerEnter(Collider other) {
-        Debug.Log($"[Shelter] OnTriggerEnter called on {gameObject.name} - Colliding with: {other.name}, Tag: {other.tag}");
-        Debug.Log($"[Shelter] {gameObject.name}: 現在の収容状況 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
-        
+        string shelterDisplayName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
+
         bool isEvacuee = other.CompareTag("Evacuee");
         if (isEvacuee) {
-            Debug.Log($"[Shelter] Evacuee detected! Shelter: {gameObject.name}, Evacuee: {other.name}");
             Evacuee evacuee = other.GetComponent<Evacuee>();
             if (evacuee != null) {
+                // 避難処理を実行（記録はEvacuee.Evacuation内で避難成功時にのみ行う）
                 evacuee.Evacuation(this);
-                Debug.Log($"[Shelter] {gameObject.name}: Evacuation処理後 - MaxCapacity: {MaxCapacity}, NowAccCount: {NowAccCount}, CurrentCapacity: {currentCapacity}");
+
+                // 収容率が閾値（5%, 25%, 50%, 75%）を超えた時のみログ出力
+                LogCapacityIfThresholdCrossed(shelterDisplayName);
             } else {
-                Debug.LogError($"[Shelter] Evacuee component not found on {other.name}");
+                Debug.LogError($"[Shelter] {shelterDisplayName}: Evacuee component not found on {other.name}");
             }
-        } else {
-            Debug.LogWarning($"[Shelter] Collision with non-Evacuee object: {other.name}, Tag: {other.tag}");
+        }
+    }
+
+    /// <summary>
+    /// 残りキャパシティ率が閾値を下回った時のみログを出力
+    /// 閾値: 75%, 50%, 25%, 5%（残りキャパシティがこれらを下回った時）
+    /// </summary>
+    private void LogCapacityIfThresholdCrossed(string shelterDisplayName)
+    {
+        if (MaxCapacity <= 0) return;
+
+        // 残りキャパシティ率（残り収容可能人数 / 最大収容人数）を計算
+        float remainingRate = (float)currentCapacity / MaxCapacity * 100f;
+
+        // 閾値リスト（降順：75% → 50% → 25% → 5%）
+        int[] thresholds = { 75, 50, 25, 5 };
+
+        foreach (int threshold in thresholds)
+        {
+            // 残りキャパシティ率が閾値を下回り、かつまだこの閾値のログを出力していない場合
+            if (remainingRate < threshold && _lastLoggedThreshold > threshold)
+            {
+                _lastLoggedThreshold = threshold;
+                Debug.Log($"[Shelter] {shelterDisplayName}: 残り収容可能人数{threshold}%未満 - 収容可能人数: {MaxCapacity}, 残り収容可能人数: {currentCapacity}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// SimulationMetricsに避難完了を記録
+    /// </summary>
+    private void RecordEvacuationToMetrics(Evacuee evacuee)
+    {
+        var metrics = FindFirstObjectByType<SimulationMetrics>();
+        if (metrics != null && _env != null)
+        {
+            string agentId = evacuee.EvacueeId ?? evacuee.gameObject.name;
+            float evacuationTime = _env.CurrentTimeSec;
+            string shelterName = !string.IsNullOrEmpty(displayName) ? displayName : gameObject.name;
+            string agentType = evacuee.UseLLMDecision ? "LLM" : "RuleBased";
+
+            metrics.RecordEvacuation(agentId, evacuationTime, shelterName, agentType);
         }
     }
 }
