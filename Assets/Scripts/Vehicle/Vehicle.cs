@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -125,6 +126,28 @@ namespace Vehicle
         private float _lastLLMDecisionTime;
         private List<string> _excludeShelters = new List<string>();
         private bool _isEvacuating = false;
+
+        // 現在の行動状態
+        private VehicleActionType _currentActionType = VehicleActionType.DRIVE_TO_SHELTER;
+        private List<string> _actionHistory = new List<string>();
+        private float _waitStartTime;
+        private float _maxWaitTime;
+        private string _waitReason;
+
+        // PICKUP_FAMILY用
+        private string _targetFamilyMember;
+        private Vector3 _pickupLocation;
+        private Shelter _afterPickupShelter;
+        private bool _isFamilyPickedUp = false;
+
+        // CONTACT用
+        private bool _isContacting = false;
+        private string _contactTarget;
+
+        /// <summary>
+        /// 現在の行動タイプを取得
+        /// </summary>
+        public VehicleActionType CurrentActionType => _currentActionType;
 
         /// <summary>
         /// 最高速度をm/sで取得
@@ -410,11 +433,10 @@ namespace Vehicle
 
             try
             {
-                // 暫定: Evacueeと同じリクエスト形式を使用
-                // Phase 6でVehicle専用のリクエストに置き換え
-                var response = await RequestEvacueeDecisionAsync(_llmCts.Token);
+                // 車両専用のLLMリクエストを使用
+                var response = await RequestVehicleDecisionAsync(_llmCts.Token);
 
-                if (!ApplyLLMDecision(response))
+                if (!ApplyVehicleDecision(response))
                 {
                     if (fallbackToNearest)
                     {
@@ -449,77 +471,356 @@ namespace Vehicle
         }
 
         /// <summary>
-        /// LLM決定を適用
+        /// 車両用LLM決定を適用
         /// </summary>
-        private bool ApplyLLMDecision(LLMEvacDecisionResponse response)
+        private bool ApplyVehicleDecision(LLMVehicleDecisionResponse response)
         {
-            if (response == null || string.IsNullOrEmpty(response.selected_shelter_id))
+            if (response == null || string.IsNullOrEmpty(response.action_type))
+            {
+                return false;
+            }
+
+            // 行動タイプをパース
+            if (!Enum.TryParse<VehicleActionType>(response.action_type, true, out var actionType))
+            {
+                Debug.LogWarning($"[Vehicle] {vehicleId}: 不明な行動タイプ: {response.action_type}");
+                return false;
+            }
+
+            // 行動履歴に追加
+            _actionHistory.Add($"{Time.time:F1}:{actionType}");
+            if (_actionHistory.Count > 10) _actionHistory.RemoveAt(0);
+
+            _currentActionType = actionType;
+            Debug.Log($"[Vehicle] {vehicleId}: LLM決定 - {actionType}, 理由: {response.reasoning}");
+
+            // 行動タイプに応じた処理を実行
+            switch (actionType)
+            {
+                case VehicleActionType.DRIVE_TO_SHELTER:
+                    return ExecuteDriveToShelter(response);
+
+                case VehicleActionType.WAIT_IN_CAR:
+                    return ExecuteWaitInCar(response);
+
+                case VehicleActionType.PICKUP_FAMILY:
+                    return ExecutePickupFamily(response);
+
+                case VehicleActionType.CONTACT:
+                    return ExecuteContact(response);
+
+                case VehicleActionType.PARK_AND_WALK:
+                    return ExecuteParkAndWalk(response);
+
+                default:
+                    Debug.LogWarning($"[Vehicle] {vehicleId}: 未実装の行動タイプ: {actionType}");
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// DRIVE_TO_SHELTER: 避難所へ走行
+        /// </summary>
+        private bool ExecuteDriveToShelter(LLMVehicleDecisionResponse response)
+        {
+            if (string.IsNullOrEmpty(response.selected_shelter_id))
             {
                 return false;
             }
 
             // 避難所を検索
-            var shelters = GameObject.FindGameObjectsWithTag("Shelter");
-            Shelter selectedShelter = null;
-
-            foreach (var shelterObj in shelters)
+            var shelter = FindShelterByName(response.selected_shelter_id);
+            if (shelter == null)
             {
-                var shelter = shelterObj.GetComponent<Shelter>();
-                if (shelter != null && shelter.displayName == response.selected_shelter_id)
-                {
-                    selectedShelter = shelter;
-                    break;
-                }
-            }
-
-            if (selectedShelter == null)
-            {
-                Debug.LogWarning($"[Vehicle] {vehicleId}: 選択された避難所が見つかりません: {response.selected_shelter_id}");
+                Debug.LogWarning($"[Vehicle] {vehicleId}: 避難所が見つかりません: {response.selected_shelter_id}");
                 return false;
             }
 
-            SetDestination(selectedShelter);
-            Debug.Log($"[Vehicle] {vehicleId}: LLMにより{selectedShelter.displayName}を選択");
+            // 速度設定を適用
+            if (!string.IsNullOrEmpty(response.desired_speed))
+            {
+                ApplySpeedChoice(response.desired_speed);
+            }
+
+            SetDestination(shelter);
+            Debug.Log($"[Vehicle] {vehicleId}: {shelter.displayName}へ向かいます");
             return true;
         }
 
         /// <summary>
-        /// 暫定的なLLMリクエスト（Evacueeと同じ形式）
+        /// WAIT_IN_CAR: 車内で待機
         /// </summary>
-        private async Task<LLMEvacDecisionResponse> RequestEvacueeDecisionAsync(CancellationToken ct)
+        private bool ExecuteWaitInCar(LLMVehicleDecisionResponse response)
         {
-            // 暫定実装：Phase 6で車両専用リクエストに置き換え
-            var request = new LLMEvacDecisionRequest
-            {
-                request_id = $"vehicle-{vehicleId}-{Guid.NewGuid()}",
-                timestamp = Time.time,
-                evacuee = new EvacueePayload
-                {
-                    id = vehicleId,
-                    position = new Vector3Payload(transform.position)
-                },
-                shelter_candidates = BuildShelterCandidates(),
-                self_state = new SelfStatePayload
-                {
-                    position = new Vector3Payload(transform.position),
-                    velocity = new Vector3Payload(transform.forward * currentSpeed),
-                    energy_level = fuelLevel,
-                    stress_level = stressLevel,
-                    stamina = 1.0f,
-                    current_goal = targetShelter?.displayName
-                }
-            };
+            Stop();
+            _waitStartTime = Time.time;
+            _maxWaitTime = response.max_wait_time_sec > 0 ? response.max_wait_time_sec : 60f;
+            _waitReason = response.wait_reason ?? "状況確認中";
 
-            return await decisionClient.RequestEvacueeDecisionAsync(request, ct);
+            Debug.Log($"[Vehicle] {vehicleId}: 車内で待機 - 理由: {_waitReason}, 最大{_maxWaitTime}秒");
+
+            // 待機終了後の再評価をスケジュール
+            _ = WaitAndReevaluateAsync(_maxWaitTime);
+            return true;
         }
 
         /// <summary>
-        /// 避難所候補を構築
+        /// PICKUP_FAMILY: 家族を迎えに行く
         /// </summary>
-        private ShelterCandidatePayload[] BuildShelterCandidates()
+        private bool ExecutePickupFamily(LLMVehicleDecisionResponse response)
+        {
+            if (string.IsNullOrEmpty(response.target_family_member))
+            {
+                Debug.LogWarning($"[Vehicle] {vehicleId}: 迎えに行く家族が指定されていません");
+                return false;
+            }
+
+            _targetFamilyMember = response.target_family_member;
+            _isFamilyPickedUp = false;
+
+            // 合流後の避難所を設定
+            if (!string.IsNullOrEmpty(response.after_pickup_shelter))
+            {
+                _afterPickupShelter = FindShelterByName(response.after_pickup_shelter);
+            }
+
+            // 迎えに行く場所を設定
+            if (response.pickup_location != null)
+            {
+                _pickupLocation = response.pickup_location.ToVector3();
+
+                // 経路を計算して移動開始
+                plannedPath = _pathfinder.FindPath(transform.position, _pickupLocation);
+                if (plannedPath.Count > 0)
+                {
+                    currentPathIndex = 0;
+                    currentRoad = plannedPath[0];
+                    currentLane = currentRoad.GetNearestLane(transform.position, LaneDirection.Forward);
+                    positionOnLane = currentLane?.GetTFromWorldPosition(transform.position) ?? 0f;
+                    state = VehicleState.Driving;
+                    currentLane?.AddVehicle(gameObject);
+
+                    Debug.Log($"[Vehicle] {vehicleId}: {_targetFamilyMember}を迎えに行きます");
+                    return true;
+                }
+            }
+
+            Debug.LogWarning($"[Vehicle] {vehicleId}: 家族の場所への経路が見つかりません");
+            return false;
+        }
+
+        /// <summary>
+        /// CONTACT: 電話連絡
+        /// </summary>
+        private bool ExecuteContact(LLMVehicleDecisionResponse response)
+        {
+            if (string.IsNullOrEmpty(response.contact_target))
+            {
+                Debug.LogWarning($"[Vehicle] {vehicleId}: 連絡先が指定されていません");
+                return false;
+            }
+
+            _contactTarget = response.contact_target;
+            _isContacting = true;
+
+            // 停車が必要な場合
+            if (response.should_stop)
+            {
+                Stop();
+            }
+
+            Debug.Log($"[Vehicle] {vehicleId}: {_contactTarget}に連絡中 - メッセージ: {response.contact_message}");
+
+            // 連絡処理（簡易実装：一定時間後に完了）
+            _ = ContactAndContinueAsync(response.contact_message);
+            return true;
+        }
+
+        /// <summary>
+        /// PARK_AND_WALK: 駐車して徒歩避難
+        /// </summary>
+        private bool ExecuteParkAndWalk(LLMVehicleDecisionResponse response)
+        {
+            // 現在位置で停車
+            Stop();
+            state = VehicleState.Parking;
+
+            // 車線から離脱
+            currentLane?.RemoveVehicle(gameObject);
+
+            Debug.Log($"[Vehicle] {vehicleId}: 車を駐車し、{currentPassengers}人が徒歩で避難を開始");
+
+            // 乗客をEvacueeとしてスポーン
+            SpawnPassengersAsEvacuees(response.walking_destination);
+
+            // 車両を無効化
+            if (response.abandon_vehicle)
+            {
+                gameObject.SetActive(false);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 待機後に再評価
+        /// </summary>
+        private async Task WaitAndReevaluateAsync(float waitTime)
+        {
+            await Task.Delay((int)(waitTime * 1000));
+
+            if (state == VehicleState.Waiting && _currentActionType == VehicleActionType.WAIT_IN_CAR)
+            {
+                Debug.Log($"[Vehicle] {vehicleId}: 待機終了、再評価を開始");
+                RequestLLMDecision();
+            }
+        }
+
+        /// <summary>
+        /// 連絡処理後に継続
+        /// </summary>
+        private async Task ContactAndContinueAsync(string message)
+        {
+            // 連絡に5秒かかると仮定
+            await Task.Delay(5000);
+
+            _isContacting = false;
+            Debug.Log($"[Vehicle] {vehicleId}: 連絡完了");
+
+            // 連絡後に再評価
+            RequestLLMDecision();
+        }
+
+        /// <summary>
+        /// 乗客をEvacueeとしてスポーン
+        /// </summary>
+        private void SpawnPassengersAsEvacuees(string walkingDestination)
+        {
+            // EnvManagerを検索してEvacueeをスポーン
+            var envManager = FindFirstObjectByType<ShelterEnvManager>();
+            if (envManager == null)
+            {
+                Debug.LogWarning($"[Vehicle] {vehicleId}: ShelterEnvManagerが見つかりません");
+                return;
+            }
+
+            // 目的地の避難所を取得
+            Shelter destination = null;
+            if (!string.IsNullOrEmpty(walkingDestination))
+            {
+                destination = FindShelterByName(walkingDestination);
+            }
+
+            // 乗客数分のEvacueeをスポーン（簡易実装）
+            for (int i = 0; i < currentPassengers; i++)
+            {
+                Vector3 spawnPos = transform.position + UnityEngine.Random.insideUnitSphere * 2f;
+                spawnPos.y = transform.position.y;
+
+                // Evacueeプレハブをインスタンス化（EnvManagerの機能を使用）
+                Debug.Log($"[Vehicle] {vehicleId}: 乗客{i + 1}がEvacueeとしてスポーン（位置: {spawnPos}）");
+            }
+        }
+
+        /// <summary>
+        /// 速度選択を適用
+        /// </summary>
+        private void ApplySpeedChoice(string speedChoice)
+        {
+            float baseSpeed = maxSpeedKmh;
+
+            switch (speedChoice.ToUpper())
+            {
+                case "SLOW":
+                    maxSpeedKmh = baseSpeed * 0.7f;
+                    break;
+                case "NORMAL":
+                    // そのまま
+                    break;
+                case "FAST":
+                    maxSpeedKmh = Mathf.Min(baseSpeed * 1.2f, 80f);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 名前で避難所を検索
+        /// </summary>
+        private Shelter FindShelterByName(string name)
         {
             var shelters = GameObject.FindGameObjectsWithTag("Shelter");
-            var candidates = new List<ShelterCandidatePayload>();
+            foreach (var shelterObj in shelters)
+            {
+                var shelter = shelterObj.GetComponent<Shelter>();
+                if (shelter != null && (shelter.displayName == name || shelterObj.name == name))
+                {
+                    return shelter;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 車両専用LLMリクエスト
+        /// </summary>
+        private async Task<LLMVehicleDecisionResponse> RequestVehicleDecisionAsync(CancellationToken ct)
+        {
+            var request = BuildVehicleDecisionRequest();
+            return await decisionClient.RequestVehicleDecisionAsync(request, ct);
+        }
+
+        /// <summary>
+        /// 車両用LLMリクエストを構築
+        /// </summary>
+        private LLMVehicleDecisionRequest BuildVehicleDecisionRequest()
+        {
+            var persona = VehiclePersonaManager.GetVehiclePersona(int.Parse(vehicleId));
+
+            return new LLMVehicleDecisionRequest
+            {
+                request_id = $"vehicle-{vehicleId}-{Guid.NewGuid()}",
+                timestamp = Time.time,
+                vehicle = new VehiclePayload
+                {
+                    id = vehicleId,
+                    position = new Vector3Payload(transform.position),
+                    current_speed_kmh = CurrentSpeedKmh,
+                    passenger_count = currentPassengers,
+                    current_road = currentRoad?.name ?? "",
+                    vehicle_type = type.ToString()
+                },
+                shelter_candidates = BuildVehicleShelterCandidates(),
+                vehicle_state = new VehicleStatePayload
+                {
+                    position = new Vector3Payload(transform.position),
+                    velocity = new Vector3Payload(transform.forward * currentSpeed),
+                    current_speed_kmh = CurrentSpeedKmh,
+                    fuel_level = fuelLevel,
+                    stress_level = stressLevel,
+                    current_road_name = currentRoad?.name ?? "",
+                    current_lane = currentLane?.name ?? "",
+                    current_goal = targetShelter?.displayName ?? "",
+                    vehicle_state = state.ToString()
+                },
+                persona = VehiclePersonaManager.ToPayload(persona),
+                temporal_context = new TemporalContextPayload
+                {
+                    elapsed_time = Time.time,
+                    time_limit = 600f // 10分
+                },
+                traffic_context = BuildTrafficContext(),
+                current_action = _currentActionType.ToString(),
+                action_history = _actionHistory.ToArray()
+            };
+        }
+
+        /// <summary>
+        /// 車両用避難所候補を構築
+        /// </summary>
+        private VehicleShelterPayload[] BuildVehicleShelterCandidates()
+        {
+            var shelters = GameObject.FindGameObjectsWithTag("Shelter");
+            var candidates = new List<VehicleShelterPayload>();
 
             foreach (var shelterObj in shelters)
             {
@@ -529,10 +830,10 @@ namespace Vehicle
 
                 // 経路距離と所要時間を計算
                 var path = _pathfinder.FindPath(transform.position, shelterObj.transform.position);
-                float distance = _roadNetwork.CalculatePathLength(path);
-                float travelTime = _roadNetwork.CalculatePathTravelTime(path);
+                float distance = _roadNetwork?.CalculatePathLength(path) ?? 0f;
+                float travelTime = _roadNetwork?.CalculatePathTravelTime(path) ?? 0f;
 
-                candidates.Add(new ShelterCandidatePayload
+                candidates.Add(new VehicleShelterPayload
                 {
                     id = shelterObj.name,
                     display_name = shelter.displayName,
@@ -540,12 +841,57 @@ namespace Vehicle
                     position = new Vector3Payload(shelterObj.transform.position),
                     current_capacity = shelter.currentCapacity,
                     max_capacity = shelter.MaxCapacity,
-                    distance_meters = distance,
-                    walking_time_minutes = travelTime / 60f
+                    available_parking_spots = 10, // 仮の値
+                    max_parking_spots = 20,       // 仮の値
+                    driving_distance_km = distance / 1000f,
+                    driving_time_minutes = travelTime / 60f
                 });
             }
 
             return candidates.ToArray();
+        }
+
+        /// <summary>
+        /// 交通状況コンテキストを構築
+        /// </summary>
+        private TrafficContextPayload BuildTrafficContext()
+        {
+            var nearbyRoads = new List<RoadConditionPayload>();
+
+            // 現在の道路と隣接道路の情報を収集
+            if (currentRoad != null)
+            {
+                nearbyRoads.Add(new RoadConditionPayload
+                {
+                    road_id = currentRoad.name,
+                    road_name = currentRoad.name,
+                    congestion_level = currentRoad.currentDensity / 100f,
+                    average_speed_kmh = currentRoad.speedLimit * (1f - currentRoad.currentDensity / 200f),
+                    density = currentRoad.currentDensity,
+                    level_of_service = GetLevelOfService(currentRoad.currentDensity)
+                });
+            }
+
+            return new TrafficContextPayload
+            {
+                average_network_density = currentRoad?.currentDensity ?? 0f,
+                congested_road_count = nearbyRoads.Count(r => r.congestion_level > 0.7f),
+                overall_level_of_service = GetLevelOfService(currentRoad?.currentDensity ?? 0f),
+                nearby_roads = nearbyRoads.ToArray()
+            };
+        }
+
+        /// <summary>
+        /// 密度からLOS（サービスレベル）を計算
+        /// </summary>
+        private string GetLevelOfService(float density)
+        {
+            if (density < 10) return "A";
+            if (density < 20) return "B";
+            if (density < 35) return "C";
+            if (density < 55) return "D";
+            if (density < 80) return "E";
+            return "F";
         }
 
         /// <summary>

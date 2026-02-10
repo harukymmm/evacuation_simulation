@@ -24,6 +24,11 @@ from memory_summarizer import (
     get_recent_contacts,
 )
 from memory_manager import initialize_memory_manager, get_memory_manager
+from prompts.vehicle_prompts import (
+    build_vehicle_system_prompt,
+    build_vehicle_user_prompt,
+    heuristic_vehicle_selection,
+)
 
 
 load_dotenv()
@@ -3186,6 +3191,139 @@ async def process_conversation_continuation(payload: Dict[str, Any]) -> Dict[str
         return result
 
 
+async def process_vehicle_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    車両用LLM意思決定を処理する。
+
+    Args:
+        payload: 車両リクエストペイロード（LLMVehicleDecisionRequest相当）
+
+    Returns:
+        車両レスポンスペイロード（LLMVehicleDecisionResponse相当）
+    """
+    request_id = payload.get("request_id", f"vehicle-{random.randint(0, 1_000_000)}")
+    vehicle = payload.get("vehicle", {})
+    vehicle_id = vehicle.get("id", "unknown")
+
+    print(f"[LLM SERVER] 車両リクエスト受信: vehicle_id={vehicle_id}, request_id={request_id}")
+
+    # プロンプトを構築
+    system_prompt = build_vehicle_system_prompt()
+    user_prompt = build_vehicle_user_prompt(payload)
+
+    decision = None
+    error_info = None
+    source = "heuristic"
+
+    if OPENAI_CLIENT is not None:
+        try:
+            content, error_info = await _call_openai_with_retry(system_prompt, user_prompt)
+            if content is not None:
+                decision = _safe_load_json(content)
+                source = "llm"
+        except Exception as exc:
+            print(f"[LLM SERVER] 車両LLM呼び出しで例外: {exc}")
+            error_info = {
+                "error_type": "UnexpectedError",
+                "error_message": str(exc),
+            }
+
+    # レスポンスを構築
+    if decision is None:
+        # フォールバック: ヒューリスティック選択
+        action_type = "DRIVE_TO_SHELTER"
+        selected_shelter_id = heuristic_vehicle_selection(payload)
+        reasoning = "Fallback: LLM応答なしのためヒューリスティック選択"
+        confidence = 0.5
+        desired_speed = "NORMAL"
+        route_preference = "FASTEST"
+    else:
+        action_type = decision.get("action_type", "DRIVE_TO_SHELTER")
+        reasoning = decision.get("reasoning", "LLM decision")
+        confidence = float(decision.get("confidence", 0.5))
+        source = "llm"
+
+        # DRIVE_TO_SHELTER のフィールド
+        selected_shelter_id = decision.get("selected_shelter_id")
+        if action_type == "DRIVE_TO_SHELTER" and not selected_shelter_id:
+            selected_shelter_id = heuristic_vehicle_selection(payload)
+        desired_speed = decision.get("desired_speed", "NORMAL")
+        route_preference = decision.get("route_preference", "FASTEST")
+
+    # 基本レスポンス
+    response_payload = {
+        "request_id": request_id,
+        "vehicle_id": vehicle_id,
+        "action_type": action_type,
+        "reasoning": reasoning,
+        "confidence": confidence,
+    }
+
+    # 行動タイプ別フィールドを追加
+    if action_type == "DRIVE_TO_SHELTER":
+        response_payload["selected_shelter_id"] = selected_shelter_id
+        response_payload["desired_speed"] = desired_speed
+        response_payload["route_preference"] = route_preference
+
+    elif action_type == "WAIT_IN_CAR":
+        response_payload["wait_reason"] = decision.get("wait_reason", "渋滞待ち") if decision else "渋滞待ち"
+        response_payload["max_wait_time_sec"] = decision.get("max_wait_time_sec", 300) if decision else 300
+        response_payload["engine_state"] = decision.get("engine_state", "ON") if decision else "ON"
+
+    elif action_type == "PICKUP_FAMILY":
+        response_payload["target_family_member"] = decision.get("target_family_member") if decision else None
+        if decision and decision.get("pickup_location"):
+            response_payload["pickup_location"] = decision["pickup_location"]
+        response_payload["after_pickup_shelter"] = decision.get("after_pickup_shelter") if decision else None
+
+    elif action_type == "CONTACT":
+        response_payload["contact_target"] = decision.get("contact_target") if decision else None
+        response_payload["contact_message"] = decision.get("contact_message") if decision else None
+        response_payload["should_stop"] = decision.get("should_stop", False) if decision else False
+
+    elif action_type == "PARK_AND_WALK":
+        if decision and decision.get("parking_location"):
+            response_payload["parking_location"] = decision["parking_location"]
+        response_payload["walking_destination"] = decision.get("walking_destination") if decision else None
+        response_payload["abandon_vehicle"] = decision.get("abandon_vehicle", False) if decision else False
+
+    # エラー情報
+    if error_info is not None:
+        response_payload["llm_error"] = error_info
+
+    # ログ出力
+    input_snapshot = {
+        "vehicle_id": vehicle_id,
+        "position": vehicle.get("position"),
+        "current_speed_kmh": vehicle.get("current_speed_kmh"),
+        "passenger_count": vehicle.get("passenger_count"),
+    }
+    output_snapshot = {
+        "action_type": action_type,
+        "reasoning": reasoning,
+        "confidence": confidence,
+    }
+    if selected_shelter_id:
+        output_snapshot["selected_shelter_id"] = selected_shelter_id
+
+    _log_decision(
+        evacuee_id=f"vehicle_{vehicle_id}",
+        request_id=request_id,
+        source=source,
+        input_snapshot=input_snapshot,
+        output_snapshot=output_snapshot,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        experiment_id=payload.get("experiment_id"),
+        episode_id=payload.get("episode_id"),
+        episode_elapsed_time=payload.get("episode_elapsed_time"),
+    )
+
+    print(f"[LLM SERVER] 車両レスポンス送信: action_type={action_type}, vehicle_id={vehicle_id}")
+
+    return response_payload
+
+
 async def _handle_single_message(
     websocket: websockets.WebSocketServerProtocol, message: str
 ) -> None:
@@ -3208,6 +3346,9 @@ async def _handle_single_message(
         elif request_type == "conversation_continuation":
             # 会話継続判断リクエスト
             response = await process_conversation_continuation(payload)
+        elif request_type == "vehicle_decision":
+            # 車両意思決定リクエスト
+            response = await process_vehicle_payload(payload)
         else:
             # 通常の避難意思決定リクエスト
             response = await process_payload(payload)
