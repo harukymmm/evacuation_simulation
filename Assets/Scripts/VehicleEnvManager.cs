@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
 using RoadNetwork;
@@ -170,6 +171,7 @@ public class VehicleEnvManager : MonoBehaviour
 
     /// <summary>
     /// 車両を生成
+    /// VehicleDataManagerから家族ベースの車両データを取得してスポーン
     /// </summary>
     public void Create()
     {
@@ -182,8 +184,23 @@ public class VehicleEnvManager : MonoBehaviour
         vehicles.Clear();
         totalPassengerCount = 0;
 
-        for (int i = 0; i < spawnVehicleCount; i++)
+        // VehicleDataManagerから車両データを取得
+        var vehicleDataList = VehicleDataManager.GetAllVehicles().ToList();
+
+        if (vehicleDataList.Count == 0)
         {
+            Debug.LogWarning("[VehicleEnvManager] 車両データがありません。families.csvから生成を試みます。");
+            VehicleDataManager.GenerateVehiclesFromFamilies();
+            vehicleDataList = VehicleDataManager.GetAllVehicles().ToList();
+        }
+
+        // spawnVehicleCount分の車両を生成（データがあれば）
+        int spawnCount = Mathf.Min(spawnVehicleCount, vehicleDataList.Count);
+
+        for (int i = 0; i < spawnCount; i++)
+        {
+            var vehicleData = vehicleDataList[i];
+
             Vector3 spawnPosition;
             RoadSegment spawnRoad;
 
@@ -202,13 +219,13 @@ public class VehicleEnvManager : MonoBehaviour
 
             if (spawnRoad == null)
             {
-                Debug.LogWarning($"[VehicleEnvManager] 車両 {i + 1} のスポーン位置に道路が見つかりません");
+                Debug.LogWarning($"[VehicleEnvManager] 車両 {vehicleData.vehicleId} のスポーン位置に道路が見つかりません");
                 continue;
             }
 
             // 車両を生成
             var vehicleObj = Instantiate(vehiclePrefab, spawnPosition, Quaternion.identity, transform);
-            vehicleObj.name = $"Vehicle_{i + 1}";
+            vehicleObj.name = $"Vehicle_{vehicleData.vehicleId}";
 
             var vehicle = vehicleObj.GetComponent<Vehicle.Vehicle>();
             if (vehicle == null)
@@ -216,14 +233,19 @@ public class VehicleEnvManager : MonoBehaviour
                 vehicle = vehicleObj.AddComponent<Vehicle.Vehicle>();
             }
 
-            // 初期設定
-            vehicle.SetVehicleId(i + 1);
+            // 車両データを設定（家族ベース）
+            vehicle.SetVehicleId(vehicleData.vehicleId);
+            vehicle.ownerFamilyId = vehicleData.familyId;
+            vehicle.driverAgentId = vehicleData.driverAgentId;
+            vehicle.passengerAgentIds = new List<int>(vehicleData.passengerAgentIds);
+
+            // 道路設定
             vehicle.currentRoad = spawnRoad;
             vehicle.currentLane = spawnRoad.GetNearestLane(spawnPosition, LaneDirection.Forward);
             vehicle.positionOnLane = vehicle.currentLane?.GetTFromWorldPosition(spawnPosition) ?? 0f;
 
-            // 乗客数をランダム設定（1-5人）
-            vehicle.currentPassengers = UnityEngine.Random.Range(1, vehicle.passengerCapacity + 1);
+            // 乗客数を設定（運転者 + 同乗者）
+            vehicle.currentPassengers = vehicleData.TotalPassengers;
             totalPassengerCount += vehicle.currentPassengers;
 
             // 車線に登録
@@ -235,7 +257,7 @@ public class VehicleEnvManager : MonoBehaviour
             vehicle.MoveToNearestShelter();
         }
 
-        Debug.Log($"[VehicleEnvManager] {vehicles.Count}台の車両を生成（総乗客数: {totalPassengerCount}人）");
+        Debug.Log($"[VehicleEnvManager] {vehicles.Count}台の家族車両を生成（総乗客数: {totalPassengerCount}人）");
     }
 
     /// <summary>

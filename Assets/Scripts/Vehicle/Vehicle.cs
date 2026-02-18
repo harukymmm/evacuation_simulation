@@ -39,8 +39,11 @@ namespace Vehicle
     public class Vehicle : MonoBehaviour
     {
         [Header("車両識別")]
-        [Tooltip("車両ID")]
+        [Tooltip("車両ID（V001形式）")]
         public string vehicleId;
+
+        [Tooltip("所有家族ID（F001形式）")]
+        public string ownerFamilyId;
 
         [Tooltip("車両タイプ")]
         public VehicleType type = VehicleType.Sedan;
@@ -117,6 +120,16 @@ namespace Vehicle
         [Tooltip("LLM再呼び出し間隔（秒）")]
         public float llmDecisionInterval = 120f;
 
+        [Header("Driver（運転者）")]
+        [Tooltip("運転者のagent_id（PersonaManagerから取得）")]
+        public int driverAgentId;
+
+        [Tooltip("同乗者のagent_idリスト")]
+        public List<int> passengerAgentIds = new List<int>();
+
+        // 運転者のペルソナ（PersonaManager経由で取得）
+        private PersonaData _driverPersona;
+
         // 内部状態
         private VehicleMovementController _movementController;
         private VehiclePathfinder _pathfinder;
@@ -191,6 +204,24 @@ namespace Vehicle
             {
                 vehicleId = Guid.NewGuid().ToString().Substring(0, 8);
             }
+
+            // 運転者のペルソナを初期化
+            InitializeDriverPersona();
+        }
+
+        /// <summary>
+        /// 運転者のペルソナを初期化
+        /// </summary>
+        private void InitializeDriverPersona()
+        {
+            if (driverAgentId > 0)
+            {
+                _driverPersona = PersonaManager.GetPersona(driverAgentId);
+                if (_driverPersona != null)
+                {
+                    Debug.Log($"[Vehicle] {vehicleId}: 運転者ペルソナを設定 - {_driverPersona.name} (ID: {driverAgentId})");
+                }
+            }
         }
 
         private void OnDestroy()
@@ -215,11 +246,19 @@ namespace Vehicle
         }
 
         /// <summary>
-        /// 車両IDを設定
+        /// 車両IDを設定（string版）
+        /// </summary>
+        public void SetVehicleId(string id)
+        {
+            vehicleId = id;
+        }
+
+        /// <summary>
+        /// 車両IDを設定（int版、後方互換性）
         /// </summary>
         public void SetVehicleId(int id)
         {
-            vehicleId = id.ToString();
+            vehicleId = $"V{id:D3}";
         }
 
         /// <summary>
@@ -342,14 +381,67 @@ namespace Vehicle
         /// </summary>
         private void OnReachedDestination()
         {
+            // PICKUP_FAMILYモードで家族をまだ迎えていない場合
+            if (_currentActionType == VehicleActionType.PICKUP_FAMILY && !_isFamilyPickedUp)
+            {
+                OnFamilyPickedUp();
+                return;
+            }
+
             if (targetShelter == null)
             {
                 state = VehicleState.Idle;
                 return;
             }
 
-            // 避難処理を試行
-            Evacuation(targetShelter);
+            // 駐車場を経由して避難処理を試行
+            TryParkAndEvacuate(targetShelter);
+        }
+
+        /// <summary>
+        /// 駐車場に駐車してから避難処理を行う
+        /// </summary>
+        private void TryParkAndEvacuate(Shelter shelter)
+        {
+            // 駐車場を検索
+            var parkingArea = FindNearestParkingArea(shelter);
+
+            if (parkingArea != null && parkingArea.HasAvailableSpot)
+            {
+                // 駐車場経由で避難
+                if (parkingArea.VehicleArrived(this))
+                {
+                    // VehicleArrived内でEvacuation()が呼ばれる
+                    Debug.Log($"[Vehicle] {vehicleId}: {parkingArea.gameObject.name}に駐車しました");
+                    return;
+                }
+            }
+
+            // 駐車場がない/満車の場合は直接避難（路上駐車扱い）
+            Debug.Log($"[Vehicle] {vehicleId}: 駐車場がないため路上駐車で避難します");
+            Evacuation(shelter);
+        }
+
+        /// <summary>
+        /// 家族を迎えに行った後の処理
+        /// </summary>
+        private void OnFamilyPickedUp()
+        {
+            _isFamilyPickedUp = true;
+            currentPassengers++;
+            Debug.Log($"[Vehicle] {vehicleId}: {_targetFamilyMember}が乗車しました（現在{currentPassengers}人）");
+
+            // 合流後の避難所へ移動
+            if (_afterPickupShelter != null)
+            {
+                SetDestination(_afterPickupShelter);
+                Debug.Log($"[Vehicle] {vehicleId}: 家族合流完了、{_afterPickupShelter.displayName}へ向かいます");
+            }
+            else
+            {
+                // 次の行動をLLMに決定させる
+                RequestLLMDecision();
+            }
         }
 
         /// <summary>
@@ -697,10 +789,10 @@ namespace Vehicle
         private void SpawnPassengersAsEvacuees(string walkingDestination)
         {
             // EnvManagerを検索してEvacueeをスポーン
-            var envManager = FindFirstObjectByType<ShelterEnvManager>();
+            var envManager = FindFirstObjectByType<EnvManager>();
             if (envManager == null)
             {
-                Debug.LogWarning($"[Vehicle] {vehicleId}: ShelterEnvManagerが見つかりません");
+                Debug.LogWarning($"[Vehicle] {vehicleId}: EnvManagerが見つかりません");
                 return;
             }
 
@@ -711,14 +803,28 @@ namespace Vehicle
                 destination = FindShelterByName(walkingDestination);
             }
 
-            // 乗客数分のEvacueeをスポーン（簡易実装）
-            for (int i = 0; i < currentPassengers; i++)
+            // 運転者をEvacueeとしてスポーン
+            if (_driverPersona != null)
             {
                 Vector3 spawnPos = transform.position + UnityEngine.Random.insideUnitSphere * 2f;
                 spawnPos.y = transform.position.y;
 
-                // Evacueeプレハブをインスタンス化（EnvManagerの機能を使用）
-                Debug.Log($"[Vehicle] {vehicleId}: 乗客{i + 1}がEvacueeとしてスポーン（位置: {spawnPos}）");
+                var evacuee = envManager.SpawnEvacueeFromVehicle(spawnPos, _driverPersona, destination);
+                if (evacuee != null)
+                {
+                    Debug.Log($"[Vehicle] {vehicleId}: 運転者{_driverPersona.name}がEvacueeとしてスポーン");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[Vehicle] {vehicleId}: 運転者のペルソナが設定されていません");
+            }
+
+            // 同乗者は将来課題（家族データとの連携が必要）
+            // 現在は運転者のみをスポーン
+            if (currentPassengers > 1)
+            {
+                Debug.Log($"[Vehicle] {vehicleId}: 同乗者{currentPassengers - 1}人の処理は未実装です");
             }
         }
 
@@ -774,8 +880,6 @@ namespace Vehicle
         /// </summary>
         private LLMVehicleDecisionRequest BuildVehicleDecisionRequest()
         {
-            var persona = VehiclePersonaManager.GetVehiclePersona(int.Parse(vehicleId));
-
             return new LLMVehicleDecisionRequest
             {
                 request_id = $"vehicle-{vehicleId}-{Guid.NewGuid()}",
@@ -802,7 +906,7 @@ namespace Vehicle
                     current_goal = targetShelter?.displayName ?? "",
                     vehicle_state = state.ToString()
                 },
-                persona = VehiclePersonaManager.ToPayload(persona),
+                persona = BuildDriverPersonaPayload(),
                 temporal_context = new TemporalContextPayload
                 {
                     elapsed_time = Time.time,
@@ -812,6 +916,76 @@ namespace Vehicle
                 current_action = _currentActionType.ToString(),
                 action_history = _actionHistory.ToArray()
             };
+        }
+
+        /// <summary>
+        /// 運転者のペルソナをペイロードに変換
+        /// </summary>
+        private PersonaPayload BuildDriverPersonaPayload()
+        {
+            if (_driverPersona == null)
+            {
+                // driverAgentIdが未設定の場合はデフォルト値を返す
+                return new PersonaPayload
+                {
+                    agent_id = driverAgentId,
+                    name = $"Driver_{vehicleId}",
+                    role = "運転者",
+                    age_group = "adult",
+                    speed_multiplier = 1.0f,
+                    mental_state = "neutral",
+                    priority = "避難",
+                    system_prompt_context = ""
+                };
+            }
+
+            return new PersonaPayload
+            {
+                agent_id = _driverPersona.agent_id,
+                name = _driverPersona.name,
+                role = _driverPersona.role,
+                age_group = _driverPersona.age_group,
+                speed_multiplier = _driverPersona.speed_multiplier,
+                mental_state = _driverPersona.mental_state,
+                priority = _driverPersona.priority,
+                system_prompt_context = _driverPersona.system_prompt_context,
+                home_location_category = _driverPersona.home_location_category,
+                home_elevation = _driverPersona.home_elevation,
+                home_structure = _driverPersona.home_structure,
+                residence_years = _driverPersona.residence_years,
+                local_knowledge_level = _driverPersona.local_knowledge_level,
+                current_location_reason = _driverPersona.current_location_reason,
+                past_disaster_experience = _driverPersona.past_disaster_experience,
+                physical_condition = _driverPersona.physical_condition
+            };
+        }
+
+        /// <summary>
+        /// 避難所に最も近い駐車場を検索
+        /// </summary>
+        private ParkingArea FindNearestParkingArea(Shelter shelter)
+        {
+            var parkingAreas = FindObjectsByType<ParkingArea>(FindObjectsSortMode.None);
+            ParkingArea nearest = null;
+            float minDistance = float.MaxValue;
+
+            foreach (var pa in parkingAreas)
+            {
+                // associatedShelterが設定されている場合はそれを優先
+                if (pa.associatedShelter == shelter)
+                    return pa;
+
+                // なければ距離で判定
+                float dist = Vector3.Distance(pa.transform.position, shelter.transform.position);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    nearest = pa;
+                }
+            }
+
+            // 100m以内の駐車場のみ有効
+            return (minDistance < 100f) ? nearest : null;
         }
 
         /// <summary>
@@ -833,6 +1007,9 @@ namespace Vehicle
                 float distance = _roadNetwork?.CalculatePathLength(path) ?? 0f;
                 float travelTime = _roadNetwork?.CalculatePathTravelTime(path) ?? 0f;
 
+                // 駐車場情報を取得
+                var parking = FindNearestParkingArea(shelter);
+
                 candidates.Add(new VehicleShelterPayload
                 {
                     id = shelterObj.name,
@@ -841,8 +1018,8 @@ namespace Vehicle
                     position = new Vector3Payload(shelterObj.transform.position),
                     current_capacity = shelter.currentCapacity,
                     max_capacity = shelter.MaxCapacity,
-                    available_parking_spots = 10, // 仮の値
-                    max_parking_spots = 20,       // 仮の値
+                    available_parking_spots = parking?.AvailableSpots ?? 0,
+                    max_parking_spots = parking?.maxParkingSpots ?? 0,
                     driving_distance_km = distance / 1000f,
                     driving_time_minutes = travelTime / 60f
                 });

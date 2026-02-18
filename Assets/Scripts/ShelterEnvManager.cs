@@ -729,6 +729,71 @@ public class EnvManager : MonoBehaviour {
     }
 
     /// <summary>
+    /// 車両からEvacueeをスポーン（PARK_AND_WALK時に使用）
+    /// </summary>
+    /// <param name="position">スポーン位置</param>
+    /// <param name="persona">運転者のペルソナデータ</param>
+    /// <param name="target">目標の避難所（オプション）</param>
+    /// <returns>生成されたEvacueeコンポーネント</returns>
+    public Evacuee SpawnEvacueeFromVehicle(Vector3 position, PersonaData persona, Shelter target = null)
+    {
+        if (persona == null)
+        {
+            Debug.LogWarning("[EnvManager] SpawnEvacueeFromVehicle: ペルソナデータがnullです");
+            return null;
+        }
+
+        // NavMesh位置補正（段階的に探索範囲を拡大）
+        NavMeshHit navHit;
+        float[] searchRadii = { 10f, 25f, 50f };
+        bool foundNavMesh = false;
+
+        foreach (float radius in searchRadii)
+        {
+            if (NavMesh.SamplePosition(position, out navHit, radius, NavMesh.AllAreas))
+            {
+                position = navHit.position;
+                foundNavMesh = true;
+                break;
+            }
+        }
+
+        if (!foundNavMesh)
+        {
+            Debug.LogWarning($"[EnvManager] SpawnEvacueeFromVehicle: NavMesh上の位置が見つかりません。元の位置 {position} を使用します。");
+        }
+
+        // Evacuee生成
+        GameObject evacueeObj = Instantiate(SpawnEvacueePref, position, Quaternion.identity, transform);
+        evacueeObj.tag = "Evacuee";
+        Evacuees.Add(evacueeObj);
+
+        var evacuee = evacueeObj.GetComponent<Evacuee>();
+        if (evacuee != null)
+        {
+            // 既存のペルソナIDを使用
+            evacuee.SetEvacueeId(persona.agent_id);
+
+            // 目標避難所を設定
+            if (target != null)
+            {
+                evacuee.Target = target.gameObject;
+            }
+
+            // インデックス登録
+            _evacueeById[persona.agent_id.ToString()] = evacuee;
+            if (!string.IsNullOrEmpty(persona.name))
+            {
+                _evacueeByName[persona.name] = evacuee;
+            }
+
+            Debug.Log($"[EnvManager] SpawnEvacueeFromVehicle: {persona.name} (ID: {persona.agent_id}) をスポーン - 位置: {position}");
+        }
+
+        return evacuee;
+    }
+
+    /// <summary>
     /// 名前で避難者を高速検索（O(1)、完全一致）
     /// </summary>
     public Evacuee GetEvacueeByName(string name)

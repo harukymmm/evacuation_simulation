@@ -290,33 +290,108 @@ def _build_family_info_section(payload: Dict[str, Any]) -> str:
 
 
 def _build_driver_persona_section(payload: Dict[str, Any]) -> str:
-    """【F. 運転者のペルソナ】セクションを構築"""
+    """【F. 運転者のペルソナ】セクションを構築
+
+    歩行者と同じペルソナ形式（PersonaPayload）を使用。
+    """
     lines = ["【F. 運転者のペルソナ】"]
 
     persona = payload.get("persona", {})
 
-    driver_name = persona.get("driver_name", "運転手")
-    lines.append(f"名前: {driver_name}")
+    # 基本情報
+    if name := persona.get("name"):
+        lines.append(f"名前: {name}")
 
-    # 運転特性
-    aggressiveness = persona.get("aggressiveness", 0.5)
-    if aggressiveness > 0.7:
-        lines.append("- 積極的な運転スタイル")
-    elif aggressiveness < 0.3:
-        lines.append("- 慎重な運転スタイル")
+    if role := persona.get("role"):
+        lines.append(f"役割: {role}")
 
-    speed_pref = persona.get("speed_preference", 1.0)
-    if speed_pref > 1.1:
-        lines.append("- 速度を出す傾向がある")
-    elif speed_pref < 0.9:
-        lines.append("- ゆっくり運転する傾向がある")
+    if age_group := persona.get("age_group"):
+        age_group_ja = _translate_age_group(age_group)
+        lines.append(f"年齢層: {age_group_ja}")
+
+    # 心理状態
+    if mental_state := persona.get("mental_state"):
+        mental_state_ja = _translate_mental_state(mental_state)
+        lines.append(f"心理状態: {mental_state_ja}")
+
+    # 優先事項
+    if priority := persona.get("priority"):
+        lines.append(f"優先事項: {priority}")
+
+    # 身体状態
+    if physical_condition := persona.get("physical_condition"):
+        lines.append(f"身体状態: {physical_condition}")
+
+    # 生活背景情報
+    background_info = []
+
+    if home_location := persona.get("home_location_category"):
+        location_ja = _translate_home_location(home_location)
+        background_info.append(f"自宅: {location_ja}")
+
+    if local_knowledge := persona.get("local_knowledge_level"):
+        knowledge_ja = _translate_local_knowledge(local_knowledge)
+        background_info.append(f"土地勘: {knowledge_ja}")
+
+    if past_disaster := persona.get("past_disaster_experience"):
+        background_info.append(f"災害経験: {past_disaster}")
+
+    if background_info:
+        lines.append("- " + "、".join(background_info))
 
     # 追加のコンテキスト
-    context = persona.get("system_prompt_context", "")
-    if context:
+    if context := persona.get("system_prompt_context"):
         lines.append(f"- {context}")
 
     return "\n".join(lines)
+
+
+def _translate_age_group(age_group: str) -> str:
+    """年齢層を日本語に変換"""
+    translations = {
+        "child": "子ども",
+        "teen": "10代",
+        "young_adult": "若年層",
+        "adult": "成人",
+        "middle_aged": "中年",
+        "senior": "高齢者",
+        "elderly": "高齢者",
+    }
+    return translations.get(age_group, age_group)
+
+
+def _translate_mental_state(mental_state: str) -> str:
+    """心理状態を日本語に変換"""
+    translations = {
+        "calm": "落ち着いている",
+        "neutral": "普通",
+        "anxious": "不安",
+        "panic": "パニック",
+        "stressed": "ストレス状態",
+        "confused": "混乱",
+    }
+    return translations.get(mental_state, mental_state)
+
+
+def _translate_home_location(location: str) -> str:
+    """自宅位置カテゴリを日本語に変換"""
+    translations = {
+        "coastal": "沿岸部",
+        "hill": "丘陵地",
+        "center": "中心部",
+        "inland": "内陸部",
+    }
+    return translations.get(location, location)
+
+
+def _translate_local_knowledge(knowledge: str) -> str:
+    """土地勘レベルを日本語に変換"""
+    translations = {
+        "newcomer": "新参者（土地勘なし）",
+        "resident": "住民（ある程度の土地勘）",
+        "native": "地元民（十分な土地勘）",
+    }
+    return translations.get(knowledge, knowledge)
 
 
 def _build_action_history_section(payload: Dict[str, Any]) -> str:
