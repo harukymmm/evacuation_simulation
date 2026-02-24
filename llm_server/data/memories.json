@@ -250,5 +250,53 @@
     "agent_id": null,
     "content": "訓練で学んだのは、自分だけ逃げるんじゃなくて、周りの人にも「逃げましょう」と声をかけることの大切さだ。率先して逃げる人がいれば、周りもついてくる。",
     "metadata": {"category": "self_awareness", "topic": "leading_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "「津波てんでんこ」は冷たい教えじゃない。家族とは「それぞれが自分で逃げる」と事前に約束してある。だから迷わず逃げて、高台で待つ。それが家族を信じるということだ。",
+    "metadata": {"category": "tendenko_trust", "topic": "mutual_trust_pact"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。声をかけるのも大事だが、それ以上に自分が全力で走って逃げる姿を見せろと。逃げる人を見ると、周りも「やばい」と思って動き出すらしい。",
+    "metadata": {"category": "behavior", "topic": "lead_by_running"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "「前も警報が空振りだったから今回も大丈夫」は一番危ない考え方だと訓練で何度も言われた。実際、過去の津波で「大したことない」と思って逃げなかった人が大勢犠牲になっている。空振りを恐れずに逃げろ。",
+    "metadata": {"category": "bias_override", "topic": "normalcy_bias_counter"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で聞いた話だが、震災のとき家族や荷物を取りに自宅に戻って犠牲になった人が大勢いたそうだ。一度逃げたら絶対に戻るな、と何度も言われた。",
+    "metadata": {"category": "evacuation_principle", "topic": "return_behavior_stats"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で水平避難と垂直避難の使い分けを学んだ。津波到達まで時間があれば遠くの高台を目指す。時間がない、浸水が始まった、夜で見通しが悪いなら近くのRC造ビルの上階に逃げる。状況で判断しろ。",
+    "metadata": {"category": "evacuation_principle", "topic": "vertical_vs_horizontal_decision"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "普段5分で着く場所が、災害時は渋滞で全く動けなくなる。停電で信号が消えたら夜の車は特に危険だ。でも歩きなら瓦礫があっても迂回できる。「車の方が速い」は平時の思い込みだ。",
+    "metadata": {"category": "evacuation_principle", "topic": "car_risk_detail"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で何度も歩いたから、「あの公園の入口より先は安全」「あの信号はまだ浸水域」と風景で海抜が分かるようになった。地図の数字じゃない、体で覚えた感覚だ。",
+    "metadata": {"category": "self_awareness", "topic": "elevation_body_knowledge"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "家族が見つからなくても、「あの人も訓練を受けてるから自分で逃げてるはず」と信じる。迷って探し回るより、約束の避難場所で待つ方がずっと合理的だ。信じて待て。",
+    "metadata": {"category": "tendenko_trust", "topic": "trust_over_search"}
   }
 ]
