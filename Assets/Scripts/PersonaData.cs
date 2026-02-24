@@ -19,6 +19,7 @@ public class PersonaData
     public string priority;
     public string system_prompt_context;
     public bool has_smartphone = true; // デフォルトはtrue（スマホを持っている）
+    public bool has_evacuation_training = false; // 避難訓練経験（デフォルト: false）
 
     // 拡張フィールド: 生活背景情報
     public string home_location_category;    // 自宅位置カテゴリ: "coastal", "hill", "center"
@@ -119,6 +120,18 @@ public static class PersonaManager
                         persona.has_smartphone = true;
                     else if (bool.TryParse(fields[16], out bool hasPhone))
                         persona.has_smartphone = hasPhone;
+                }
+
+                // has_evacuation_training: 17番目のカラム（オプショナル、デフォルトはfalse）
+                if (fields.Length >= 18)
+                {
+                    string trainingValue = fields[17].Trim().ToLower();
+                    if (trainingValue == "true" || trainingValue == "1")
+                        persona.has_evacuation_training = true;
+                    else if (trainingValue == "false" || trainingValue == "0" || string.IsNullOrEmpty(trainingValue))
+                        persona.has_evacuation_training = false;
+                    else if (bool.TryParse(fields[17], out bool hasTraining))
+                        persona.has_evacuation_training = hasTraining;
                 }
 
                 _personas[persona.agent_id] = persona;

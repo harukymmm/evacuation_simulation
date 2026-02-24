@@ -160,5 +160,95 @@
     "agent_id": null,
     "content": "震度6以上だと停電になることが多い。でもスマホのエリアメールは届くかもしれないから、確認した方がいい。",
     "metadata": {"category": "infrastructure"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。津波警報が出たら迷わず海抜20m以上の高台へ逃げろ。考えてる暇はない、すぐに動け。",
+    "metadata": {"category": "evacuation_principle", "topic": "immediate_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で「車で逃げるな」と何度も言われた。渋滞になって自分も周りも逃げられなくなる。歩いて高台を目指すのが一番確実だ。",
+    "metadata": {"category": "evacuation_principle", "topic": "no_car_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難所に行けないときは、近くの鉄筋コンクリート造の3階以上に逃げろと教わった。これが「垂直避難」だ。",
+    "metadata": {"category": "evacuation_principle", "topic": "vertical_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で一番強調されたのは「一度逃げ始めたら絶対に戻るな」ということ。家族や荷物のために戻って亡くなった人が大勢いる。",
+    "metadata": {"category": "evacuation_principle", "topic": "no_return"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難するとき、近くにお年寄りや体の不自由な人がいたら声をかけて一緒に逃げる。共助の精神が大事だと訓練で学んだ。",
+    "metadata": {"category": "evacuation_principle", "topic": "mutual_aid"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "地震の揺れが収まったら30分以内に津波が来る可能性がある。揺れが止まったらすぐに避難を開始しないと間に合わない。",
+    "metadata": {"category": "time_awareness", "topic": "tsunami_arrival_time"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "第1波が小さくても油断するな。第2波、第3波で急激に波が高くなることがある。警報が解除されるまで絶対に戻っちゃだめだ。",
+    "metadata": {"category": "time_awareness", "topic": "multiple_waves"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間公園は海抜30mの高台にある。訓練でも真っ先にここを目指した。広くて安全だから、まずはここに逃げればいい。",
+    "metadata": {"category": "shelter_knowledge", "topic": "toyoma_park", "elevation": 30}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "薄磯団地や豊間団地は鉄筋コンクリート造の津波避難ビルだ。高台まで行けないときは、このビルの上階に逃げる手もある。",
+    "metadata": {"category": "shelter_knowledge", "topic": "tsunami_evacuation_building"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "望洋荘は福祉避難所になっている。足の悪い人やお年寄りはあそこに避難するといい。バリアフリー対応だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "welfare_shelter"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "発災直後の0〜30分はとにかく高さを稼げ。豊間公園、中田山、諏訪神社、どこでもいいから高いところに逃げろ。",
+    "metadata": {"category": "phase_knowledge", "topic": "initial_phase"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で「パニックになるな、訓練通りにやれ」と言われた。実際に動いてみた経験があるから、いざという時も落ち着いて行動できるはずだ。",
+    "metadata": {"category": "behavior", "topic": "stay_calm"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難訓練に何度か参加したことがある。実際に避難所まで歩いたから、道順も所要時間もだいたい分かっている。落ち着いて行動できる自信がある。",
+    "metadata": {"category": "self_awareness", "topic": "training_experience"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で実際に避難所まで歩いてみた。豊間公園まで徒歩15分くらい。道順も頭に入っているから迷わず行ける。",
+    "metadata": {"category": "self_awareness", "topic": "route_knowledge"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で学んだのは、自分だけ逃げるんじゃなくて、周りの人にも「逃げましょう」と声をかけることの大切さだ。率先して逃げる人がいれば、周りもついてくる。",
+    "metadata": {"category": "self_awareness", "topic": "leading_evacuation"}
   }
 ]

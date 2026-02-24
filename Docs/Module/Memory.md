@@ -124,6 +124,7 @@ if action_history:
 | `regional_knowledge` | 地域知識（避難所、危険区域等） | 全エージェント共有（agent_id: null） |
 | `persona_knowledge` | 自己認識（役割、身体状態等） | エージェント個別（agent_id: N） |
 | `disaster_experience` | 過去の災害経験 | エージェント個別（agent_id: N） |
+| `drill_knowledge` | 避難訓練で得た知識・経験 | 訓練経験者のみ（`has_evacuation_training=true` のエージェント） |
 
 ### 3.3 データ形式（memories.json）
 
@@ -146,9 +147,17 @@ if action_history:
     "agent_id": 1,
     "content": "2011年の震災では、津波が想定より早く到達しました。",
     "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。津波警報が出たら迷わず海抜20m以上の高台へ逃げろ。考えてる暇はない、すぐに動け。",
+    "metadata": {"category": "evacuation_principle", "topic": "immediate_evacuation"}
   }
 ]
 ```
+
+> **Note**: `drill_knowledge` は `agent_id: null`（共有データ）だが、サーバー側の `memory_types` フィルタにより `has_evacuation_training=true` のエージェントのみがアクセスできる。
 
 ### 3.4 ベクトル検索の仕組み
 
@@ -182,6 +191,7 @@ if agent_id is not None:
 
 - `agent_id: null` → 全エージェントがアクセス可能（地域知識）
 - `agent_id: N` → エージェントNのみアクセス可能（個人記憶）
+- `drill_knowledge`（`agent_id: null`）→ `has_evacuation_training=true` のエージェントのみアクセス可能（サーバー側 `memory_types` フィルタで制御）
 
 ### 3.6 初期化フロー
 
@@ -218,6 +228,7 @@ if agent_id is not None:
 [地域知識] 豊間小学校は海抜約20mに位置し、津波避難ビルとして指定されています。
 [過去の経験] 2011年の震災では、津波が想定より早く到達しました。「まだ大丈夫」という油断が命取りになることを学びました。
 [自己認識] 私は施設管理者として働いています。緊急時には他者の誘導を優先します。
+[避難訓練の知識] 訓練で教わった。津波警報が出たら迷わず海抜20m以上の高台へ逃げろ。（※訓練経験者のみ）
 
 ※ これらの知識や経験を活かして判断してください。
 ```
@@ -290,11 +301,22 @@ async def main():
 async def process_payload(payload):
     memory_manager = get_memory_manager()
     if memory_manager and memory_manager.is_initialized:
+        # 避難訓練経験に基づくフィルタ
+        has_training = persona.get("has_evacuation_training", False)
+        if has_training:
+            memory_types = None    # 全タイプ（drill_knowledge含む）
+            search_top_k = 5
+        else:
+            memory_types = ["regional_knowledge", "persona_knowledge",
+                            "disaster_experience", "social_knowledge"]
+            search_top_k = 3
+
         memories = await memory_manager.search(
             query=query,
             agent_id=agent_id_int,
-            top_k=3,
-            threshold=0.7
+            memory_types=memory_types,
+            top_k=search_top_k,
+            threshold=0.5
         )
         if memories:
             payload["long_term_memories"] = memories

@@ -132,6 +132,7 @@ namespace LLM
         public string current_location_reason;   // 現在地にいる理由
         public string past_disaster_experience;  // 過去の災害経験
         public string physical_condition;        // 身体状態
+        public bool has_evacuation_training;     // 避難訓練経験の有無
     }
 
     [Serializable]

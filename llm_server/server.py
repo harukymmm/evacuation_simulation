@@ -1227,6 +1227,7 @@ def build_user_prompt(
                 "regional_knowledge": "地域知識",
                 "persona_knowledge": "自己認識",
                 "disaster_experience": "過去の経験",
+                "drill_knowledge": "避難訓練の知識",
             }.get(memory_type, "記憶")
 
             lines.append(f"[{type_label}] {content}")
@@ -1924,14 +1925,27 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
             query = " ".join(query_parts)
 
+            # 避難訓練経験に基づくフィルタ
+            has_training = persona.get("has_evacuation_training", False)
+
+            if has_training:
+                memory_types = None   # 全タイプ（drill_knowledge 含む）
+                search_top_k = 5      # 訓練知識も含めるため増加
+            else:
+                memory_types = ["regional_knowledge", "persona_knowledge",
+                                "disaster_experience", "social_knowledge"]
+                search_top_k = 3      # 従来通り
+
             # 長期記憶を検索（閾値を0.5に設定）
             memories = await memory_manager.search(
-                query=query, agent_id=agent_id_int, top_k=3, threshold=0.5
+                query=query, agent_id=agent_id_int,
+                memory_types=memory_types, top_k=search_top_k, threshold=0.5
             )
 
             if memories:
                 payload["long_term_memories"] = memories
-                print(f"[LLM SERVER] 長期記憶を{len(memories)}件取得しました")
+                status = "訓練済み" if has_training else "未訓練"
+                print(f"[LLM SERVER] 長期記憶を{len(memories)}件取得（{status}, top_k={search_top_k}）")
 
         except Exception as e:
             print(f"[LLM SERVER] 長期記憶検索でエラー: {e}")
