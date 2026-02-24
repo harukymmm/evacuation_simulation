@@ -411,7 +411,7 @@ public class EnvManager : MonoBehaviour {
         {
             int currentTrial = ExperimentConfig.Instance?.CurrentTrialNumber ?? (currentEpisodeId + 1);
             int totalTrials = ExperimentConfig.Instance?.NumberOfTrials ?? 1;
-            episodeInfoText.text = $"Episode {currentTrial}/{totalTrials} End: {endReason}";
+            episodeInfoText.text = $"{StyleOpen}Episode {currentTrial}/{totalTrials} End: {endReason}{StyleClose}";
         }
 
         // 1. 避難率による報酬
@@ -774,9 +774,13 @@ public class EnvManager : MonoBehaviour {
         return Vector3.zero; // ナビメッシュが見つからなかった場合
     }
 
+    // TMPリッチテキストタグで背景黒・文字黄色
+    private const string StyleOpen = "<mark=#000000FF><color=#FFD700>";
+    private const string StyleClose = "</color></mark>";
+
     private void UpdateUI() {
-        stepCounter.text = $"Remain: {MaxSeconds - currentTimeSec:F1}s";
-        evacRateCounter.text = $"Evacuation Rate: {EvacuationRate:P1}";
+        stepCounter.text = $"{StyleOpen}Remain: {MaxSeconds - currentTimeSec:F1}s{StyleClose}";
+        evacRateCounter.text = $"{StyleOpen}Evacuation Rate: {EvacuationRate:P1}{StyleClose}";
 
         // エピソード情報を表示
         if (episodeInfoText != null)
@@ -784,8 +788,9 @@ public class EnvManager : MonoBehaviour {
             string conditionName = GetConditionDisplayName();
             int currentTrial = ExperimentConfig.Instance?.CurrentTrialNumber ?? (currentEpisodeId + 1);
             int totalTrials = ExperimentConfig.Instance?.NumberOfTrials ?? 1;
-            episodeInfoText.text = $"[{conditionName}] Episode {currentTrial}/{totalTrials}";
+            episodeInfoText.text = $"{StyleOpen}[{conditionName}] Episode {currentTrial}/{totalTrials}{StyleClose}";
         }
+
     }
 
     /// <summary>
