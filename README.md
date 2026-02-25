@@ -270,3 +270,13 @@ LLMは3層構造で判断:
 | `Docs/LLM_API_Specification.md` | LLM API仕様書 |
 | `Docs/ImplementationPlan.md` | 実装計画書 |
 | `Docs/persona_specification.md` | ペルソナ仕様 |
+
+## 他のブランチの実装内容
+
+### LLMによる車両避難の検証（未完成）
+
+feature/car_evacuation
+
+### 機械学習での避難所開放の最適化
+
+feature/ml-agents
