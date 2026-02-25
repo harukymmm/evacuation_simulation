@@ -125,29 +125,86 @@ evacuation_simulation/
 
 ### 必要環境
 
-- Unity 2022.3以降
+- Unity Hub
+- Unity Editor 2023.2.19f1
 - Python 3.10以降
 - OpenAI API Key（オプション、なくても動作可）
 
-### サーバー起動
+### 1. Unity Hubのインストール
+
+1. [Unity公式サイト](https://unity.com/ja/download)からUnity Hubをダウンロード
+2. インストーラーを実行してインストール
+3. Unity Hubを起動し、Unityアカウントでサインイン
+
+### 2. Unity Editorのインストール
+
+1. Unity Hubを開く
+2. 左メニュー「Installs」→ 右上「Install Editor」をクリック
+3. 「Archive」タブを選択 → 「download archive」リンクをクリック
+4. Unity 2023.2.19f1 を探して「Unity Hub」ボタンでインストール
+5. モジュール選択で以下を追加（任意）:
+   - Microsoft Visual Studio（Windows）
+   - Mac Build Support（macOS）
+
+### 3. プロジェクトを開く
+
+1. Unity Hubの「Projects」タブを開く
+2. 「Add」→「Add project from disk」をクリック
+3. このリポジトリのフォルダを選択
+4. プロジェクトをクリックして開く（初回は時間がかかる）
+
+### 4. PLATEAU SDK for Unityの追加
+
+1. Unity Editor上部メニュー `Window → Package Manager` を開く
+2. 左上の「+」ボタン → 「Add package from git URL...」を選択
+3. 以下のURLを入力して「Add」: `https://github.com/Project-PLATEAU/PLATEAU-SDK-for-Unity.git`
+4. インポート完了まで待機
+
+### 5. Python環境のセットアップ
 
 ```bash
 cd llm_server
-cp .env.example .env  # APIキーを設定
+cp .env.example .env
 pip install -r requirements.txt
-python server.py
 ```
 
-### 環境変数 (.env)
+### 6. 環境変数の設定 (.env)
+
+`llm_server/.env` ファイルを編集:
 
 ```
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-LLM_SERVER_HOST=
-LLM_SERVER_PORT=
+OPENAI_API_KEY=sk-...       # OpenAI APIキー（オプション）
+OPENAI_MODEL=gpt-4o-mini    # 使用するモデル
+LLM_SERVER_HOST=localhost   # サーバーホスト
+LLM_SERVER_PORT=8765        # サーバーポート
 ```
 
 APIキー未設定時はヒューリスティック（最短距離避難所選択）で動作。
+
+### 7. 実行確認
+
+**LLMサーバーを起動:**
+```bash
+cd llm_server
+python server.py
+```
+
+**Unityでシミュレーション実行:**
+1. Unity Editorで `Assets/Scenes/Iwaki/` 内のシーンを開く
+2. Hierarchyで `ShelterEnvManager` を選択し、Inspectorで設定を確認
+3. 上部の「▶ Play」ボタンをクリック
+4. シミュレーションが開始され、避難者が動き出すことを確認
+
+### 外部アセットのマテリアル変換
+
+Asset Storeなどから外部アセットをインポートした際、マテリアルがピンク色で表示される場合がある。これはStandardシェーダーがURP（Universal Render Pipeline）に対応していないため発生する。以下の手順で変換を行う。
+
+**Render Pipeline Converterを使用:**
+1. `Window → Rendering → Render Pipeline Converter` を開く
+2. 「Built-in to URP」を選択
+3. 「Material Upgrade」にチェック
+4. 「Initialize Converters」をクリック
+5. 「Convert Assets」をクリック
 
 ---
 
