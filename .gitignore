@@ -87,11 +87,16 @@ crashlytics-build.properties
 [Aa]ssets/[Ss]treamingAssets/aa.meta
 [Aa]ssets/[Ss]treamingAssets/aa/*
 
+# ML-Agents timer logs
+Assets/ML-Agents/Timers/namie_timers.json
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.env
+llm_server/.env
 .Python
 build/
 develop-eggs/
@@ -119,6 +124,7 @@ ENV/
 env.bak/
 venv.bak/
 .venv/
+llm_server/.venv/
 
 # Conda
 .conda/
@@ -154,3 +160,40 @@ results/*/checkpoint.pth
 # Miniconda installer
 Miniconda3-*.sh
 
+# PLATEAU SDK
+Assets/StreamingAssets/.PLATEAU/
+
+# Large Unity scene files (exceed GitHub 100MB limit)
+Assets/Scenes/Iwaki.unity
+Assets/Scenes/Iwaki.unity.meta
+Assets/Scenes/Iwaki 1.unity
+Assets/Scenes/Iwaki 1.unity.meta
+Assets/Scenes/Iwaki1.unity
+Assets/Scenes/Iwaki1.unity.meta
+Assets/Scenes/Iwaki 2.unity
+Assets/Scenes/Iwaki 2.unity.meta
+Assets/Scenes/namie 1.unity
+Assets/Scenes/namie 1.unity.meta
+Assets/Scenes/namie.unity
+Assets/Scenes/MInamiSoumaLOD2.unity
+Assets/Scenes/MInamiSoumaLOD2.unity.meta
+
+# Unity crash reports
+mono_crash.*
+*.crash
+
+# Unity auto-generated project user files
+*.csproj.user
+*.sln.DotSettings
+
+Paper.md
+Paper.log
+Paper.fls
+Paper.fdb_latexmk
+避難場所調査.md
+
+# ML-Agents additional files
+results/*/run_logs/
+results/*/events.out.tfevents.*
+results/*.onnx
+results/*.pt

@@ -1,0 +1,230 @@
+[
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間小学校は海抜約20mに位置し、津波避難ビルとして指定されています。収容人数は約500人です。",
+    "metadata": {"location": "豊間小学校", "elevation": 20}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "薄磯海岸沿いは津波浸水想定区域です。地震発生時は速やかに高台へ避難してください。",
+    "metadata": {"area": "薄磯海岸", "hazard_type": "tsunami"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "国道6号線は緊急車両優先道路に指定されており、災害時は一般車両の通行が制限されます。",
+    "metadata": {"road": "国道6号線", "restriction": "emergency_priority"}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "豊間地区には3つの避難所があります：豊間小学校、豊間公民館、豊間中学校。いずれも高台に位置しています。",
+    "metadata": {"area": "豊間地区", "shelter_count": 3}
+  },
+  {
+    "memory_type": "regional_knowledge",
+    "agent_id": null,
+    "content": "海岸から500m以内の地域では、津波到達まで約10分と想定されています。早期避難が必須です。",
+    "metadata": {"distance_from_coast": 500, "tsunami_arrival_time": 10}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 1,
+    "content": "私は施設管理者として働いています。緊急時には他者の誘導を優先し、最後に避難するのが私の役割です。",
+    "metadata": {"role": "facility_manager", "priority": "guide_others"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 2,
+    "content": "私は高齢の母と同居しています。避難時は母を連れて行く必要があり、移動速度は通常より遅くなります。",
+    "metadata": {"family": "elderly_mother", "mobility": "slow"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 3,
+    "content": "私は地元の漁師です。海の状況には敏感で、潮の引き方で津波の前兆を察知できることがあります。",
+    "metadata": {"occupation": "fisherman", "skill": "tsunami_detection"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 4,
+    "content": "私は小学校の教師です。地震が起きたら、まず生徒たちの安全を確認してから自分の避難を考えます。",
+    "metadata": {"occupation": "teacher", "priority": "student_safety"}
+  },
+  {
+    "memory_type": "persona_knowledge",
+    "agent_id": 5,
+    "content": "私は妊娠中で、長距離を歩くのが困難です。最寄りの避難所への避難を優先します。",
+    "metadata": {"condition": "pregnant", "mobility": "limited"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 1,
+    "content": "2011年の震災では、津波が想定より早く到達しました。「まだ大丈夫」という油断が命取りになることを学びました。",
+    "metadata": {"event": "2011_tsunami", "lesson": "early_evacuation"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 2,
+    "content": "前回の地震では、避難所が混雑して入れなかった経験があります。複数の避難先を把握しておくことが重要です。",
+    "metadata": {"event": "previous_earthquake", "lesson": "multiple_shelters"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 3,
+    "content": "津波警報が出ても避難しない人を何人も見ました。声をかけて一緒に逃げることで、命が救われることがあります。",
+    "metadata": {"event": "tsunami_warning", "lesson": "community_evacuation"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 4,
+    "content": "以前の避難訓練で、高齢者が階段を上れずに立ち往生していました。バリアフリーの避難経路を確認しておくべきです。",
+    "metadata": {"event": "evacuation_drill", "lesson": "accessibility"}
+  },
+  {
+    "memory_type": "disaster_experience",
+    "agent_id": 5,
+    "content": "車で避難しようとして渋滞に巻き込まれた経験があります。徒歩での避難の方が確実な場合が多いです。",
+    "metadata": {"event": "car_evacuation", "lesson": "walk_over_drive"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。津波警報が出たら迷わず海抜20m以上の高台へ逃げろ。考えてる暇はない、すぐに動け。",
+    "metadata": {"category": "evacuation_principle", "topic": "immediate_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で「車で逃げるな」と何度も言われた。渋滞になって自分も周りも逃げられなくなる。歩いて高台を目指すのが一番確実だ。",
+    "metadata": {"category": "evacuation_principle", "topic": "no_car_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難所に行けないときは、近くの鉄筋コンクリート造の3階以上に逃げろと教わった。これが「垂直避難」だ。",
+    "metadata": {"category": "evacuation_principle", "topic": "vertical_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で一番強調されたのは「一度逃げ始めたら絶対に戻るな」ということ。家族や荷物のために戻って亡くなった人が大勢いる。",
+    "metadata": {"category": "evacuation_principle", "topic": "no_return"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難するとき、近くにお年寄りや体の不自由な人がいたら声をかけて一緒に逃げる。共助の精神が大事だと訓練で学んだ。",
+    "metadata": {"category": "evacuation_principle", "topic": "mutual_aid"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "地震の揺れが収まったら30分以内に津波が来る可能性がある。揺れが止まったらすぐに避難を開始しないと間に合わない。",
+    "metadata": {"category": "time_awareness", "topic": "tsunami_arrival_time"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "第1波が小さくても油断するな。第2波、第3波で急激に波が高くなることがある。警報が解除されるまで絶対に戻っちゃだめだ。",
+    "metadata": {"category": "time_awareness", "topic": "multiple_waves"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間公園は海抜30mの高台にある。訓練でも真っ先にここを目指した。広くて安全だから、まずはここに逃げればいい。",
+    "metadata": {"category": "shelter_knowledge", "topic": "toyoma_park", "elevation": 30}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "薄磯団地や豊間団地は鉄筋コンクリート造の津波避難ビルだ。高台まで行けないときは、このビルの上階に逃げる手もある。",
+    "metadata": {"category": "shelter_knowledge", "topic": "tsunami_evacuation_building"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "望洋荘は福祉避難所になっている。足の悪い人やお年寄りはあそこに避難するといい。バリアフリー対応だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "welfare_shelter"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "発災直後の0〜30分はとにかく高さを稼げ。豊間公園、中田山、諏訪神社、どこでもいいから高いところに逃げろ。",
+    "metadata": {"category": "phase_knowledge", "topic": "initial_phase"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で「パニックになるな、訓練通りにやれ」と言われた。実際に動いてみた経験があるから、いざという時も落ち着いて行動できるはずだ。",
+    "metadata": {"category": "behavior", "topic": "stay_calm"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "避難訓練に何度か参加したことがある。実際に避難所まで歩いたから、道順も所要時間もだいたい分かっている。落ち着いて行動できる自信がある。",
+    "metadata": {"category": "self_awareness", "topic": "training_experience"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で実際に避難所まで歩いてみた。豊間公園まで徒歩15分くらい。道順も頭に入っているから迷わず行ける。",
+    "metadata": {"category": "self_awareness", "topic": "route_knowledge"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で学んだのは、自分だけ逃げるんじゃなくて、周りの人にも「逃げましょう」と声をかけることの大切さだ。率先して逃げる人がいれば、周りもついてくる。",
+    "metadata": {"category": "self_awareness", "topic": "leading_evacuation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "「津波てんでんこ」は冷たい教えじゃない。家族とは「それぞれが自分で逃げる」と事前に約束してある。だから迷わず逃げて、高台で待つ。それが家族を信じるということだ。",
+    "metadata": {"category": "tendenko_trust", "topic": "mutual_trust_pact"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。声をかけるのも大事だが、それ以上に自分が全力で走って逃げる姿を見せろと。逃げる人を見ると、周りも「やばい」と思って動き出すらしい。",
+    "metadata": {"category": "behavior", "topic": "lead_by_running"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "「前も警報が空振りだったから今回も大丈夫」は一番危ない考え方だと訓練で何度も言われた。実際、過去の津波で「大したことない」と思って逃げなかった人が大勢犠牲になっている。空振りを恐れずに逃げろ。",
+    "metadata": {"category": "bias_override", "topic": "normalcy_bias_counter"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で聞いた話だが、震災のとき家族や荷物を取りに自宅に戻って犠牲になった人が大勢いたそうだ。一度逃げたら絶対に戻るな、と何度も言われた。",
+    "metadata": {"category": "evacuation_principle", "topic": "return_behavior_stats"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で水平避難と垂直避難の使い分けを学んだ。津波到達まで時間があれば遠くの高台を目指す。時間がない、浸水が始まった、夜で見通しが悪いなら近くのRC造ビルの上階に逃げる。状況で判断しろ。",
+    "metadata": {"category": "evacuation_principle", "topic": "vertical_vs_horizontal_decision"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "普段5分で着く場所が、災害時は渋滞で全く動けなくなる。停電で信号が消えたら夜の車は特に危険だ。でも歩きなら瓦礫があっても迂回できる。「車の方が速い」は平時の思い込みだ。",
+    "metadata": {"category": "evacuation_principle", "topic": "car_risk_detail"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で何度も歩いたから、「あの公園の入口より先は安全」「あの信号はまだ浸水域」と風景で海抜が分かるようになった。地図の数字じゃない、体で覚えた感覚だ。",
+    "metadata": {"category": "self_awareness", "topic": "elevation_body_knowledge"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "家族が見つからなくても、「あの人も訓練を受けてるから自分で逃げてるはず」と信じる。迷って探し回るより、約束の避難場所で待つ方がずっと合理的だ。信じて待て。",
+    "metadata": {"category": "tendenko_trust", "topic": "trust_over_search"}
+  }
+]
