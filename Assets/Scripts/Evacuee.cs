@@ -1897,7 +1897,7 @@ public class Evacuee : MonoBehaviour {
                         mental_state = _persona?.mental_state ?? "普通",
                         priority = _persona?.priority ?? "安全確保",
                         system_prompt_context = _persona?.system_prompt_context ?? "",
-                        has_evacuation_training = _persona?.has_evacuation_training ?? false
+                        has_evacuation_training = ExperimentConfig.GetOverriddenEvacuationTraining(_persona?.has_evacuation_training ?? false)
                     },
                     environment = BuildEnvironmentPayload(),
                     incoming_contact = request,
@@ -2767,7 +2767,7 @@ public class Evacuee : MonoBehaviour {
                 mental_state = persona.mental_state,
                 priority = persona.priority,
                 system_prompt_context = persona.system_prompt_context,
-                has_evacuation_training = persona.has_evacuation_training
+                has_evacuation_training = ExperimentConfig.GetOverriddenEvacuationTraining(persona.has_evacuation_training)
             };
         }
 
@@ -3579,7 +3579,7 @@ public class Evacuee : MonoBehaviour {
                 current_location_reason = persona.current_location_reason,
                 past_disaster_experience = persona.past_disaster_experience,
                 physical_condition = persona.physical_condition,
-                has_evacuation_training = persona.has_evacuation_training
+                has_evacuation_training = ExperimentConfig.GetOverriddenEvacuationTraining(persona.has_evacuation_training)
             };
         }
         else

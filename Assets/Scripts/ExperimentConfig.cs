@@ -27,6 +27,7 @@ public struct ExperimentCondition
     public ExperimentConfig.BiasCondition biasCondition;
     public ExperimentConfig.InformationStrategy informationStrategy;
     public bool overrideBias;
+    public ExperimentConfig.EvacuationTrainingCondition evacuationTrainingCondition;
 }
 
 /// <summary>
@@ -111,6 +112,16 @@ public class ExperimentConfig : MonoBehaviour
     }
 
     /// <summary>
+    /// 避難訓練条件（実験4用）
+    /// </summary>
+    public enum EvacuationTrainingCondition
+    {
+        Default,      // ペルソナCSVの値をそのまま使用
+        AllTrained,   // 全員訓練済み（has_evacuation_training = true）
+        AllUntrained  // 全員未訓練（has_evacuation_training = false）
+    }
+
+    /// <summary>
     /// バッチ実験のプリセット
     /// </summary>
     public enum BatchExperimentPreset
@@ -150,8 +161,16 @@ public class ExperimentConfig : MonoBehaviour
         /// <summary>実験3全体（4条件）</summary>
         Experiment3,
 
+        // === 実験4: 避難訓練の効果 ===
+        /// <summary>実験4-A: 全員訓練済み</summary>
+        Exp4_A_AllTrained,
+        /// <summary>実験4-B: 全員未訓練</summary>
+        Exp4_B_AllUntrained,
+        /// <summary>実験4全体（2条件）</summary>
+        Experiment4,
+
         // === 全実験 ===
-        /// <summary>全実験（8条件、重複統合）</summary>
+        /// <summary>全実験（10条件、重複統合）</summary>
         AllExperiments
     }
 
@@ -184,6 +203,10 @@ public class ExperimentConfig : MonoBehaviour
     [Header("Experiment 3: Information Strategy Settings")]
     [Tooltip("情報提供戦略（具体性×切迫感の4条件）")]
     public InformationStrategy SelectedInformationStrategy = InformationStrategy.Standard;
+
+    [Header("Experiment 4: Evacuation Training Settings")]
+    [Tooltip("避難訓練条件（Default=ペルソナCSVの値を使用）")]
+    public EvacuationTrainingCondition SelectedEvacuationTrainingCondition = EvacuationTrainingCondition.Default;
 
     [Tooltip("津波の実際の高さ（メートル）- 生存判定に使用")]
     public float TsunamiHeight = 8f;
@@ -283,6 +306,7 @@ public class ExperimentConfig : MonoBehaviour
                   $"\n  - バイアス条件: {SelectedBiasCondition}" +
                   $"\n  - バイアスオーバーライド: {OverrideBiasForAllAgents}" +
                   $"\n  - 情報提供戦略: {SelectedInformationStrategy}" +
+                  $"\n  - 避難訓練条件: {SelectedEvacuationTrainingCondition}" +
                   $"\n  - 津波高さ: {TsunamiHeight}m" +
                   $"\n  - 津波到達時刻: {TsunamiArrivalTime}秒");
 
@@ -562,6 +586,29 @@ public class ExperimentConfig : MonoBehaviour
     }
 
     /// <summary>
+    /// 現在の避難訓練条件を取得
+    /// </summary>
+    public static EvacuationTrainingCondition GetEvacuationTrainingCondition()
+    {
+        return Instance != null ? Instance.SelectedEvacuationTrainingCondition : EvacuationTrainingCondition.Default;
+    }
+
+    /// <summary>
+    /// 実験条件に基づいて避難訓練フラグを上書きする
+    /// Default条件ではペルソナCSVの値をそのまま返す
+    /// </summary>
+    public static bool GetOverriddenEvacuationTraining(bool personaValue)
+    {
+        var condition = GetEvacuationTrainingCondition();
+        return condition switch
+        {
+            EvacuationTrainingCondition.AllTrained => true,
+            EvacuationTrainingCondition.AllUntrained => false,
+            _ => personaValue
+        };
+    }
+
+    /// <summary>
     /// 津波の高さを取得（メートル）
     /// </summary>
     public static float GetTsunamiHeight()
@@ -770,6 +817,24 @@ public class ExperimentConfig : MonoBehaviour
                 conditions.Add(CreateCondition("Exp3-D", AgentType.LLM, BiasCondition.None, InformationStrategy.DetailedUrgent, false));
                 break;
 
+            // === 実験4: 個別条件 ===
+            case BatchExperimentPreset.Exp4_A_AllTrained:
+                conditions.Add(CreateCondition("Exp4-A", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllTrained));
+                break;
+
+            case BatchExperimentPreset.Exp4_B_AllUntrained:
+                conditions.Add(CreateCondition("Exp4-B", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllUntrained));
+                break;
+
+            case BatchExperimentPreset.Experiment4:
+                conditions.Add(CreateCondition("Exp4-A", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllTrained));
+                conditions.Add(CreateCondition("Exp4-B", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllUntrained));
+                break;
+
             // === 全実験（重複統合） ===
             case BatchExperimentPreset.AllExperiments:
                 // 共通ベースライン条件（Exp1-A, Exp2-1, Exp3-A を統合）
@@ -784,6 +849,11 @@ public class ExperimentConfig : MonoBehaviour
                 conditions.Add(CreateCondition("Exp3-B", AgentType.LLM, BiasCondition.None, InformationStrategy.Urgent, false));
                 conditions.Add(CreateCondition("Exp3-C", AgentType.LLM, BiasCondition.None, InformationStrategy.Detailed, false));
                 conditions.Add(CreateCondition("Exp3-D", AgentType.LLM, BiasCondition.None, InformationStrategy.DetailedUrgent, false));
+                // 実験4固有
+                conditions.Add(CreateCondition("Exp4-A", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllTrained));
+                conditions.Add(CreateCondition("Exp4-B", AgentType.LLM, BiasCondition.None,
+                    InformationStrategy.Standard, false, EvacuationTrainingCondition.AllUntrained));
                 break;
 
             default:
@@ -797,7 +867,8 @@ public class ExperimentConfig : MonoBehaviour
     /// <summary>
     /// 実験条件を生成するヘルパーメソッド
     /// </summary>
-    private ExperimentCondition CreateCondition(string conditionId, AgentType agentType, BiasCondition bias, InformationStrategy info, bool overrideBias)
+    private ExperimentCondition CreateCondition(string conditionId, AgentType agentType, BiasCondition bias, InformationStrategy info, bool overrideBias,
+        EvacuationTrainingCondition trainingCondition = EvacuationTrainingCondition.Default)
     {
         return new ExperimentCondition
         {
@@ -805,7 +876,8 @@ public class ExperimentConfig : MonoBehaviour
             agentType = agentType,
             biasCondition = bias,
             informationStrategy = info,
-            overrideBias = overrideBias
+            overrideBias = overrideBias,
+            evacuationTrainingCondition = trainingCondition
         };
     }
 
@@ -818,6 +890,7 @@ public class ExperimentConfig : MonoBehaviour
         SelectedBiasCondition = condition.biasCondition;
         SelectedInformationStrategy = condition.informationStrategy;
         OverrideBiasForAllAgents = condition.overrideBias;
+        SelectedEvacuationTrainingCondition = condition.evacuationTrainingCondition;
         ExperimentName = condition.conditionId;
         NumberOfTrials = TrialsPerCondition;
 
@@ -839,6 +912,7 @@ public class ExperimentConfig : MonoBehaviour
         Debug.Log($"[ExperimentConfig]   BiasCondition: {condition.biasCondition}");
         Debug.Log($"[ExperimentConfig]   InformationStrategy: {condition.informationStrategy}");
         Debug.Log($"[ExperimentConfig]   OverrideBias: {condition.overrideBias}");
+        Debug.Log($"[ExperimentConfig]   EvacuationTraining: {condition.evacuationTrainingCondition}");
         Debug.Log($"[ExperimentConfig] ----------------------------------------");
     }
 
@@ -936,7 +1010,7 @@ public class ExperimentConfig : MonoBehaviour
             var result = _batchResults[i];
             var condition = _batchConditions[i];
             sb.AppendLine($"条件 {result.conditionId}:");
-            sb.AppendLine($"  Agent: {condition.agentType}, Bias: {condition.biasCondition}, Info: {condition.informationStrategy}");
+            sb.AppendLine($"  Agent: {condition.agentType}, Bias: {condition.biasCondition}, Info: {condition.informationStrategy}, Training: {condition.evacuationTrainingCondition}");
             sb.AppendLine($"  平均避難率: {result.averageEvacuationRate:P2}, 標準偏差: {result.stdDev:P2}");
         }
 
@@ -957,7 +1031,7 @@ public class ExperimentConfig : MonoBehaviour
             Directory.CreateDirectory(directoryPath);
 
         var sb = new StringBuilder();
-        sb.AppendLine("condition_id,agent_type,bias_condition,info_strategy,avg_evacuation_rate,std_dev,trial_count");
+        sb.AppendLine("condition_id,agent_type,bias_condition,info_strategy,evacuation_training,avg_evacuation_rate,std_dev,trial_count");
 
         for (int i = 0; i < _batchResults.Count; i++)
         {
@@ -965,8 +1039,8 @@ public class ExperimentConfig : MonoBehaviour
             var condition = _batchConditions[i];
 
             sb.AppendLine($"{result.conditionId},{condition.agentType},{condition.biasCondition}," +
-                          $"{condition.informationStrategy},{result.averageEvacuationRate:F4}," +
-                          $"{result.stdDev:F4},{result.trialResults.Count}");
+                          $"{condition.informationStrategy},{condition.evacuationTrainingCondition}," +
+                          $"{result.averageEvacuationRate:F4},{result.stdDev:F4},{result.trialResults.Count}");
         }
 
         string filePath = Path.Combine(directoryPath, fileName);
