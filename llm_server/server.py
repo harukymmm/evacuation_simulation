@@ -1872,6 +1872,70 @@ def _log_decision(
         print(f"[LLM SERVER] failed to write log: {exc}")
 
 
+def _log_rag_query(
+    agent_id: Optional[str],
+    agent_id_int: Optional[int],
+    request_id: str,
+    query: str,
+    query_parts: list,
+    has_training: bool,
+    memory_types: Optional[list],
+    top_k: int,
+    threshold: float,
+    results: list,
+    experiment_id: Optional[str] = None,
+    episode_id: Optional[int] = None,
+    episode_elapsed_time: Optional[float] = None,
+) -> None:
+    """RAG検索のクエリ・パラメータ・結果をJSONLファイルに記録する"""
+    try:
+        if not experiment_id:
+            experiment_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        jst = timezone(timedelta(hours=9))
+        timestamp_jst = datetime.now(jst).strftime("%Y-%m-%d %H:%M:%S")
+
+        log_dir = LOG_BASE_DIR / experiment_id
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "rag_queries.jsonl"
+
+        record = {
+            "timestamp": timestamp_jst,
+            "request_id": request_id,
+            "agent_id": agent_id,
+            "agent_id_int": agent_id_int,
+            "episode_id": episode_id,
+            "episode_elapsed_time": (
+                round(episode_elapsed_time, 2)
+                if episode_elapsed_time is not None
+                else None
+            ),
+            "query": query,
+            "query_parts": query_parts,
+            "has_training": has_training,
+            "memory_types": memory_types,
+            "top_k": top_k,
+            "threshold": threshold,
+            "results_count": len(results),
+            "results": [
+                {
+                    "content": r.get("content", ""),
+                    "memory_type": r.get("memory_type", ""),
+                    "similarity": r.get("similarity"),
+                    "agent_id": r.get("agent_id"),
+                    "metadata": r.get("metadata", {}),
+                }
+                for r in results
+            ],
+        }
+
+        with log_file.open("a", encoding="utf-8") as fp:
+            fp.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    except Exception as exc:
+        print(f"[LLM SERVER] failed to write RAG query log: {exc}")
+
+
 async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     request_id = payload.get("request_id", f"req-{random.randint(0, 1_000_000)}")
 
@@ -1940,6 +2004,23 @@ async def process_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
             memories = await memory_manager.search(
                 query=query, agent_id=agent_id_int,
                 memory_types=memory_types, top_k=search_top_k, threshold=0.5
+            )
+
+            # RAG検索ログを記録（結果0件でも記録する）
+            _log_rag_query(
+                agent_id=evacuee.get("id"),
+                agent_id_int=agent_id_int,
+                request_id=request_id,
+                query=query,
+                query_parts=query_parts,
+                has_training=has_training,
+                memory_types=memory_types,
+                top_k=search_top_k,
+                threshold=0.5,
+                results=memories or [],
+                experiment_id=payload.get("experiment_id"),
+                episode_id=payload.get("episode_id"),
+                episode_elapsed_time=payload.get("episode_elapsed_time"),
             )
 
             if memories:
