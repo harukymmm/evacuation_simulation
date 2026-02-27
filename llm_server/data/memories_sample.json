@@ -226,5 +226,167 @@
     "agent_id": null,
     "content": "家族が見つからなくても、「あの人も訓練を受けてるから自分で逃げてるはず」と信じる。迷って探し回るより、約束の避難場所で待つ方がずっと合理的だ。信じて待て。",
     "metadata": {"category": "tendenko_trust", "topic": "trust_over_search"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "八幡神社は高台の神社で、震災当日に保育園児たちが避難して全員助かった実績がある。近くにいるなら神社の境内に逃げるのも有効だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "hachiman_shrine_evacuation", "elevation": 25}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間中学校は指定避難所で、震災後に内陸側の高台に移転した。体育館もあって大人数を収容できる。訓練でも避難先として使った。",
+    "metadata": {"category": "shelter_knowledge", "topic": "toyoma_junior_high", "elevation": 30}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "沼ノ内団地はRC造の津波避難ビルで、海抜20mの位置にある。高台まで行けないときは上階に垂直避難できる。",
+    "metadata": {"category": "shelter_knowledge", "topic": "numanochi_danchi", "elevation": 20}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "諏訪神社、八幡神社、八坂神社は全て高台にある。石段を登れば海抜25〜30mに達する。急いでいるときは近くの神社を目指せ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "shrine_evacuation_pattern"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "中田山は海抜35mの自然地形で、建物倒壊のリスクがない。照明や設備はないが大人数を収容できる広さがある。",
+    "metadata": {"category": "shelter_knowledge", "topic": "nakatayama_features", "elevation": 35}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間公園には屋根付きのドームシェルターがある。非常用発電や非常用トイレも完備。面積8.2haで地区最大の避難拠点だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "toyoma_park_facilities", "elevation": 30}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "2011年の震災では、地震から約45分後に壊滅的な第2波が来た。最初の警報が3mで油断した人が多かった。数字に関係なくすぐ逃げろ。",
+    "metadata": {"category": "time_awareness", "topic": "tsunami_timeline_actual"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "復興後は防潮堤、防災緑地、海岸道路、高台住宅地と4重の防御がある。でも防潮堤は時間稼ぎのためのもの。完全には止められない。必ず高台へ。",
+    "metadata": {"category": "evacuation_principle", "topic": "multiple_defense_awareness"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "大地震後は停電でテレビもネットも使えなくなる。警報の更新は届かないと思え。だから最初の警報の大きさに関係なく、すぐに逃げるのが正解。",
+    "metadata": {"category": "evacuation_principle", "topic": "blackout_info_gap"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で習った。普通に歩いて時速2.24km、お年寄りと一緒だと時速1.88km。思ったより遅いから、早めに動き始めることが大事。",
+    "metadata": {"category": "self_awareness", "topic": "evacuation_speed_reality"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "震災では一度避難した後に貴重品や飼い犬のために戻って第2波・第3波に巻き込まれた人がいた。何があっても警報解除まで戻るな。",
+    "metadata": {"category": "evacuation_principle", "topic": "return_after_evacuation_risk"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間団地は192戸で地区最大の収容力がある。RC造4〜5階建てで全棟にエレベーター完備。垂直避難の選択肢として覚えておけ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "toyoma_danchi_capacity"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "訓練で教わった。地震後3分以内に避難を始めれば、薄磯・豊間のどこにいても高台に着ける。迷ってる暇はない、3分で動け。",
+    "metadata": {"category": "time_awareness", "topic": "three_minute_rule"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "神社への避難で石段を登るとき、思った以上に時間がかかる。高齢者には特に厳しい。石段より平地経由で豊間公園を目指す方が速い場合もある。",
+    "metadata": {"category": "evacuation_principle", "topic": "stone_stairs_difficulty"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "望洋荘は福祉避難所だが、最初から行く場所じゃない。まず豊間中学校などの一般避難所に行って、そこで必要と判断されたら移送される流れだ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "welfare_shelter_flow"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "2025年7月にカムチャッカ地震で津波警報が出た。最初は注意報だったのに1時間後に警報に格上げされた。2011年と同じパターンだ。注意報でも逃げろ。",
+    "metadata": {"category": "time_awareness", "topic": "warning_escalation"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "薄磯団地と豊間団地は災害公営住宅で、高齢者のみの世帯が多い。平日昼間は在宅率が高いから、声をかけて一緒に逃げることが大事だ。",
+    "metadata": {"category": "community_awareness", "topic": "public_housing_elderly"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "この地区には登録防災士がいる。訓練を受けた人が避難誘導してくれる。防災士の指示が聞こえたら従え。",
+    "metadata": {"category": "community_awareness", "topic": "disaster_specialist"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "防潮堤は高くなったが、最大クラスの津波では越流・破壊される前提で設計されている。防潮堤を信じるな、必ず高台へ逃げろ。",
+    "metadata": {"category": "evacuation_principle", "topic": "seawall_limit"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "2010年のチリ地震で大津波警報が出たけど、いわきには被害がなかった。それで「今回も大丈夫」と思った人が2011年に犠牲になった。空振りを恐れるな。",
+    "metadata": {"category": "bias_override", "topic": "chile_tsunami_lesson"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "薄磯団地は高台の造成地に建ってるから、上層階にいれば建物内で安全な場合もある。でも1階にいる人は上層階へ垂直避難しろ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "usuiso_danchi_vertical"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "豊間中学校と豊間公園は隣接している。校庭から公園への避難動線がつながっているから、学校にいる子供たちは公園へ連続的に避難できる。",
+    "metadata": {"category": "shelter_knowledge", "topic": "school_park_route"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "健登師記念会館は薄磯から近い指定避難所だ。平日昼間は高齢者の集まりが開かれていることがある。高台にあるから津波には安全だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "kentoshi_hall"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "江名公民館は2025年7月の津波警報のとき実際に避難所として開設された。江名小学校も高台にある。江名方面にいるならそこを目指せ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "ena_facilities"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "八坂神社は薄磯地区の高台にある。塩屋崎灯台方面に行くか八坂神社に行くか、自分の位置で判断しろ。近い方に逃げるのが正解だ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "yasaka_shrine"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "2011年の震災で犠牲になった人の多くが高齢者だった。お年寄りの避難は時間がかかる。だから早く声をかけて、一緒に逃げ始めることが大事だ。",
+    "metadata": {"category": "community_awareness", "topic": "elderly_support"}
+  },
+  {
+    "memory_type": "drill_knowledge",
+    "agent_id": null,
+    "content": "小泉工業は民間企業だが、津波避難場所として市と協定を結んでいる。民間施設でも「津波避難場所」の表示があれば逃げ込める。覚えておけ。",
+    "metadata": {"category": "shelter_knowledge", "topic": "koizumi_industrial"}
   }
 ]
