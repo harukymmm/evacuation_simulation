@@ -126,6 +126,21 @@ if action_history:
 | `disaster_experience` | 過去の災害経験 | エージェント個別（agent_id: N） |
 | `drill_knowledge` | 避難訓練で得た知識・経験 | 訓練経験者のみ（`has_evacuation_training=true` のエージェント） |
 
+### 3.2.1 drill_knowledgeのカテゴリ詳細
+
+`drill_knowledge`は以下のカテゴリに分類される（計35件）：
+
+| category | 説明 | 件数 |
+|----------|------|------|
+| `evacuation_principle` | 避難原則（即時避難、車避難禁止、垂直避難、戻り禁止等） | 10件 |
+| `shelter_knowledge` | 避難所の具体的情報（豊間公園、各団地、神社等） | 10件 |
+| `time_awareness` | 津波到達時間、複数波への注意 | 3件 |
+| `self_awareness` | 訓練経験による自信、経路知識、避難速度認識 | 5件 |
+| `behavior` | パニック抑制、率先避難 | 2件 |
+| `tendenko_trust` | 津波てんでんこの信頼、家族探索衝動の制御 | 2件 |
+| `bias_override` | 正常性バイアスの打破 | 1件 |
+| `phase_knowledge` | 発災フェーズ別行動指針 | 1件 |
+
 ### 3.3 データ形式（memories.json）
 
 ```json
@@ -386,3 +401,158 @@ numpy>=1.24.0     # ベクトル計算
 | サービス | 用途 | 必須/任意 |
 |---------|------|----------|
 | OpenAI API | Embedding生成 | 長期記憶使用時は必須 |
+
+---
+
+## 8. RAGデモツール
+
+### 8.1 概要
+
+長期記憶検索（RAG）がどのように動作するかを、ブラウザ上で対話的に試せるスタンドアロンのデモツール。技術的な知識がない人でも、入力クエリに対してどの記憶が検索されるか、その結果がどのようにプロンプトに埋め込まれるかを確認できる。
+
+### 8.2 起動方法
+
+```bash
+cd llm_server
+python rag_demo.py
+```
+
+起動後、ブラウザで `http://localhost:8080` を開く。
+
+### 8.3 画面構成
+
+| セクション | 説明 |
+|-----------|------|
+| 記憶データ統計 | 読み込まれた記憶の件数をタイプ別に表示 |
+| 検索条件 | クエリ入力、プリセットボタン、避難訓練フラグON/OFF |
+| 検索結果 | ヒットした記憶を類似度スコア付きで表示（タイプ別に色分け） |
+| プロンプトプレビュー | LLMに渡される `【あなたの記憶・知識】` 形式を表示 |
+| LLM応答 | 検索結果を含むプロンプトでLLMが生成した回答を表示 |
+
+### 8.4 機能
+
+- **RAG検索テスト**: 自由テキストで記憶検索を実行し、コサイン類似度による検索結果を確認
+- **訓練フラグ切り替え**: ON時は全記憶タイプ（最大5件）、OFF時は `drill_knowledge` を除外（最大3件）で検索
+- **プロンプト確認**: 検索結果がプロンプトにどう埋め込まれるかをプレビュー
+- **LLM応答生成**: 実際にLLM APIを呼び出して、記憶を踏まえた回答を生成
+
+### 8.5 シミュレーションログビューア
+
+RAGデモツールには「シミュレーションログ」タブがあり、実際のシミュレーション実行時に記録されたRAG検索ログを閲覧できる。
+
+#### 8.5.1 タブ構成
+
+| タブ | 説明 |
+|------|------|
+| RAG検索デモ | 対話的にRAG検索を試すデモ（従来の機能） |
+| シミュレーションログ | シミュレーション実行時のRAGクエリログビューア |
+
+#### 8.5.2 ログビューアの機能
+
+- **実験一覧**: `rag_queries.jsonl` を持つ実験を一覧表示（新しい順）
+- **サマリー統計**: 総クエリ数、平均結果件数、エージェント数、結果あり/なし件数
+- **ログ一覧**: 各クエリのエージェント、時刻、訓練状態、クエリ文、検索結果を表示
+- **フィルタ**: エージェントID、記憶タイプ、結果有無で絞り込み
+- **ページネーション**: 50件ずつ表示
+
+#### 8.5.3 API エンドポイント
+
+| メソッド | パス | 説明 |
+|---------|------|------|
+| GET | `/api/experiments` | RAGクエリログを持つ実験一覧 |
+| GET | `/api/experiments/{id}/rag_queries` | 指定実験のRAGクエリログ全件＋サマリー統計 |
+
+### 8.6 関連ファイル
+
+| ファイル | 説明 |
+|---------|------|
+| `llm_server/rag_demo.py` | デモツール本体（HTML + HTTPサーバー + API処理を1ファイルに集約） |
+
+---
+
+## 9. RAGクエリログ
+
+### 9.1 概要
+
+シミュレーション実行時に `server.py` 内で行われるRAG検索のクエリ・パラメータ・検索結果（類似度スコア含む）を個別にログファイルに記録する。実際のシミュレーションでどのような入力に対してどの記憶が検索・提供されたかを事後的に一覧で確認できる。
+
+### 9.2 ログファイル
+
+- **場所**: `Logs/experiment_results/{experiment_id}/rag_queries.jsonl`
+- **形式**: JSON Lines（1行1レコード）
+- 既存の `llm_decisions/` ディレクトリの兄弟に配置
+
+### 9.3 レコード構造
+
+```json
+{
+  "timestamp": "2026-02-27 14:30:05",
+  "request_id": "req-123456",
+  "agent_id": "Evacuee2(Clone)",
+  "agent_id_int": 2,
+  "episode_id": 0,
+  "episode_elapsed_time": 45.5,
+  "query": "安全な場所に逃げたい 高台の避難所に向かう",
+  "query_parts": ["安全な場所に逃げたい", "高台の避難所に向かう"],
+  "has_training": true,
+  "memory_types": null,
+  "top_k": 5,
+  "threshold": 0.5,
+  "results_count": 3,
+  "results": [
+    {
+      "content": "豊間中学校は高台にあって...",
+      "memory_type": "regional_knowledge",
+      "similarity": 0.823,
+      "agent_id": null,
+      "metadata": {}
+    }
+  ]
+}
+```
+
+### 9.4 フィールド説明
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `timestamp` | string | JST タイムスタンプ |
+| `request_id` | string | リクエスト識別子 |
+| `agent_id` | string | エージェントID（Unity側の名前） |
+| `agent_id_int` | int\|null | エージェントID（整数） |
+| `episode_id` | int\|null | エピソードID |
+| `episode_elapsed_time` | float\|null | エピソード経過時間（秒） |
+| `query` | string | RAG検索クエリ（結合済み） |
+| `query_parts` | string[] | クエリ構成要素 |
+| `has_training` | bool | 避難訓練経験の有無 |
+| `memory_types` | string[]\|null | 検索対象の記憶タイプ（nullは全タイプ） |
+| `top_k` | int | 返す最大件数 |
+| `threshold` | float | 類似度閾値 |
+| `results_count` | int | 検索結果件数 |
+| `results` | array | 検索結果（content, memory_type, similarity, agent_id, metadata） |
+
+### 9.5 記録タイミング
+
+- `process_payload()` 内の `memory_manager.search()` 完了直後
+- 結果が0件の場合も記録する（「何もヒットしなかった」情報にも分析価値がある）
+- 検索自体が例外になった場合はスキップ（既存の `try` ブロック内）
+
+### 9.6 実装
+
+```python
+# server.py
+def _log_rag_query(
+    agent_id, agent_id_int, request_id, query, query_parts,
+    has_training, memory_types, top_k, threshold, results,
+    experiment_id=None, episode_id=None, episode_elapsed_time=None
+) -> None:
+    """RAG検索のクエリ・パラメータ・結果をJSONLファイルに記録"""
+    # LOG_BASE_DIR / experiment_id / "rag_queries.jsonl" に append
+```
+
+### 9.7 パフォーマンス影響
+
+| 項目 | 影響 |
+|------|------|
+| I/O負荷 | 1レコード500-1500Bのappend。既存の判定ログ（2-5KB/回）より小さい |
+| 並行性 | asyncioシングルスレッドのため同期writeは直列化。POSIXでは4KB未満のappendはアトミック |
+| ディスク容量 | 30エージェント x 10判定 x 4試行 ≈ 1,200レコード/実験 ≈ 1.2MB/実験 |
